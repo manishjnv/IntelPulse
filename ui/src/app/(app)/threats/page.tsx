@@ -19,6 +19,7 @@ import {
   Link2,
   ShieldCheck,
   ArrowUpDown,
+  Crosshair,
 } from "lucide-react";
 import { formatDate, severityBorder, riskColor, riskBg } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -316,7 +317,20 @@ export default function ThreatsPage() {
                         </div>
                       )}
                     </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground/30 group-hover:text-primary transition-colors shrink-0 mt-3" />
+                    <div className="flex flex-col items-center gap-1 shrink-0 mt-2">
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          window.location.href = `/search?q=${encodeURIComponent(item.source_ref || item.cve_ids?.[0] || item.title)}&hunt=1`;
+                        }}
+                        className="p-1.5 rounded-md hover:bg-primary/10 transition-colors"
+                        title="Hunt — search local + internet"
+                      >
+                        <Crosshair className="h-3.5 w-3.5 text-primary/40 hover:text-primary transition-colors" />
+                      </button>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground/30 group-hover:text-primary transition-colors" />
+                    </div>
                   </div>
                 </Link>
               ))}
