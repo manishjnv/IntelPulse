@@ -876,7 +876,7 @@ export default function IOCDatabasePage() {
                             <Crosshair className="h-3.5 w-3.5 text-blue-400" />
                           </button>
                           <button
-                            onClick={() => router.push(`/investigate?id=${encodeURIComponent(ioc.value)}&type=ioc`)}
+                            onClick={() => router.push(`/investigate?id=${encodeURIComponent(ioc.value)}&type=ioc&depth=1`)}
                             className="p-1.5 rounded-md bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 transition-colors"
                             title="Investigate — relationship graph"
                           >

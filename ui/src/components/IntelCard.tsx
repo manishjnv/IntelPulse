@@ -153,7 +153,7 @@ export function IntelCard({ item }: IntelCardProps) {
               <span className="text-[10px] font-medium text-blue-400">Hunt</span>
             </Link>
             <Link
-              href={`/investigate?id=${encodeURIComponent(item.id)}&type=intel`}
+              href={`/investigate?id=${encodeURIComponent(item.id)}&type=intel&depth=1`}
               onClick={(e) => e.stopPropagation()}
               className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 transition-colors"
               title="Investigate — relationship graph"

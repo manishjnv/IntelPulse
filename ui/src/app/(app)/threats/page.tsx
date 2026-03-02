@@ -335,7 +335,7 @@ export default function ThreatsPage() {
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          window.location.href = `/investigate?id=${encodeURIComponent(item.id)}&type=intel`;
+                          window.location.href = `/investigate?id=${encodeURIComponent(item.id)}&type=intel&depth=1`;
                         }}
                         className="p-1.5 rounded-md bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 transition-colors"
                         title="Investigate — relationship graph"
