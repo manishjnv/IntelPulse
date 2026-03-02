@@ -130,6 +130,16 @@ function timeAgo(dateStr: string | null): string {
   return `${days}d ago`;
 }
 
+function formatPublishDate(dateStr: string | null): string {
+  if (!dateStr) return "";
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function relevanceBadge(score: number) {
   if (score >= 80) return { color: "bg-red-500/20 text-red-300 border-red-500/30", label: "Critical" };
   if (score >= 60) return { color: "bg-orange-500/20 text-orange-300 border-orange-500/30", label: "High" };
@@ -247,7 +257,12 @@ function NewsCard({ item }: { item: NewsItem }) {
               <span className="font-medium">{item.source}</span>
               <span className="text-muted-foreground/40">•</span>
               <Clock className="h-3 w-3" />
-              <span>{timeAgo(item.published_at)}</span>
+              <span title={item.published_at || undefined}>
+                {formatPublishDate(item.published_at)}
+              </span>
+              <span className="text-muted-foreground/50">
+                ({timeAgo(item.published_at)})
+              </span>
               {item.ai_enriched && (
                 <>
                   <span className="text-muted-foreground/40">•</span>
@@ -623,7 +638,7 @@ export default function CyberNewsPage() {
                                     {item.headline}
                                   </h4>
                                   <p className="text-[10px] text-muted-foreground mt-1">
-                                    {item.source} • {timeAgo(item.published_at)}
+                                    {item.source} • {formatPublishDate(item.published_at)} ({timeAgo(item.published_at)})
                                   </p>
                                 </div>
                                 <Badge
