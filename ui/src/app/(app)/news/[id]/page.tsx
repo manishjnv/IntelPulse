@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loading } from "@/components/Loading";
+import IOCSearchPopup from "@/components/IOCSearchPopup";
 import {
   ArrowLeft,
   ExternalLink,
@@ -24,6 +25,7 @@ import {
   Users,
   Calendar,
   ChevronRight,
+  ChevronDown,
   Eye,
   ShieldCheck,
   Target,
@@ -38,6 +40,9 @@ import {
   Layers,
   Radio,
   Loader2,
+  FileDown,
+  FileCode,
+  FileType2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -158,33 +163,48 @@ function TagList({
   );
 }
 
-// ── Keyword highlighting ─────────────────────────────────
-const HIGHLIGHT_RULES: { pattern: RegExp; style: string }[] = [
+// ── Keyword highlighting (clickable → IOC search) ────────
+const HIGHLIGHT_RULES: { pattern: RegExp; style: string; searchable: boolean }[] = [
   // CVE IDs
-  { pattern: /\bCVE-\d{4}-\d{4,}\b/g, style: "font-semibold text-orange-400 bg-orange-500/10 px-1 rounded" },
+  { pattern: /\bCVE-\d{4}-\d{4,}\b/g, style: "font-semibold text-orange-400 bg-orange-500/10 px-1 rounded cursor-pointer hover:bg-orange-500/20 transition-colors", searchable: true },
   // MITRE ATT&CK IDs
-  { pattern: /\b(T\d{4}(?:\.\d{3})?|TA\d{4})\b/g, style: "font-semibold text-blue-400 bg-blue-500/10 px-1 rounded" },
-  // Action verbs — green highlight for immediate next-steps
-  { pattern: /\b(patch|update|upgrade|block|disable|revoke|rotate|deploy|scan|isolate|remediate|mitigat(?:e|ion)|harden|restrict|enforce|audit|verify|review|monitor|detect|enable)\b/gi, style: "font-medium text-green-400" },
-  // Threat/severity terms — amber/red for urgency
-  { pattern: /\b(zero[- ]day|critical|exploit(?:ed|ation|s)?|ransom(?:ware)?|malware|backdoor|RCE|remote code execution|privilege escalation|data (?:breach|exfiltration|leak)|supply[- ]chain|APT|brute[- ]force|phishing|trojan|rootkit|C2|command[- ]and[- ]control|lateral movement)\b/gi, style: "font-medium text-amber-400" },
-  // Product/tech terms in quotes
-  { pattern: /"([^"]{2,40})"/g, style: "font-medium text-foreground/90" },
+  { pattern: /\b(T\d{4}(?:\.\d{3})?|TA\d{4})\b/g, style: "font-semibold text-blue-400 bg-blue-500/10 px-1 rounded cursor-pointer hover:bg-blue-500/20 transition-colors", searchable: true },
   // IP addresses
-  { pattern: /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, style: "font-mono text-sky-400 bg-sky-500/10 px-1 rounded text-[11px]" },
+  { pattern: /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, style: "font-mono text-sky-400 bg-sky-500/10 px-1 rounded text-[11px] cursor-pointer hover:bg-sky-500/20 transition-colors", searchable: true },
+  // SHA-256 / SHA-1 / MD5 hashes
+  { pattern: /\b[a-f0-9]{64}\b/gi, style: "font-mono text-purple-400 bg-purple-500/10 px-1 rounded text-[10px] cursor-pointer hover:bg-purple-500/20 transition-colors", searchable: true },
+  { pattern: /\b[a-f0-9]{40}\b/gi, style: "font-mono text-purple-400 bg-purple-500/10 px-1 rounded text-[10px] cursor-pointer hover:bg-purple-500/20 transition-colors", searchable: true },
+  { pattern: /\b[a-f0-9]{32}\b/gi, style: "font-mono text-purple-400 bg-purple-500/10 px-1 rounded text-[10px] cursor-pointer hover:bg-purple-500/20 transition-colors", searchable: true },
+  // Threat actor names (APT groups, known actors)
+  { pattern: /\b(APT\d+|UNC\d+|UAT-\d+|FIN\d+|Lazarus|Fancy Bear|Cozy Bear|Turla|Sandworm|Kimsuky|ScarCruft|Volt Typhoon|Storm-\d+|Midnight Blizzard|Scattered Spider)\b/gi, style: "font-semibold text-purple-400 bg-purple-500/10 px-1 rounded cursor-pointer hover:bg-purple-500/20 transition-colors", searchable: true },
+  // Version numbers (e.g., v2.1.3, 10.0.1)
+  { pattern: /\bv?\d+\.\d+(?:\.\d+)+\b/g, style: "font-mono text-teal-400 bg-teal-500/10 px-1 rounded text-[11px]", searchable: false },
+  // File paths (Unix/Windows)
+  { pattern: /(?:\/[\w.-]+){2,}|[A-Z]:\\(?:[\w.-]+\\)+[\w.-]+/g, style: "font-mono text-amber-300 bg-amber-500/10 px-1 rounded text-[11px] cursor-pointer hover:bg-amber-500/20 transition-colors", searchable: true },
+  // Dates (YYYY-MM-DD)
+  { pattern: /\b\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])\b/g, style: "text-indigo-400 font-medium", searchable: false },
+  // CVSS scores (e.g., 9.8/10, CVSS 7.5)
+  { pattern: /\b(?:CVSS[:\s]*)?\d{1,2}\.\d\/10\b/gi, style: "font-semibold text-red-400 bg-red-500/10 px-1 rounded", searchable: false },
+  // Action verbs — green highlight
+  { pattern: /\b(patch|update|upgrade|block|disable|revoke|rotate|deploy|scan|isolate|remediate|mitigat(?:e|ion)|harden|restrict|enforce|audit|verify|review|monitor|detect|enable)\b/gi, style: "font-medium text-green-400", searchable: false },
+  // Threat/severity terms — amber/red for urgency
+  { pattern: /\b(zero[- ]day|critical|exploit(?:ed|ation|s)?|ransom(?:ware)?|malware|backdoor|RCE|remote code execution|privilege escalation|data (?:breach|exfiltration|leak)|supply[- ]chain|APT|brute[- ]force|phishing|trojan|rootkit|C2|command[- ]and[- ]control|lateral movement)\b/gi, style: "font-medium text-amber-400", searchable: false },
+  // Quoted terms (product names, etc.)
+  { pattern: /"([^"]{2,40})"/g, style: "font-medium text-foreground/90 cursor-pointer hover:text-primary transition-colors", searchable: true },
 ];
 
-function highlightText(text: string): React.ReactNode[] {
-  // Build a single merged regex with named groups
-  const allMatches: { start: number; end: number; text: string; style: string }[] = [];
+function highlightText(
+  text: string,
+  onKeywordClick?: (kw: string) => void,
+): React.ReactNode[] {
+  const allMatches: { start: number; end: number; text: string; style: string; searchable: boolean }[] = [];
   for (const rule of HIGHLIGHT_RULES) {
     const re = new RegExp(rule.pattern.source, rule.pattern.flags);
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
-      allMatches.push({ start: m.index, end: m.index + m[0].length, text: m[0], style: rule.style });
+      allMatches.push({ start: m.index, end: m.index + m[0].length, text: m[0], style: rule.style, searchable: rule.searchable });
     }
   }
-  // Sort by position, remove overlaps
   allMatches.sort((a, b) => a.start - b.start);
   const filtered: typeof allMatches = [];
   let lastEnd = 0;
@@ -194,13 +214,28 @@ function highlightText(text: string): React.ReactNode[] {
       lastEnd = m.end;
     }
   }
-  // Build nodes
   const nodes: React.ReactNode[] = [];
   let cursor = 0;
   for (let i = 0; i < filtered.length; i++) {
     const m = filtered[i];
     if (cursor < m.start) nodes.push(text.slice(cursor, m.start));
-    nodes.push(<span key={`h-${i}`} className={m.style}>{m.text}</span>);
+    if (m.searchable && onKeywordClick) {
+      // Strip surrounding quotes for search
+      const searchTerm = m.text.replace(/^"|"$/g, "");
+      nodes.push(
+        <button
+          key={`h-${i}`}
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onKeywordClick(searchTerm); }}
+          className={cn(m.style, "inline")}
+          title={`Search IOC: ${searchTerm}`}
+        >
+          {m.text}
+        </button>,
+      );
+    } else {
+      nodes.push(<span key={`h-${i}`} className={m.style}>{m.text}</span>);
+    }
     cursor = m.end;
   }
   if (cursor < text.length) nodes.push(text.slice(cursor));
@@ -208,8 +243,8 @@ function highlightText(text: string): React.ReactNode[] {
 }
 
 // ── Prose paragraph with keyword highlighting ────────────
-function Prose({ text, className }: { text: string; className?: string }) {
-  return <p className={cn("text-sm leading-relaxed text-muted-foreground", className)}>{highlightText(text)}</p>;
+function Prose({ text, className, onKeywordClick }: { text: string; className?: string; onKeywordClick?: (kw: string) => void }) {
+  return <p className={cn("text-sm leading-relaxed text-muted-foreground", className)}>{highlightText(text, onKeywordClick)}</p>;
 }
 
 // ── Actionable bullet with pointer + highlight ───────────
@@ -218,19 +253,82 @@ function ActionBullet({
   icon: Icon,
   accent = "text-muted-foreground",
   accentBg = "bg-muted/50",
+  onKeywordClick,
 }: {
   text: string;
   icon: React.ElementType;
   accent?: string;
   accentBg?: string;
+  onKeywordClick?: (kw: string) => void;
 }) {
   return (
     <li className="text-xs leading-relaxed text-muted-foreground flex items-start gap-2.5 group">
       <div className={cn("flex items-center justify-center h-5 w-5 rounded-md shrink-0 mt-0.5 transition-colors", accentBg, "group-hover:scale-110")}>
         <Icon className={cn("h-3 w-3", accent)} />
       </div>
-      <span>{highlightText(text)}</span>
+      <span>{highlightText(text, onKeywordClick)}</span>
     </li>
+  );
+}
+
+// ── Report Format Dropdown ───────────────────────────────
+function ReportDropdown({
+  onDownload,
+  loading,
+}: {
+  onDownload: (format: "pdf" | "html" | "markdown") => void;
+  loading: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const formats = [
+    { key: "pdf" as const, label: "PDF Report", icon: FileDown, desc: "Professional styled PDF" },
+    { key: "html" as const, label: "HTML Report", icon: FileCode, desc: "Self-contained HTML file" },
+    { key: "markdown" as const, label: "Markdown", icon: FileType2, desc: "Plain text markdown" },
+  ];
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        disabled={loading}
+        className="flex items-center gap-1.5 text-[10px] font-medium px-3 py-1.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+      >
+        {loading ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <Download className="h-3 w-3" />
+        )}
+        Report
+        <ChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-52 bg-[#0c0c14] border border-border/50 rounded-lg shadow-xl z-40 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+          {formats.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => { setOpen(false); onDownload(f.key); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-accent/10 transition-colors"
+            >
+              <f.icon className="h-3.5 w-3.5 text-primary/60 shrink-0" />
+              <div>
+                <p className="text-[11px] font-medium text-foreground/90">{f.label}</p>
+                <p className="text-[9px] text-muted-foreground/60">{f.desc}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -241,6 +339,11 @@ export default function NewsDetailPage() {
   const [item, setItem] = useState<NewsItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [reportLoading, setReportLoading] = useState(false);
+  const [iocKeyword, setIocKeyword] = useState<string | null>(null);
+
+  const handleKeywordClick = useCallback((kw: string) => {
+    setIocKeyword(kw);
+  }, []);
 
   useEffect(() => {
     const id = params.id as string;
@@ -253,11 +356,11 @@ export default function NewsDetailPage() {
       .finally(() => setLoading(false));
   }, [params.id]);
 
-  const handleDownloadReport = async () => {
+  const handleDownloadReport = async (format: "pdf" | "html" | "markdown" = "pdf") => {
     if (!item) return;
     setReportLoading(true);
     try {
-      await api.downloadNewsReport(item.id);
+      await api.downloadNewsReport(item.id, format);
     } catch {
       // silently fail
     } finally {
@@ -351,18 +454,7 @@ export default function NewsDetailPage() {
                 </Badge>
 
                 <div className="flex items-center gap-2 ml-auto">
-                  <button
-                    onClick={handleDownloadReport}
-                    disabled={reportLoading}
-                    className="flex items-center gap-1.5 text-[10px] font-medium px-3 py-1.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
-                  >
-                    {reportLoading ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <Download className="h-3 w-3" />
-                    )}
-                    Generate Report
-                  </button>
+                  <ReportDropdown onDownload={handleDownloadReport} loading={reportLoading} />
                   <a
                     href={item.source_url}
                     target="_blank"
@@ -387,7 +479,7 @@ export default function NewsDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Prose text={item.summary} />
+            <Prose text={item.summary} onKeywordClick={handleKeywordClick} />
           </CardContent>
         </Card>
       )}
@@ -395,7 +487,7 @@ export default function NewsDetailPage() {
       {/* ── Intelligence Brief ─────────────────────────── */}
       {item.executive_brief && (
         <Section icon={BookOpen} title="Intelligence Brief" accent="text-indigo-400">
-          <Prose text={item.executive_brief} />
+          <Prose text={item.executive_brief} onKeywordClick={handleKeywordClick} />
         </Section>
       )}
 
@@ -404,12 +496,12 @@ export default function NewsDetailPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {item.risk_assessment && (
             <Section icon={TriangleAlert} title="Risk Assessment" accent="text-red-400">
-              <Prose text={item.risk_assessment} />
+              <Prose text={item.risk_assessment} onKeywordClick={handleKeywordClick} />
             </Section>
           )}
           {item.attack_narrative && (
             <Section icon={Swords} title="Attack Narrative" accent="text-orange-400">
-              <Prose text={item.attack_narrative} />
+              <Prose text={item.attack_narrative} onKeywordClick={handleKeywordClick} />
             </Section>
           )}
         </div>
@@ -423,7 +515,7 @@ export default function NewsDetailPage() {
               <div key={i} className="rounded-lg border border-yellow-500/10 bg-yellow-500/5 p-3 hover:border-yellow-500/30 transition-colors">
                 <div className="flex items-start gap-2">
                   <span className="text-[10px] font-bold text-yellow-400 bg-yellow-500/10 rounded px-1.5 py-0.5 shrink-0">{i + 1}</span>
-                  <p className="text-xs leading-relaxed text-muted-foreground">{highlightText(point)}</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground">{highlightText(point, handleKeywordClick)}</p>
                 </div>
               </div>
             ))}
@@ -517,7 +609,7 @@ export default function NewsDetailPage() {
             <Section icon={Zap} title="Post-Exploitation" accent="text-orange-400">
               <ul className="space-y-2">
                 {item.post_exploitation.map((pe, i) => (
-                  <ActionBullet key={i} text={pe} icon={ChevronRight} accent="text-orange-400/80" accentBg="bg-orange-500/10" />
+                  <ActionBullet key={i} text={pe} icon={ChevronRight} accent="text-orange-400/80" accentBg="bg-orange-500/10" onKeywordClick={handleKeywordClick} />
                 ))}
               </ul>
             </Section>
@@ -628,7 +720,7 @@ export default function NewsDetailPage() {
             <Section icon={Radio} title="Detection Opportunities" accent="text-blue-400">
               <ul className="space-y-2.5">
                 {item.detection_opportunities.map((det, i) => (
-                  <ActionBullet key={i} text={det} icon={Eye} accent="text-blue-400" accentBg="bg-blue-500/10" />
+                  <ActionBullet key={i} text={det} icon={Eye} accent="text-blue-400" accentBg="bg-blue-500/10" onKeywordClick={handleKeywordClick} />
                 ))}
               </ul>
             </Section>
@@ -637,7 +729,7 @@ export default function NewsDetailPage() {
             <Section icon={CheckCircle2} title="Mitigation Recommendations" accent="text-green-400">
               <ul className="space-y-2.5">
                 {item.mitigation_recommendations.map((mit, i) => (
-                  <ActionBullet key={i} text={mit} icon={CheckCircle2} accent="text-green-400" accentBg="bg-green-500/10" />
+                  <ActionBullet key={i} text={mit} icon={CheckCircle2} accent="text-green-400" accentBg="bg-green-500/10" onKeywordClick={handleKeywordClick} />
                 ))}
               </ul>
             </Section>
@@ -673,6 +765,11 @@ export default function NewsDetailPage() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* ── IOC Search Popup ───────────────────────────── */}
+      {iocKeyword && (
+        <IOCSearchPopup keyword={iocKeyword} onClose={() => setIocKeyword(null)} />
       )}
     </div>
   );

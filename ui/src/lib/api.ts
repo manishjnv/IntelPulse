@@ -610,10 +610,16 @@ export async function refreshNews(): Promise<{ status: string; job_id: string }>
   });
 }
 
-export async function downloadNewsReport(id: string): Promise<void> {
-  const response = await fetch(`/api/v1/news/${id}/report`, { credentials: "include" });
+export async function downloadNewsReport(
+  id: string,
+  format: "pdf" | "html" | "markdown" = "pdf",
+): Promise<void> {
+  const response = await fetch(`/api/v1/news/${id}/report?format=${format}`, {
+    credentials: "include",
+  });
   if (!response.ok) throw new Error("Failed to generate report");
   const blob = await response.blob();
+  const ext = format === "pdf" ? "pdf" : format === "html" ? "html" : "md";
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -621,7 +627,7 @@ export async function downloadNewsReport(id: string): Promise<void> {
     response.headers
       .get("Content-Disposition")
       ?.split("filename=")[1]
-      ?.replace(/"/g, "") || "IntelWatch-Report.md";
+      ?.replace(/"/g, "") || `IntelWatch-Report.${ext}`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
