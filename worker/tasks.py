@@ -1397,8 +1397,9 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
                 logger.warning("news_enrich_item_skip", headline=item.headline[:80])
 
             # Throttle between items to avoid per-minute rate limits (TPM)
+            # Groq free tier: 6K TPM per model, our prompts use ~4.5K tokens
             if idx < len(items) - 1:
-                time.sleep(3)
+                time.sleep(20)
 
         session.commit()
         logger.info("news_enrich_complete", enriched=enriched_count)

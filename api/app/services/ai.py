@@ -63,14 +63,14 @@ def _build_fallback_chain() -> list[_Provider]:
             timeout=30,
         ))
 
-    # 3. Cerebras — free tier, fast inference, Qwen3 235B
+    # 3. Cerebras — free tier, fast inference (enable when account verified)
     cerebras_key = getattr(settings, "cerebras_api_key", "")
     if cerebras_key:
         chain.append(_Provider(
             name="cerebras",
             url="https://api.cerebras.ai/v1/chat/completions",
             key=cerebras_key,
-            model="qwen-3-235b-a22b-instruct-2507",
+            model="llama3.1-8b",
             timeout=60,
         ))
 
@@ -84,7 +84,7 @@ def _build_fallback_chain() -> list[_Provider]:
             timeout=30,
         ))
 
-    # 5. HuggingFace Inference API (router) — free, good for structured tasks
+    # 5. HuggingFace Inference API — free (enable when router.huggingface.co resolves)
     hf_key = getattr(settings, "hf_api_key", "")
     if hf_key:
         chain.append(_Provider(
@@ -159,8 +159,8 @@ async def _call_with_fallback(
                 )
                 response = await client.post(provider.url, json=payload, headers=headers)
 
-                # Rate-limit or overloaded → try next provider
-                if response.status_code in (429, 503):
+                # Rate-limit, overloaded, or forbidden → try next provider
+                if response.status_code in (429, 503, 403):
                     body = response.text[:200]
                     logger.warning(
                         f"{caller}_rate_limited",
