@@ -225,6 +225,65 @@
 
 ---
 
+## AI Enrichment (Multi-Provider Fallback)
+
+The platform uses OpenAI-compatible APIs for threat intelligence summarisation, news enrichment, and report generation. A **multi-provider fallback chain** ensures resilience against per-model rate limits.
+
+### Provider Chain (priority order)
+
+| # | Provider | Model | Free Tier Limit | Purpose |
+|---|----------|-------|----------------|---------|
+| 1 | **Groq** | `llama-3.3-70b-versatile` | ~100K tokens/day | Primary — fastest inference, best quality |
+| 2 | **Groq** | `llama-3.1-8b-instant` | ~100K tokens/day (separate bucket) | Lightweight fallback, same provider |
+| 3 | **Cerebras** | `llama-3.3-70b` | Free tier | Same model, different provider |
+| 4 | **Groq** | `gemma2-9b-it` | ~100K tokens/day (separate bucket) | Google's model on Groq |
+| 5 | **HuggingFace** | `Mistral-7B-Instruct-v0.3` | Free tier | External fallback |
+
+### Failover Logic
+
+```text
+Request → Groq primary (70B)
+             │
+             ├─ 200 OK → return response
+             │
+             └─ 429/503 → Groq 8B instant
+                              │
+                              ├─ 200 OK → return response
+                              │
+                              └─ 429/503 → Cerebras 70B
+                                               │
+                                               ├─ 200 OK → return response
+                                               │
+                                               └─ 429/503 → Groq Gemma2
+                                                                │
+                                                                └─ 429/503 → HuggingFace Mistral
+                                                                                 │
+                                                                                 └─ 429/503 → None (skip item)
+```
+
+### Configuration
+
+| Env Variable | Service | Description |
+|-------------|---------|-------------|
+| `AI_API_URL` | api, worker | Primary endpoint (Groq) |
+| `AI_API_KEY` | api, worker | Primary Groq API key |
+| `AI_MODEL` | api, worker | Primary model name |
+| `CEREBRAS_API_KEY` | api, worker | Cerebras free tier key |
+| `HF_API_KEY` | api, worker | HuggingFace Inference API key |
+| `AI_TIMEOUT` | api, worker | Request timeout (seconds, default 30) |
+| `AI_ENABLED` | api, worker | Master kill-switch for all AI features |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `api/app/services/ai.py` | Fallback chain, `_call_with_fallback()`, `generate_summary()`, `chat_completion()` |
+| `api/app/core/config.py` | All AI env settings (`ai_*`, `cerebras_api_key`, `hf_api_key`) |
+| `api/app/services/news.py` | News-specific AI prompt with banned generic phrases |
+| `worker/tasks.py` | `enrich_news_batch()` — calls `chat_completion()` via fallback chain |
+
+---
+
 ## Development Tools
 
 | Tool | Purpose |
@@ -277,6 +336,7 @@
 
 | Date | Change |
 |------|--------|
+| 2026-02-27 | Added AI Enrichment section — multi-provider fallback chain (Groq, Cerebras, HuggingFace) |
 | 2026-02-24 | Production domain: intelwatch.trendsmap.in; CORS updated |
 | 2026-02-24 | Added VirusTotal & Shodan API key configuration |
 | 2026-02-23 | Added python-jose for JWT auth; updated for IntelWatch branding |

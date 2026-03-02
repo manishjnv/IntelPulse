@@ -95,6 +95,8 @@ services:
       AI_API_URL: ${AI_API_URL:-}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-}
+      CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
+      HF_API_KEY: ${HF_API_KEY:-}
     expose:
       - "8000"
     depends_on:
@@ -132,6 +134,8 @@ services:
       AI_API_URL: ${AI_API_URL:-}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-}
+      CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
+      HF_API_KEY: ${HF_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     ai_timeout: int = 30
     ai_enabled: bool = True
 
+    # AI fallback providers (free tiers for rate-limit resilience)
+    cerebras_api_key: str = ""   # Cerebras — fast inference, free tier
+    hf_api_key: str = ""         # HuggingFace Inference API — free tier
+
     # Google OAuth
     google_client_id: str = ""
     google_client_secret: str = ""
