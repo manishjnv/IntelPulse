@@ -33,6 +33,7 @@ import {
   FileText,
   Crosshair,
   Telescope,
+  Share2,
 } from "lucide-react";
 import {
   getIOCs,
@@ -880,6 +881,13 @@ export default function IOCDatabasePage() {
                             title="Investigate — relationship graph"
                           >
                             <Telescope className="h-3.5 w-3.5 text-purple-400" />
+                          </button>
+                          <button
+                            onClick={() => router.push(`/investigate?id=${encodeURIComponent(ioc.value)}&type=ioc&depth=2`)}
+                            className="p-1.5 rounded-md bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 transition-colors"
+                            title="Connections — explore related entities"
+                          >
+                            <Share2 className="h-3.5 w-3.5 text-teal-400" />
                           </button>
                         </div>
                       </td>

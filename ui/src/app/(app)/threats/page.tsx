@@ -21,6 +21,7 @@ import {
   ArrowUpDown,
   Crosshair,
   Telescope,
+  Share2,
 } from "lucide-react";
 import { formatDate, severityBorder, riskColor, riskBg } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -340,6 +341,17 @@ export default function ThreatsPage() {
                         title="Investigate — relationship graph"
                       >
                         <Telescope className="h-3.5 w-3.5 text-purple-400" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          window.location.href = `/investigate?id=${encodeURIComponent(item.id)}&type=intel&depth=2`;
+                        }}
+                        className="p-1.5 rounded-md bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 transition-colors"
+                        title="Connections — explore related entities"
+                      >
+                        <Share2 className="h-3.5 w-3.5 text-teal-400" />
                       </button>
                       <ChevronRight className="h-4 w-4 text-muted-foreground/30 group-hover:text-primary transition-colors" />
                     </div>
