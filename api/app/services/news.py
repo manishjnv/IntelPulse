@@ -69,11 +69,6 @@ NEWS_FEEDS: list[dict] = [
         "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml",
         "default_category": "exploited_vulnerabilities",
     },
-    {
-        "name": "US-CERT",
-        "url": "https://www.cisa.gov/news-events/cybersecurity-advisories/rss.xml",
-        "default_category": "exploited_vulnerabilities",
-    },
     # ── Tier 3 — Vendor Threat Research Blogs ────────
     {
         "name": "Microsoft Security",
@@ -102,7 +97,7 @@ NEWS_FEEDS: list[dict] = [
     },
     {
         "name": "Sophos News",
-        "url": "https://news.sophos.com/en-us/feed/",
+        "url": "https://news.sophos.com/en-us/category/threat-research/feed/",
         "default_category": "active_threats",
     },
     {
@@ -118,7 +113,7 @@ NEWS_FEEDS: list[dict] = [
     # ── Tier 4 — Expert / Independent ────────────────
     {
         "name": "Schneier on Security",
-        "url": "https://www.schneier.com/feed/atom/",
+        "url": "https://www.schneier.com/blog/atom.xml",
         "default_category": "policy_regulation",
     },
     {
