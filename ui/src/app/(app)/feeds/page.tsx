@@ -5,6 +5,7 @@ import { useAppStore } from "@/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loading } from "@/components/Loading";
+import Link from "next/link";
 import {
   Rss,
   CheckCircle2,
@@ -13,6 +14,9 @@ import {
   RefreshCw,
   AlertTriangle,
   ArrowUpDown,
+  Crosshair,
+  Search,
+  ExternalLink,
 } from "lucide-react";
 
 const STATUS_META: Record<
@@ -187,13 +191,22 @@ export default function FeedStatusPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      {feed.items !== null && (
-                        <p className="text-lg font-bold">{feed.items.toLocaleString()}</p>
-                      )}
-                      <p className="text-[10px] text-muted-foreground">
-                        {feed.items !== null ? "items ingested" : "—"}
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        {feed.items !== null && (
+                          <p className="text-lg font-bold">{feed.items.toLocaleString()}</p>
+                        )}
+                        <p className="text-[10px] text-muted-foreground">
+                          {feed.items !== null ? "items ingested" : "—"}
+                        </p>
+                      </div>
+                      <Link
+                        href={`/search?q=${encodeURIComponent(feed.name.replace(/_/g, " "))}&hunt=1`}
+                        className="p-2 rounded-lg hover:bg-primary/10 transition-colors group/hunt"
+                        title={`Hunt — search "${feed.name.replace(/_/g, " ")}" local + internet`}
+                      >
+                        <Crosshair className="h-4 w-4 text-primary/40 group-hover/hunt:text-primary transition-colors" />
+                      </Link>
                     </div>
                   </div>
                   {feed.error && (

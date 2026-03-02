@@ -29,6 +29,7 @@ import {
   Package,
   Bug,
   Link2,
+  Crosshair,
 } from "lucide-react";
 
 interface IntelCardProps {
@@ -139,6 +140,15 @@ export function IntelCard({ item }: IntelCardProps) {
               <Link2 className="h-3 w-3" /> {item.related_ioc_count} IOCs
             </span>
           )}
+          <Link
+            href={`/search?q=${encodeURIComponent(item.source_ref || item.cve_ids[0] || item.title)}&hunt=1`}
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-1 text-primary/50 hover:text-primary transition-colors ml-auto"
+            title="Hunt — search local + internet"
+          >
+            <Crosshair className="h-3 w-3" />
+            <span className="text-[10px] font-medium">Hunt</span>
+          </Link>
         </div>
 
         {/* Compact data indicators */}
