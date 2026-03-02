@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useCallback, useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loading } from "@/components/Loading";
@@ -30,6 +31,7 @@ import {
   ChevronRight,
   Link2,
   FileText,
+  Crosshair,
 } from "lucide-react";
 import {
   getIOCs,
@@ -272,6 +274,7 @@ function HotIOCsStrip({
 /* ─── Main Page ─────────────────────────────────────────── */
 
 export default function IOCDatabasePage() {
+  const router = useRouter();
   const [data, setData] = useState<IOCListResponse | null>(null);
   const [stats, setStats] = useState<IOCStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -862,6 +865,13 @@ export default function IOCDatabasePage() {
                             ) : (
                               <Copy className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-muted-foreground" />
                             )}
+                          </button>
+                          <button
+                            onClick={() => router.push(`/search?q=${encodeURIComponent(ioc.value)}&hunt=1`)}
+                            className="p-1 rounded hover:bg-primary/10 transition-colors"
+                            title="Hunt — search local + internet"
+                          >
+                            <Crosshair className="h-3.5 w-3.5 text-primary/50 hover:text-primary" />
                           </button>
                         </div>
                       </td>

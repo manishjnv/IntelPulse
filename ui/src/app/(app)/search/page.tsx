@@ -179,13 +179,17 @@ export default function SearchPage() {
     getSearchStats().then(setStats).catch(() => {});
   }, []);
 
-  // Read ?q= from URL on mount (from header search)
+  // Read ?q= from URL on mount (from header search or IOC hunt)
   useEffect(() => {
     const q = searchParams.get("q");
+    const hunt = searchParams.get("hunt");
     if (q && q.trim()) {
       setQuery(q.trim());
       setDebouncedQuery(q.trim());
       doSearch(1, q.trim());
+      if (hunt === "1") {
+        handleLiveLookup(q.trim());
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
