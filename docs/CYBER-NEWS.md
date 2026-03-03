@@ -22,7 +22,9 @@
 14. [Caching Strategy](#14-caching-strategy)
 15. [Error Handling & Rate Limiting](#15-error-handling--rate-limiting)
 16. [Constants & Thresholds Reference](#16-constants--thresholds-reference)
-17. [Future Enhancements](#17-future-enhancements)
+17. [News Dashboard UI](#17-news-dashboard-ui)
+18. [News Feed Status Tracking](#18-news-feed-status-tracking)
+19. [Future Enhancements](#19-future-enhancements)
 
 ---
 
@@ -899,7 +901,7 @@ Quick-reference table of every configurable value:
 
 The news listing page (`/news`) features a comprehensive, space-optimized dashboard layout:
 
-### 18.1 Layout Architecture
+### 17.1 Layout Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -920,7 +922,7 @@ The news listing page (`/news`) features a comprehensive, space-optimized dashbo
 └──────┴───────────────────────────────┴───────────────────────────┘
 ```
 
-### 18.2 Collapsible Category Sidebar
+### 17.2 Collapsible Category Sidebar
 
 | State | Width | Shows |
 |-------|-------|-------|
@@ -931,7 +933,7 @@ The news listing page (`/news`) features a comprehensive, space-optimized dashbo
 - Hidden below `lg` breakpoint → mobile dropdown fallback
 - "All News" button always at top with total count
 
-### 18.3 View Modes
+### 17.3 View Modes
 
 | Mode | Layout | Best For |
 |------|--------|----------|
@@ -941,7 +943,7 @@ The news listing page (`/news`) features a comprehensive, space-optimized dashbo
 
 Toggle via toolbar buttons (LayoutGrid / List / Rows3 icons).
 
-### 18.4 Reading Pane
+### 17.4 Reading Pane
 
 Email-client style side panel:
 - Toggle via toolbar button (PanelRightOpen/PanelRightClose icons)
@@ -952,7 +954,7 @@ Email-client style side panel:
 - Keyword highlighting (CVEs, IPs, threat actors, action verbs, threat terms)
 - Quick action links: "Full Page" + "Source"
 
-### 18.5 Top Critical Strip
+### 17.5 Top Critical Strip
 
 - Horizontal scrolling row of high-relevance articles (score ≥ 70)
 - Up to 8 cards, each 260px wide
@@ -960,7 +962,7 @@ Email-client style side panel:
 - Scroll arrows appear on hover
 - Each card has category color left-border accent
 
-### 18.6 Quick Stats Bar
+### 17.6 Quick Stats Bar
 
 5 inline metric pills below the header:
 - **Total**: Total enriched articles
@@ -969,7 +971,7 @@ Email-client style side panel:
 - **Avg Score**: Mean relevance across current page
 - **Top**: Category with most articles
 
-### 18.7 Category Color Accents
+### 17.7 Category Color Accents
 
 Every news card (all view modes) has a 2px left border matching its category color:
 - Active Threats → red
@@ -982,7 +984,7 @@ Every news card (all view modes) has a 2px left border matching its category col
 - Tools & Technology → blue
 - Policy & Regulation → teal
 
-### 18.8 Auto-Refresh
+### 17.8 Auto-Refresh
 
 - Silent refresh every 60 seconds (no loading spinner)
 - New articles detected via ID set comparison
@@ -990,7 +992,7 @@ Every news card (all view modes) has a 2px left border matching its category col
 - Green pulsing "Live" indicator in header
 - Categories also refreshed on each cycle
 
-### 18.9 Active Article Highlighting
+### 17.9 Active Article Highlighting
 
 When reading pane is open and an article is selected:
 - Selected card gets `ring-1 ring-primary/20 border-primary/50 bg-primary/5`
@@ -998,9 +1000,73 @@ When reading pane is open and an article is selected:
 
 ---
 
-## 18. Future Enhancements
+## 18. News Feed Status Tracking
 
-### 18.1 Feed Expansion
+Per-RSS-source health tracking monitors the operational status of each news feed.
+
+### 18.1 Database Table
+
+```sql
+CREATE TABLE news_feed_status (
+    source_name          VARCHAR(200) PRIMARY KEY,
+    source_url           TEXT NOT NULL,
+    status               VARCHAR(20) NOT NULL DEFAULT 'unknown',  -- ok, error, timeout, unknown
+    last_success         TIMESTAMPTZ,
+    last_failure         TIMESTAMPTZ,
+    last_error           TEXT,
+    articles_last_fetch  INT NOT NULL DEFAULT 0,
+    total_articles       INT NOT NULL DEFAULT 0,
+    consecutive_failures INT NOT NULL DEFAULT 0,
+    last_checked         TIMESTAMPTZ,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### 18.2 Status Values
+
+| Status | Meaning |
+|--------|---------|
+| `ok` | Feed fetched successfully, articles returned |
+| `error` | HTTP error, DNS failure, XML parse failure |
+| `timeout` | Connection timed out (>20s) |
+| `unknown` | Feed not yet checked |
+
+### 18.3 How It Works
+
+1. `fetch_rss_feed()` returns both articles and a status metadata dict
+2. `fetch_all_feeds()` collects all per-feed statuses after `asyncio.gather()`
+3. `_persist_feed_statuses()` upserts status to `news_feed_status` using PostgreSQL `ON CONFLICT DO UPDATE`
+4. On success: resets `consecutive_failures` to 0, updates `last_success`, accumulates `total_articles`
+5. On failure: increments `consecutive_failures`, records `last_error` and `last_failure`
+
+### 18.4 API Endpoint
+
+```
+GET /news/feed-status → list[NewsFeedStatusResponse]
+```
+
+Returns all 19 configured feed sources with their status. Sources without a DB row yet (never checked) are returned with `status: "unknown"`.
+
+### 18.5 UI — Feed Status Page
+
+The Feed Status page (`/feeds`) now has two tabs:
+
+| Tab | Source | Shows |
+|-----|--------|-------|
+| **Intel Feeds** | `feed_sync_state` table (dashboard API) | NVD, CISA KEV, URLhaus, AbuseIPDB, OTX, etc. |
+| **News Feeds** | `news_feed_status` table (news API) | 19 RSS sources (BleepingComputer, CISA Alerts, etc.) |
+
+**News Feeds tab features:**
+- 4 stats cards: Total Sources, Online, Failing, Not Checked
+- Per-source cards with: status badge, consecutive failure count, last checked time, last success time, articles last fetch, total articles, error details, link to feed URL
+- Color-coded status indicators (green = ok, red = error, orange = timeout, gray = unknown)
+
+---
+
+## 19. Future Enhancements
+
+### 19.1 Feed Expansion
 
 - **Industry-specific feeds:** ICS-CERT, SANS ISC, FS-ISAC, Health-ISAC
 - **Regional feeds:** JP-CERT, CERT-EU, AusCERT, BSI (Germany)
@@ -1009,7 +1075,7 @@ When reading pane is open and an article is selected:
 - **GitHub Security Advisories:** GHSA feed for open-source vulns
 - **Dynamic feed management:** Admin UI to add/remove/enable/disable feeds without code changes
 
-### 18.2 Deduplication Improvements
+### 19.2 Deduplication Improvements
 
 - **TF-IDF or sentence embeddings:** Replace Jaccard with semantic similarity (e.g., sentence-transformers) for better cross-source matching
 - **Configurable threshold:** Admin setting for similarity threshold (currently hardcoded 0.40)
@@ -1017,7 +1083,7 @@ When reading pane is open and an article is selected:
 - **Dedup dashboard:** Show admin stats on duplicates caught, merge events, false positives
 - **Cross-day dedup:** Extend beyond 48h window for long-running stories
 
-### 18.3 AI Enrichment
+### 19.3 AI Enrichment
 
 - **Local model fallback:** Run a local LLM (e.g., Ollama with Llama 3.1 8B) when all cloud providers fail
 - **Confidence auto-adjustment:** Re-score confidence based on number of correlated sources
@@ -1027,7 +1093,7 @@ When reading pane is open and an article is selected:
 - **Human-in-the-loop:** Allow analysts to correct/override AI classifications, feed corrections back as training signal
 - **Multi-language support:** Translate non-English articles before enrichment
 
-### 18.4 Content Extraction
+### 19.4 Content Extraction
 
 - **JavaScript rendering:** Use Playwright/Puppeteer for JS-heavy sites where trafilatura fails
 - **PDF ingestion:** Extract text from PDF advisories (e.g., CISA ICS advisories)
@@ -1035,7 +1101,7 @@ When reading pane is open and an article is selected:
 - **Bypass paywalls:** Integration with archive services for paywalled security research
 - **Content quality scoring:** Auto-assess extraction quality and flag low-quality extractions
 
-### 18.5 Report Generation
+### 19.5 Report Generation
 
 - **DOCX export:** Microsoft Word format for enterprise reporting workflows
 - **Custom templates:** User-uploadable report templates with variable substitution
@@ -1044,7 +1110,7 @@ When reading pane is open and an article is selected:
 - **Executive dashboard PDF:** One-pager with charts, top threats, trend data
 - **MISP event export:** Generate MISP-compatible JSON events from reports
 
-### 18.6 UI Enhancements
+### 19.6 UI Enhancements
 
 - **Highlight customization:** Let users configure which keyword types are highlighted and their colors
 - **IOC graph visualization:** Network graph showing relationships between IOCs, threat actors, and CVEs
@@ -1054,7 +1120,7 @@ When reading pane is open and an article is selected:
 - **Comparison view:** Side-by-side comparison of two correlated articles
 - **Sentiment/urgency trend:** Timeline chart showing threat urgency over time
 
-### 18.7 Search & Filtering
+### 19.7 Search & Filtering
 
 - **Full-text search (OpenSearch):** Index news_items into OpenSearch for fuzzy, faceted, and semantic search
 - **Saved searches:** Let users save filter combinations as named views
@@ -1062,9 +1128,9 @@ When reading pane is open and an article is selected:
 - **Related articles:** Powered by embedding similarity, show "Related Intelligence" on detail page
 - **Global keyword alerts:** Subscribe to keywords (e.g., "Exchange", "Lazarus") and get notified
 
-### 18.8 Operational
+### 19.8 Operational
 
-- **Feed health monitoring:** Track per-feed success rates, article counts, last fetch time; alert on degraded feeds
+- **~~Feed health monitoring:~~** ~~Track per-feed success rates, article counts, last fetch time; alert on degraded feeds~~ ✅ **Implemented in §18**
 - **Enrichment quality metrics:** Track AI enrichment quality scores, hallucination rates
 - **Cost tracking:** Monitor token usage per provider per day
 - **Data retention policy:** Auto-archive or purge articles older than N days
@@ -1072,7 +1138,7 @@ When reading pane is open and an article is selected:
 - **Webhook integrations:** POST new high-priority articles to Slack, Teams, or PagerDuty
 - **Multi-tenant support:** Separate news feeds and enrichment per organization
 
-### 18.9 Performance
+### 19.9 Performance
 
 - **Connection pooling:** Reuse HTTP connections across RSS fetch cycles
 - **Batch DB inserts:** Insert multiple articles in a single DB transaction
