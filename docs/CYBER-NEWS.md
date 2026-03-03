@@ -62,8 +62,9 @@
                                ▼
 ┌──────────────────────────────────────────────────────────────┐
 │                      Next.js Frontend                        │
-│  News List │ Detail Page │ Keyword Highlights │ IOC Popup    │
-│  Report Format Dropdown │ Category Filtering │ Tag Search    │
+│  Collapsible sidebar │ 3 view modes │ Reading pane            │
+│  Quick stats bar │ Top Critical strip │ Auto-refresh (60s)   │
+│  Detail page │ Keyword highlights │ IOC popup │ Reports       │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -894,9 +895,112 @@ Quick-reference table of every configurable value:
 
 ---
 
-## 17. Future Enhancements
+## 17. News Dashboard UI
 
-### 17.1 Feed Expansion
+The news listing page (`/news`) features a comprehensive, space-optimized dashboard layout:
+
+### 18.1 Layout Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ Header: Title + Live indicator + Refresh                        │
+│ Quick Stats Bar: Total │ Today │ Critical │ Avg Score │ Top Cat │
+├──────┬───────────────────────────────┬───────────────────────────┤
+│      │  Toolbar: Search │ Sort │     │                           │
+│ Side │  View Mode │ Reading Pane     │    Reading Pane            │
+│ bar  ├───────────────────────────────┤    (50% width)            │
+│      │  Top Critical (horiz scroll)  │                           │
+│ [All]│                               │    Full article detail:   │
+│ [Cat]│  News Grid (2-col / 1-col)    │    - Summary + Brief      │
+│ [Cat]│  or List or Compact rows       │    - Risk + Attack        │
+│ [Cat]│                               │    - Takeaways            │
+│  ... │                               │    - Threat Landscape     │
+│      │  Pagination                   │    - MITRE + IOCs         │
+│      │                               │    - Detection + Mitig.   │
+└──────┴───────────────────────────────┴───────────────────────────┘
+```
+
+### 18.2 Collapsible Category Sidebar
+
+| State | Width | Shows |
+|-------|-------|-------|
+| Expanded | 208px (w-52) | Icon + label + count + latest headline |
+| Collapsed | 64px (w-16) | Icon + count only |
+
+- Toggle via `«` / `»` button at top
+- Hidden below `lg` breakpoint → mobile dropdown fallback
+- "All News" button always at top with total count
+
+### 18.3 View Modes
+
+| Mode | Layout | Best For |
+|------|--------|----------|
+| **Grid** | 2 columns on xl, 1 col when reading pane open | Default, visual browsing |
+| **List** | Single column, full-width cards with summary + all tags | Detailed scanning |
+| **Compact** | Dense single-line rows (icon, score, headline, source, time) | High-density triage |
+
+Toggle via toolbar buttons (LayoutGrid / List / Rows3 icons).
+
+### 18.4 Reading Pane
+
+Email-client style side panel:
+- Toggle via toolbar button (PanelRightOpen/PanelRightClose icons)
+- Opens at 50% width, news list shrinks to remaining 50%
+- Click article → loads full detail via `GET /news/{id}`
+- Double-click (click same article twice) → navigates to full detail page
+- Shows all enriched sections: summary, brief, risk assessment, attack narrative, key takeaways, threat landscape, MITRE ATT&CK, targeting, IOCs, detection, mitigations, timeline, tags
+- Keyword highlighting (CVEs, IPs, threat actors, action verbs, threat terms)
+- Quick action links: "Full Page" + "Source"
+
+### 18.5 Top Critical Strip
+
+- Horizontal scrolling row of high-relevance articles (score ≥ 70)
+- Up to 8 cards, each 260px wide
+- Shows only when no filters active and on page 1
+- Scroll arrows appear on hover
+- Each card has category color left-border accent
+
+### 18.6 Quick Stats Bar
+
+5 inline metric pills below the header:
+- **Total**: Total enriched articles
+- **Today**: Published in last 24h
+- **Critical**: Relevance score ≥ 80
+- **Avg Score**: Mean relevance across current page
+- **Top**: Category with most articles
+
+### 18.7 Category Color Accents
+
+Every news card (all view modes) has a 2px left border matching its category color:
+- Active Threats → red
+- Exploited Vulnerabilities → orange
+- Ransomware & Breaches → rose
+- Nation-State → purple
+- Cloud & Identity → sky
+- OT/ICS → amber
+- Security Research → emerald
+- Tools & Technology → blue
+- Policy & Regulation → teal
+
+### 18.8 Auto-Refresh
+
+- Silent refresh every 60 seconds (no loading spinner)
+- New articles detected via ID set comparison
+- New items get `slide-in-from-top + fade-in` animation (3s duration)
+- Green pulsing "Live" indicator in header
+- Categories also refreshed on each cycle
+
+### 18.9 Active Article Highlighting
+
+When reading pane is open and an article is selected:
+- Selected card gets `ring-1 ring-primary/20 border-primary/50 bg-primary/5`
+- Visual feedback showing which article is being read
+
+---
+
+## 18. Future Enhancements
+
+### 18.1 Feed Expansion
 
 - **Industry-specific feeds:** ICS-CERT, SANS ISC, FS-ISAC, Health-ISAC
 - **Regional feeds:** JP-CERT, CERT-EU, AusCERT, BSI (Germany)
@@ -905,7 +1009,7 @@ Quick-reference table of every configurable value:
 - **GitHub Security Advisories:** GHSA feed for open-source vulns
 - **Dynamic feed management:** Admin UI to add/remove/enable/disable feeds without code changes
 
-### 17.2 Deduplication Improvements
+### 18.2 Deduplication Improvements
 
 - **TF-IDF or sentence embeddings:** Replace Jaccard with semantic similarity (e.g., sentence-transformers) for better cross-source matching
 - **Configurable threshold:** Admin setting for similarity threshold (currently hardcoded 0.40)
@@ -913,7 +1017,7 @@ Quick-reference table of every configurable value:
 - **Dedup dashboard:** Show admin stats on duplicates caught, merge events, false positives
 - **Cross-day dedup:** Extend beyond 48h window for long-running stories
 
-### 17.3 AI Enrichment
+### 18.3 AI Enrichment
 
 - **Local model fallback:** Run a local LLM (e.g., Ollama with Llama 3.1 8B) when all cloud providers fail
 - **Confidence auto-adjustment:** Re-score confidence based on number of correlated sources
@@ -923,7 +1027,7 @@ Quick-reference table of every configurable value:
 - **Human-in-the-loop:** Allow analysts to correct/override AI classifications, feed corrections back as training signal
 - **Multi-language support:** Translate non-English articles before enrichment
 
-### 17.4 Content Extraction
+### 18.4 Content Extraction
 
 - **JavaScript rendering:** Use Playwright/Puppeteer for JS-heavy sites where trafilatura fails
 - **PDF ingestion:** Extract text from PDF advisories (e.g., CISA ICS advisories)
@@ -931,7 +1035,7 @@ Quick-reference table of every configurable value:
 - **Bypass paywalls:** Integration with archive services for paywalled security research
 - **Content quality scoring:** Auto-assess extraction quality and flag low-quality extractions
 
-### 17.5 Report Generation
+### 18.5 Report Generation
 
 - **DOCX export:** Microsoft Word format for enterprise reporting workflows
 - **Custom templates:** User-uploadable report templates with variable substitution
@@ -940,7 +1044,7 @@ Quick-reference table of every configurable value:
 - **Executive dashboard PDF:** One-pager with charts, top threats, trend data
 - **MISP event export:** Generate MISP-compatible JSON events from reports
 
-### 17.6 UI Enhancements
+### 18.6 UI Enhancements
 
 - **Highlight customization:** Let users configure which keyword types are highlighted and their colors
 - **IOC graph visualization:** Network graph showing relationships between IOCs, threat actors, and CVEs
@@ -950,7 +1054,7 @@ Quick-reference table of every configurable value:
 - **Comparison view:** Side-by-side comparison of two correlated articles
 - **Sentiment/urgency trend:** Timeline chart showing threat urgency over time
 
-### 17.7 Search & Filtering
+### 18.7 Search & Filtering
 
 - **Full-text search (OpenSearch):** Index news_items into OpenSearch for fuzzy, faceted, and semantic search
 - **Saved searches:** Let users save filter combinations as named views
@@ -958,7 +1062,7 @@ Quick-reference table of every configurable value:
 - **Related articles:** Powered by embedding similarity, show "Related Intelligence" on detail page
 - **Global keyword alerts:** Subscribe to keywords (e.g., "Exchange", "Lazarus") and get notified
 
-### 17.8 Operational
+### 18.8 Operational
 
 - **Feed health monitoring:** Track per-feed success rates, article counts, last fetch time; alert on degraded feeds
 - **Enrichment quality metrics:** Track AI enrichment quality scores, hallucination rates
@@ -968,7 +1072,7 @@ Quick-reference table of every configurable value:
 - **Webhook integrations:** POST new high-priority articles to Slack, Teams, or PagerDuty
 - **Multi-tenant support:** Separate news feeds and enrichment per organization
 
-### 17.9 Performance
+### 18.9 Performance
 
 - **Connection pooling:** Reuse HTTP connections across RSS fetch cycles
 - **Batch DB inserts:** Insert multiple articles in a single DB transaction
