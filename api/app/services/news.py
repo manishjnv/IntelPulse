@@ -533,6 +533,7 @@ async def _persist_feed_statuses(statuses: list[dict]) -> None:
                     "status": st.get("status", "unknown"),
                     "last_checked": now,
                     "articles_last_fetch": st.get("articles_count", 0),
+                    "total_articles": st.get("articles_count", 0),
                     "updated_at": now,
                 }
 
