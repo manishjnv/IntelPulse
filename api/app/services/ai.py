@@ -84,12 +84,12 @@ def _build_fallback_chain() -> list[_Provider]:
             timeout=30,
         ))
 
-    # 5. HuggingFace Inference API — free (enable when router.huggingface.co resolves)
+    # 5. HuggingFace Inference API — free (enable when api-inference.huggingface.co resolves)
     hf_key = getattr(settings, "hf_api_key", "")
     if hf_key:
         chain.append(_Provider(
             name="huggingface",
-            url="https://router.huggingface.co/hf-inference/v1/chat/completions",
+            url="https://api-inference.huggingface.co/v1/chat/completions",
             key=hf_key,
             model="mistralai/Mistral-7B-Instruct-v0.3",
             timeout=60,
