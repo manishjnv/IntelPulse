@@ -32,11 +32,37 @@ from app.schemas import (
     NewsListResponse,
     NewsCategoryCount,
     NewsCategoriesResponse,
+    NewsFeedStatusResponse,
 )
 
 router = APIRouter(prefix="/news", tags=["news"])
 settings = get_settings()
 logger = get_logger("news")
+
+
+@router.get("/feed-status", response_model=list[NewsFeedStatusResponse])
+async def news_feed_status(
+    user: Annotated[User, Depends(require_viewer)],
+):
+    """Get fetch health status of all news RSS feed sources."""
+    from app.services.news import get_news_feed_statuses, NEWS_FEEDS
+
+    statuses = await get_news_feed_statuses()
+    status_map = {s.source_name: s for s in statuses}
+
+    # Return all configured feeds — even those without a DB row yet
+    result = []
+    for feed in NEWS_FEEDS:
+        name = feed["name"]
+        if name in status_map:
+            result.append(NewsFeedStatusResponse.model_validate(status_map[name]))
+        else:
+            result.append(NewsFeedStatusResponse(
+                source_name=name,
+                source_url=feed["url"],
+                status="unknown",
+            ))
+    return result
 
 
 @router.get("", response_model=NewsListResponse)

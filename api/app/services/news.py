@@ -315,9 +315,16 @@ def _detect_category(title: str, description: str) -> str:
     return "active_threats"
 
 
-async def fetch_rss_feed(feed: dict) -> list[dict]:
-    """Fetch and parse a single RSS/Atom feed. Returns list of raw article dicts."""
+async def fetch_rss_feed(feed: dict) -> dict:
+    """Fetch and parse a single RSS/Atom feed. Returns dict with articles and status info."""
     articles: list[dict] = []
+    status_info = {
+        "source_name": feed["name"],
+        "source_url": feed["url"],
+        "status": "ok",
+        "articles_count": 0,
+        "error": None,
+    }
 
     try:
         async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
@@ -389,14 +396,19 @@ async def fetch_rss_feed(feed: dict) -> list[dict]:
                     "source_hash": source_hash,
                 })
 
+        status_info["articles_count"] = len(articles)
         logger.info("news_feed_fetched", source=feed["name"], count=len(articles))
 
     except httpx.TimeoutException:
+        status_info["status"] = "timeout"
+        status_info["error"] = "Connection timed out"
         logger.warning("news_feed_timeout", source=feed["name"])
     except Exception as e:
+        status_info["status"] = "error"
+        status_info["error"] = str(e)[:500]
         logger.warning("news_feed_error", source=feed["name"], error=str(e)[:200])
 
-    return articles
+    return {"articles": articles, "status": status_info}
 
 
 # ── Headline Relevance Pre-Scorer ────────────────────────
@@ -501,23 +513,95 @@ def _pre_score_article(article: dict) -> int:
 MAX_ARTICLES_PER_CYCLE = 10
 
 
+async def _persist_feed_statuses(statuses: list[dict]) -> None:
+    """Persist per-feed status to the news_feed_status table."""
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from app.core.database import async_session_factory
+    from app.models.models import NewsFeedStatus
+
+    try:
+        async with async_session_factory() as session:
+            now = datetime.now(timezone.utc)
+            for st in statuses:
+                name = st.get("source_name", "")
+                if not name:
+                    continue
+
+                values = {
+                    "source_name": name,
+                    "source_url": st.get("source_url", ""),
+                    "status": st.get("status", "unknown"),
+                    "last_checked": now,
+                    "articles_last_fetch": st.get("articles_count", 0),
+                    "updated_at": now,
+                }
+
+                if st.get("status") == "ok":
+                    values["last_success"] = now
+                    values["consecutive_failures"] = 0
+                    values["last_error"] = None
+                else:
+                    values["last_failure"] = now
+                    values["last_error"] = st.get("error")
+
+                stmt = pg_insert(NewsFeedStatus).values(**values)
+                update_dict = {k: v for k, v in values.items() if k != "source_name"}
+
+                if st.get("status") == "ok":
+                    update_dict["total_articles"] = NewsFeedStatus.total_articles + st.get("articles_count", 0)
+                    update_dict["consecutive_failures"] = 0
+                else:
+                    update_dict["consecutive_failures"] = NewsFeedStatus.consecutive_failures + 1
+
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["source_name"],
+                    set_=update_dict,
+                )
+                await session.execute(stmt)
+
+            await session.commit()
+    except Exception as e:
+        logger.warning("news_feed_status_persist_error", error=str(e)[:200])
+
+
+async def get_news_feed_statuses() -> list:
+    """Get all news feed statuses from the database."""
+    from sqlalchemy import select
+    from app.core.database import async_session_factory
+    from app.models.models import NewsFeedStatus
+
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(NewsFeedStatus).order_by(NewsFeedStatus.source_name)
+        )
+        return result.scalars().all()
+
+
 async def fetch_all_feeds() -> list[dict]:
     """Fetch all configured RSS feeds concurrently, then extract full article text.
 
     Pre-scores every article by headline relevance and keeps only the top
     MAX_ARTICLES_PER_CYCLE articles.  This ensures AI enrichment can keep pace
     and only high-quality content enters the pipeline.
+
+    Also persists per-feed status to news_feed_status table.
     """
     import asyncio
     tasks = [fetch_rss_feed(feed) for feed in NEWS_FEEDS]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     all_articles: list[dict] = []
+    feed_statuses: list[dict] = []
+
     for result in results:
-        if isinstance(result, list):
-            all_articles.extend(result)
+        if isinstance(result, dict):
+            all_articles.extend(result.get("articles", []))
+            feed_statuses.append(result.get("status", {}))
         elif isinstance(result, Exception):
             logger.warning("news_feed_exception", error=str(result)[:200])
+
+    # Persist feed statuses
+    await _persist_feed_statuses(feed_statuses)
 
     logger.info("news_rss_fetched", total=len(all_articles), sources=len(NEWS_FEEDS))
 

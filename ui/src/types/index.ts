@@ -70,6 +70,19 @@ export interface FeedStatus {
   run_count: number;
 }
 
+export interface NewsFeedStatus {
+  source_name: string;
+  source_url: string;
+  status: string;  // ok, error, timeout, unknown
+  last_success: string | null;
+  last_failure: string | null;
+  last_error: string | null;
+  articles_last_fetch: number;
+  total_articles: number;
+  consecutive_failures: number;
+  last_checked: string | null;
+}
+
 export interface StatusBarData {
   status: string;
   postgres: boolean;

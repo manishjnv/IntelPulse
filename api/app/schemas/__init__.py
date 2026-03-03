@@ -663,3 +663,18 @@ class NewsCategoryCount(BaseModel):
 class NewsCategoriesResponse(BaseModel):
     categories: list[NewsCategoryCount]
     total: int
+
+
+class NewsFeedStatusResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    source_name: str
+    source_url: str
+    status: str
+    last_success: datetime | None = None
+    last_failure: datetime | None = None
+    last_error: str | None = None
+    articles_last_fetch: int = 0
+    total_articles: int = 0
+    consecutive_failures: int = 0
+    last_checked: datetime | None = None

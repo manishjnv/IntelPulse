@@ -604,6 +604,10 @@ export async function getNewsCategories(): Promise<import("@/types").NewsCategor
   return fetcher<import("@/types").NewsCategoriesResponse>("/news/categories");
 }
 
+export async function getNewsFeedStatus(): Promise<import("@/types").NewsFeedStatus[]> {
+  return fetcher<import("@/types").NewsFeedStatus[]>("/news/feed-status");
+}
+
 export async function refreshNews(): Promise<{ status: string; job_id: string }> {
   return fetcher<{ status: string; job_id: string }>("/news/refresh", {
     method: "POST",

@@ -381,3 +381,21 @@ class NewsItem(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class NewsFeedStatus(Base):
+    """Tracks per-RSS-source fetch health for the Cyber News pipeline."""
+    __tablename__ = "news_feed_status"
+
+    source_name: Mapped[str] = mapped_column(String(200), primary_key=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="unknown")  # ok, error, timeout, unknown
+    last_success: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_failure: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    articles_last_fetch: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_articles: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_checked: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

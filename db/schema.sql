@@ -515,3 +515,21 @@ CREATE INDEX IF NOT EXISTS idx_news_tags ON news_items USING GIN(tags);
 CREATE INDEX IF NOT EXISTS idx_news_cves ON news_items USING GIN(cves);
 CREATE INDEX IF NOT EXISTS idx_news_headline_trgm ON news_items USING GIN(headline gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_news_ai_enriched ON news_items(ai_enriched) WHERE ai_enriched = FALSE;
+
+-- =============================================
+-- News Feed Status (per-RSS-source health tracking)
+-- =============================================
+CREATE TABLE IF NOT EXISTS news_feed_status (
+    source_name   VARCHAR(200) PRIMARY KEY,
+    source_url    TEXT NOT NULL,
+    status        VARCHAR(20) NOT NULL DEFAULT 'unknown',  -- ok, error, timeout, unknown
+    last_success  TIMESTAMPTZ,
+    last_failure  TIMESTAMPTZ,
+    last_error    TEXT,
+    articles_last_fetch   INT NOT NULL DEFAULT 0,
+    total_articles        INT NOT NULL DEFAULT 0,
+    consecutive_failures  INT NOT NULL DEFAULT 0,
+    last_checked  TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
