@@ -508,9 +508,9 @@ def _pre_score_article(article: dict) -> int:
     return max(0, score)
 
 
-# Maximum articles to keep per ingestion cycle.
-# 15/hour target ÷ 2 cycles/hour = ~8 per cycle (round up to 10 for buffer)
-MAX_ARTICLES_PER_CYCLE = 10
+# Maximum NEW articles to keep per ingestion cycle.
+# 15/hour target ÷ 3 cycles/hour (every 20 min) = 5 avg, cap at 15 for burst.
+MAX_ARTICLES_PER_CYCLE = 15
 
 
 async def _persist_feed_statuses(statuses: list[dict]) -> None:
@@ -578,12 +578,13 @@ async def get_news_feed_statuses() -> list:
         return result.scalars().all()
 
 
-async def fetch_all_feeds() -> list[dict]:
+async def fetch_all_feeds(known_hashes: set[str] | None = None) -> list[dict]:
     """Fetch all configured RSS feeds concurrently, then extract full article text.
 
     Pre-scores every article by headline relevance and keeps only the top
-    MAX_ARTICLES_PER_CYCLE articles.  This ensures AI enrichment can keep pace
-    and only high-quality content enters the pipeline.
+    MAX_ARTICLES_PER_CYCLE articles.  Articles whose source_hash already exists
+    in `known_hashes` are filtered out BEFORE the cap so that new content
+    always gets a chance to enter the pipeline.
 
     Also persists per-feed status to news_feed_status table.
     """
@@ -605,6 +606,17 @@ async def fetch_all_feeds() -> list[dict]:
     await _persist_feed_statuses(feed_statuses)
 
     logger.info("news_rss_fetched", total=len(all_articles), sources=len(NEWS_FEEDS))
+
+    if not all_articles:
+        return []
+
+    # ── Filter out already-stored articles BEFORE scoring ─
+    if known_hashes:
+        before = len(all_articles)
+        all_articles = [a for a in all_articles if a.get("source_hash") not in known_hashes]
+        skipped = before - len(all_articles)
+        if skipped:
+            logger.info("news_pre_dedup", before=before, after=len(all_articles), skipped=skipped)
 
     if not all_articles:
         return []

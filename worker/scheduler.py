@@ -299,11 +299,11 @@ def setup_schedules():
         meta={"task": "epss_scoring"},
     )
 
-    # ─── Cyber News Ingestion — every 30 minutes ────────
+    # ─── Cyber News Ingestion — every 20 minutes (3×/hour) ───
     scheduler.schedule(
         scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=2),
         func="worker.tasks.ingest_news",
-        interval=timedelta(minutes=30).total_seconds(),
+        interval=timedelta(minutes=20).total_seconds(),
         queue_name="default",
         meta={"task": "news_ingest"},
     )
@@ -312,7 +312,7 @@ def setup_schedules():
     scheduler.schedule(
         scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=4),
         func="worker.tasks.enrich_news_batch",
-        kwargs={"batch_size": 5},
+        kwargs={"batch_size": 10},
         interval=timedelta(minutes=5).total_seconds(),
         queue_name="low",
         meta={"task": "news_enrichment"},

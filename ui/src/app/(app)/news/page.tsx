@@ -75,7 +75,7 @@ import type {
 // ── Category config ──────────────────────────────────────
 const CATEGORY_META: Record<
   NewsCategory,
-  { label: string; shortLabel: string; icon: React.ElementType; color: string; bg: string; border: string; accent: string }
+  { label: string; shortLabel: string; icon: React.ElementType; color: string; bg: string; border: string; accent: string; glow: string }
 > = {
   active_threats: {
     label: "Active Threats",
@@ -85,6 +85,7 @@ const CATEGORY_META: Record<
     bg: "bg-red-500/10",
     border: "border-red-500/30",
     accent: "border-l-red-500",
+    glow: "shadow-[0_0_12px_-3px_rgba(239,68,68,0.25)]",
   },
   exploited_vulnerabilities: {
     label: "Exploited Vulnerabilities",
@@ -94,6 +95,7 @@ const CATEGORY_META: Record<
     bg: "bg-orange-500/10",
     border: "border-orange-500/30",
     accent: "border-l-orange-500",
+    glow: "shadow-[0_0_12px_-3px_rgba(249,115,22,0.25)]",
   },
   ransomware_breaches: {
     label: "Ransomware & Breaches",
@@ -103,6 +105,7 @@ const CATEGORY_META: Record<
     bg: "bg-rose-500/10",
     border: "border-rose-500/30",
     accent: "border-l-rose-500",
+    glow: "shadow-[0_0_12px_-3px_rgba(244,63,94,0.25)]",
   },
   nation_state: {
     label: "Nation-State Activity",
@@ -112,6 +115,7 @@ const CATEGORY_META: Record<
     bg: "bg-purple-500/10",
     border: "border-purple-500/30",
     accent: "border-l-purple-500",
+    glow: "shadow-[0_0_12px_-3px_rgba(168,85,247,0.25)]",
   },
   cloud_identity: {
     label: "Cloud & Identity",
@@ -121,6 +125,7 @@ const CATEGORY_META: Record<
     bg: "bg-sky-500/10",
     border: "border-sky-500/30",
     accent: "border-l-sky-500",
+    glow: "shadow-[0_0_12px_-3px_rgba(14,165,233,0.25)]",
   },
   ot_ics: {
     label: "OT / ICS",
@@ -130,6 +135,7 @@ const CATEGORY_META: Record<
     bg: "bg-amber-500/10",
     border: "border-amber-500/30",
     accent: "border-l-amber-500",
+    glow: "shadow-[0_0_12px_-3px_rgba(245,158,11,0.25)]",
   },
   security_research: {
     label: "Security Research",
@@ -139,6 +145,7 @@ const CATEGORY_META: Record<
     bg: "bg-emerald-500/10",
     border: "border-emerald-500/30",
     accent: "border-l-emerald-500",
+    glow: "shadow-[0_0_12px_-3px_rgba(52,211,153,0.25)]",
   },
   tools_technology: {
     label: "Tools & Technology",
@@ -148,6 +155,7 @@ const CATEGORY_META: Record<
     bg: "bg-blue-500/10",
     border: "border-blue-500/30",
     accent: "border-l-blue-500",
+    glow: "shadow-[0_0_12px_-3px_rgba(96,165,250,0.25)]",
   },
   policy_regulation: {
     label: "Policy & Regulation",
@@ -157,6 +165,7 @@ const CATEGORY_META: Record<
     bg: "bg-teal-500/10",
     border: "border-teal-500/30",
     accent: "border-l-teal-500",
+    glow: "shadow-[0_0_12px_-3px_rgba(45,212,191,0.25)]",
   },
 };
 
@@ -391,8 +400,9 @@ function TopCriticalStrip({ items, onSelect }: { items: NewsItem[]; onSelect: (i
               className={cn(
                 "card-3d shrink-0 w-[260px] rounded-lg border border-border/50 bg-card/50 p-2.5",
                 "hover:border-primary/30 transition-all cursor-pointer group text-left",
-                "border-l-2",
+                "border-l-[3px]",
                 meta.accent,
+                meta.glow,
               )}
             >
               <div className="flex items-start gap-2">
@@ -512,8 +522,9 @@ function NewsCardGrid({
       onClick={() => onSelect(item.id)}
       className={cn(
         "card-3d rounded-lg border bg-card/50 p-3.5 transition-all duration-200 cursor-pointer group text-left w-full",
-        "border-l-2",
+        "border-l-[3px]",
         meta.accent,
+        meta.glow,
         isActive
           ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
           : "border-border/50 hover:border-border hover:bg-card/80",
@@ -584,8 +595,9 @@ function NewsCardList({
       onClick={() => onSelect(item.id)}
       className={cn(
         "card-3d rounded-lg border bg-card/50 p-4 transition-all duration-200 cursor-pointer group text-left w-full",
-        "border-l-2",
+        "border-l-[3px]",
         meta.accent,
+        meta.glow,
         isActive
           ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
           : "border-border/50 hover:border-border hover:bg-card/80",
@@ -669,8 +681,9 @@ function NewsCardCompact({
       onClick={() => onSelect(item.id)}
       className={cn(
         "w-full flex items-center gap-2.5 px-3 py-2 rounded-md border transition-all duration-150 cursor-pointer group text-left",
-        "border-l-2",
+        "border-l-[3px]",
         meta.accent,
+        meta.glow,
         isActive
           ? "border-primary/50 bg-primary/5"
           : "border-border/30 bg-card/30 hover:bg-card/60 hover:border-border/50",

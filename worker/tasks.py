@@ -1312,12 +1312,7 @@ def ingest_news() -> dict:
     session = SyncSession()
 
     try:
-        articles = _run_async(fetch_all_feeds())
-        if not articles:
-            logger.info("news_ingest_no_articles")
-            return {"fetched": 0, "stored": 0}
-
-        # ── Load recent headlines from DB for cross-source matching ──
+        # ── Load recent source_hashes so fetch_all_feeds can pre-filter ──
         cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
         recent_rows = session.execute(
             select(
@@ -1331,8 +1326,15 @@ def ingest_news() -> dict:
             ).where(NewsItem.created_at >= cutoff)
         ).all()
 
-        # Build lookup: source_hash → row, headline list for similarity
+        # Build hash set FIRST, pass to fetch_all_feeds for pre-dedup
         hash_set = {r.source_hash for r in recent_rows}
+
+        articles = _run_async(fetch_all_feeds(known_hashes=hash_set))
+        if not articles:
+            logger.info("news_ingest_no_articles")
+            return {"fetched": 0, "stored": 0}
+
+        # headline list for similarity
         recent_items = [(r.id, r.headline, r.source, r.source_hash,
                          r.raw_content or "", r.ai_enriched,
                          r.correlated_sources or []) for r in recent_rows]
