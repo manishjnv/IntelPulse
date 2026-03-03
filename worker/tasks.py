@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import threading
 import uuid
 from datetime import datetime, timezone
 
@@ -28,13 +29,21 @@ sync_engine = create_engine(settings.database_url_sync, pool_pre_ping=True, pool
 SyncSession = sessionmaker(bind=sync_engine)
 
 
+# Thread-local storage to reuse event loops within a single worker job
+_thread_local = threading.local()
+
+
 def _run_async(coro):
-    """Run an async coroutine from sync context."""
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+    """Run an async coroutine from sync context.
+
+    Reuses event loop per-thread to prevent 'Event loop is closed' errors
+    when httpx.AsyncClient cleanup references a closed loop.
+    """
+    loop = getattr(_thread_local, "loop", None)
+    if loop is None or loop.is_closed():
+        loop = asyncio.new_event_loop()
+        _thread_local.loop = loop
+    return loop.run_until_complete(coro)
 
 
 def ingest_feed(feed_name: str) -> dict:
@@ -1465,6 +1474,53 @@ def ingest_news() -> dict:
         session.close()
 
 
+# Valid news_category enum values in PostgreSQL
+_VALID_NEWS_CATEGORIES = {
+    "active_threats", "exploited_vulnerabilities", "ransomware_breaches",
+    "nation_state", "cloud_identity", "ot_ics", "security_research",
+    "tools_technology", "policy_regulation",
+}
+
+# Map common AI-hallucinated categories to valid ones
+_CATEGORY_FALLBACK_MAP = {
+    "security_operations": "active_threats",
+    "cyber_operations": "active_threats",
+    "data_breach": "ransomware_breaches",
+    "data_breaches": "ransomware_breaches",
+    "malware": "active_threats",
+    "phishing": "active_threats",
+    "supply_chain": "active_threats",
+    "vulnerability": "exploited_vulnerabilities",
+    "vulnerabilities": "exploited_vulnerabilities",
+    "zero_day": "exploited_vulnerabilities",
+    "apt": "nation_state",
+    "espionage": "nation_state",
+    "iot": "ot_ics",
+    "iot_security": "ot_ics",
+    "cloud_security": "cloud_identity",
+    "identity": "cloud_identity",
+    "regulation": "policy_regulation",
+    "compliance": "policy_regulation",
+    "research": "security_research",
+    "tools": "tools_technology",
+    "technology": "tools_technology",
+}
+
+
+def _normalize_category(raw: str, fallback: str = "active_threats") -> str:
+    """Validate and normalize AI-returned category to a valid enum value."""
+    if raw in _VALID_NEWS_CATEGORIES:
+        return raw
+    # Try fallback mapping
+    mapped = _CATEGORY_FALLBACK_MAP.get(raw)
+    if mapped:
+        logger.info("category_remapped", raw=raw, mapped=mapped)
+        return mapped
+    # Last resort: use existing item category or default
+    logger.warning("category_invalid_fallback", raw=raw, fallback=fallback)
+    return fallback
+
+
 def enrich_news_batch(batch_size: int = 10) -> dict:
     """AI-enrich unenriched news items in batch."""
     import time
@@ -1490,14 +1546,17 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
             return {"enriched": 0}
 
         enriched_count = 0
+        errors = 0
         for idx, item in enumerate(items):
+          try:
             enrichment = _run_async(
                 enrich_news_item(item.headline, item.raw_content or "")
             )
 
             if enrichment:
-                # Apply enrichment data
-                item.category = enrichment.get("category", item.category)
+                # Apply enrichment data — validate category against enum
+                raw_cat = enrichment.get("category", item.category or "active_threats")
+                item.category = _normalize_category(raw_cat, item.category or "active_threats")
                 item.summary = enrichment.get("summary")
                 item.executive_brief = enrichment.get("executive_brief")
                 item.risk_assessment = enrichment.get("risk_assessment")
@@ -1520,13 +1579,24 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
                 item.timeline = enrichment.get("timeline", [])
                 item.detection_opportunities = enrichment.get("detection_opportunities", [])
                 item.mitigation_recommendations = enrichment.get("mitigation_recommendations", [])
-                item.confidence = enrichment.get("confidence", "medium")
+                item.confidence = enrichment.get("confidence", "medium") if enrichment.get("confidence") in ("high", "medium", "low") else "medium"
                 item.relevance_score = max(1, min(100, enrichment.get("relevance_score", 50)))
                 item.ai_enriched = True
+                try:
+                    session.flush()  # Validate this single item immediately
+                except Exception as flush_err:
+                    logger.error("news_enrich_item_flush_error", headline=item.headline[:80], error=str(flush_err))
+                    session.rollback()
+                    errors += 1
+                    continue
                 enriched_count += 1
             else:
                 # AI call failed (rate limit, timeout, etc.) — leave for next batch
                 logger.warning("news_enrich_item_skip", headline=item.headline[:80])
+          except Exception as item_err:
+            logger.error("news_enrich_item_error", headline=item.headline[:80], error=str(item_err))
+            session.rollback()
+            errors += 1
 
             # Throttle between items to avoid per-minute rate limits (TPM)
             # Groq free tier: 6K TPM per model, our prompts use ~4.5K tokens
@@ -1534,8 +1604,8 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
                 time.sleep(20)
 
         session.commit()
-        logger.info("news_enrich_complete", enriched=enriched_count)
-        return {"enriched": enriched_count}
+        logger.info("news_enrich_complete", enriched=enriched_count, errors=errors)
+        return {"enriched": enriched_count, "errors": errors}
 
     except Exception as e:
         logger.error("news_enrich_error", error=str(e))
