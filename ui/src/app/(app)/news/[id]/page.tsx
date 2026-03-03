@@ -414,7 +414,7 @@ export default function NewsDetailPage() {
     item.impacted_assets.length > 0;
 
   return (
-    <div className="space-y-5 max-w-5xl mx-auto">
+    <div className="space-y-5 px-4 md:px-6 lg:px-8 pb-6">
       {/* Back link */}
       <button
         onClick={() => router.back()}
@@ -504,7 +504,7 @@ export default function NewsDetailPage() {
 
       {/* ── Key Insights row: Risk Assessment + Attack Narrative ── */}
       {(item.risk_assessment || item.attack_narrative) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {item.risk_assessment && (
             <Section icon={TriangleAlert} title="Risk Assessment" accent="text-red-400">
               <Prose text={item.risk_assessment} onKeywordClick={handleKeywordClick} />
@@ -521,7 +521,7 @@ export default function NewsDetailPage() {
       {/* ── Why It Matters ─────────────────────────────── */}
       {item.why_it_matters.length > 0 && (
         <Section icon={Lightbulb} title="Key Takeaways" accent="text-yellow-400">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
             {item.why_it_matters.map((point, i) => (
               <div key={i} className="rounded-lg border border-yellow-500/10 bg-yellow-500/5 p-3 hover:border-yellow-500/30 transition-colors">
                 <div className="flex items-start gap-2">
@@ -537,7 +537,7 @@ export default function NewsDetailPage() {
       {/* ── Threat Landscape (combined card) ───────────── */}
       {hasThreatLandscape && (
         <Section icon={Users} title="Threat Landscape" accent="text-purple-400">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {item.threat_actors.length > 0 && (
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1.5 flex items-center gap-1">
@@ -587,7 +587,7 @@ export default function NewsDetailPage() {
 
       {/* ── MITRE ATT&CK + Post-Exploitation ───────────── */}
       {(item.tactics_techniques.length > 0 || item.post_exploitation.length > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {item.tactics_techniques.length > 0 && (
             <Section icon={Crosshair} title="MITRE ATT&CK" accent="text-blue-400">
               <div className="space-y-1.5">
@@ -631,7 +631,7 @@ export default function NewsDetailPage() {
       {/* ── Targeting ──────────────────────────────────── */}
       {hasTargeting && (
         <Section icon={Globe} title="Targeting" accent="text-emerald-400">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {item.targeted_sectors.length > 0 && (
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1.5 flex items-center gap-1">
@@ -663,7 +663,7 @@ export default function NewsDetailPage() {
       {/* ── IOC Summary ────────────────────────────────── */}
       {hasIOCs && (
         <Section icon={Eye} title="Indicators of Compromise" accent="text-red-400">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {item.ioc_summary?.domains && item.ioc_summary.domains.length > 0 && (
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1">Domains</p>
@@ -726,7 +726,7 @@ export default function NewsDetailPage() {
 
       {/* ── Detection & Mitigation (always side-by-side) ── */}
       {(item.detection_opportunities.length > 0 || item.mitigation_recommendations.length > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {item.detection_opportunities.length > 0 && (
             <Section icon={Radio} title="Detection Opportunities" accent="text-blue-400">
               <ul className="space-y-2.5">
@@ -750,7 +750,7 @@ export default function NewsDetailPage() {
 
       {/* ── YARA & KQL Detection Rules (side-by-side) ── */}
       {(item.yara_rule || item.kql_rule) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {item.yara_rule && (
             <Section icon={FileCode} title="YARA Rule" accent="text-amber-400">
               <div className="relative group">
