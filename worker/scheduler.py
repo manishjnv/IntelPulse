@@ -35,7 +35,7 @@ redis_conn = Redis.from_url(settings.redis_url)
 scheduler = Scheduler(queue_name="default", connection=redis_conn)
 
 # ── Constants ────────────────────────────────────────────
-EXPECTED_JOB_COUNT = 22          # total scheduled jobs we register
+EXPECTED_JOB_COUNT = 23          # total scheduled jobs we register
 WATCHDOG_INTERVAL = 120          # seconds between health checks
 HEARTBEAT_KEY = "scheduler:heartbeat"
 HEARTBEAT_TTL = 300              # seconds — expires if scheduler dies
@@ -316,6 +316,16 @@ def setup_schedules():
         interval=timedelta(minutes=5).total_seconds(),
         queue_name="low",
         meta={"task": "news_enrichment"},
+    )
+
+    # ─── News Re-Enrichment (fallback upgrade) — every 30 min ─
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=8),
+        func="worker.tasks.re_enrich_fallback_news",
+        kwargs={"batch_size": 5},
+        interval=timedelta(minutes=30).total_seconds(),
+        queue_name="low",
+        meta={"task": "news_re_enrichment"},
     )
 
     # ─── Stale News Cleanup — every 6 hours ──────────
