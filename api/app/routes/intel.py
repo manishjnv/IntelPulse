@@ -42,11 +42,13 @@ async def list_intel_items(
     is_kev: bool | None = None,
     exploit_available: bool | None = None,
     query: str | None = Query(None, max_length=200),
+    geo: str | None = Query(None, max_length=100),
+    industry: str | None = Query(None, max_length=200),
     sort_by: str = Query("ingested_at", pattern="^(ingested_at|risk_score|severity|published_at)$"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
 ):
     """List intel items with pagination and filters."""
-    ck = cache_key("intel_list", page, page_size, severity, feed_type, source_name, asset_type, is_kev, exploit_available, query, sort_by, sort_order)
+    ck = cache_key("intel_list", page, page_size, severity, feed_type, source_name, asset_type, is_kev, exploit_available, query, geo, industry, sort_by, sort_order)
     cached = await get_cached(ck)
     if cached:
         return cached
@@ -62,6 +64,8 @@ async def list_intel_items(
         is_kev=is_kev,
         exploit_available=exploit_available,
         search=query,
+        geo=geo,
+        industry=industry,
         sort_by=sort_by,
         sort_order=sort_order,
     )

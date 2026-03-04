@@ -37,6 +37,8 @@ async def get_intel_items(
     is_kev: bool | None = None,
     exploit_available: bool | None = None,
     search: str | None = None,
+    geo: str | None = None,
+    industry: str | None = None,
     sort_by: str = "ingested_at",
     sort_order: str = "desc",
 ) -> tuple[list[IntelItem], int]:
@@ -62,6 +64,10 @@ async def get_intel_items(
                 IntelItem.summary.ilike(f"%{search}%"),
             )
         )
+    if geo:
+        query = query.where(text(":geo = ANY(geo)").bindparams(geo=geo))
+    if industry:
+        query = query.where(text("EXISTS (SELECT 1 FROM unnest(industries) AS i WHERE lower(i) LIKE '%' || lower(:industry) || '%')").bindparams(industry=industry))
 
     # Count
     count_q = select(func.count()).select_from(query.subquery())

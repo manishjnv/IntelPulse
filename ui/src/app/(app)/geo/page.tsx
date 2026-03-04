@@ -22,8 +22,8 @@ import {
   Bug,
   Hash,
 } from "lucide-react";
-import { getDashboardInsights, getIOCStats, getIOCs, type IOCStatsResponse, type IOCListResponse } from "@/lib/api";
-import type { DashboardInsights } from "@/types";
+import { getDashboardInsights, getIOCStats, getIOCs, getIntelItems, type IOCStatsResponse, type IOCListResponse } from "@/lib/api";
+import type { DashboardInsights, IntelListResponse } from "@/types";
 import Link from "next/link";
 
 /* ─── Constants ─────────────────────────────────────────── */
@@ -64,6 +64,9 @@ export default function GeoViewPage() {
   } | null>(null);
   const [drillLoading, setDrillLoading] = useState(false);
   const [drillIOCs, setDrillIOCs] = useState<IOCListResponse | null>(null);
+  const [drillIntel, setDrillIntel] = useState<IntelListResponse | null>(null);
+  const [regionIntel, setRegionIntel] = useState<IntelListResponse | null>(null);
+  const [regionLoading, setRegionLoading] = useState(false);
 
   useEffect(() => {
     fetchDashboard();
@@ -119,29 +122,27 @@ export default function GeoViewPage() {
   }, [insights]);
 
   const intelGeo = useMemo(() => {
-    if (!dashboard?.top_risks) return [];
-    const geoMap: Record<string, { count: number; sevMap: Record<string, number> }> = {};
-    dashboard.top_risks.forEach((item) => {
-      (item.geo || []).forEach((g) => {
-        if (!geoMap[g]) geoMap[g] = { count: 0, sevMap: {} };
-        geoMap[g].count += 1;
-        geoMap[g].sevMap[item.severity] = (geoMap[g].sevMap[item.severity] || 0) + 1;
-      });
-    });
-    return Object.entries(geoMap)
-      .sort((a, b) => b[1].count - a[1].count)
-      .map(([name, data], i) => ({
-        name,
-        count: data.count,
-        sevMap: data.sevMap,
-        color: REGION_COLORS[i % REGION_COLORS.length],
-      }));
-  }, [dashboard]);
+    if (!insights?.threat_geography || insights.threat_geography.length === 0) return [];
+    return insights.threat_geography.map((g, i) => ({
+      name: g.name,
+      count: g.count,
+      avg_risk: g.avg_risk,
+      color: REGION_COLORS[i % REGION_COLORS.length],
+    }));
+  }, [insights]);
 
-  const regionThreats = useMemo(() => {
-    if (!selectedCountry || !dashboard?.top_risks) return [];
-    return dashboard.top_risks.filter((item) => item.geo?.includes(selectedCountry));
-  }, [selectedCountry, dashboard]);
+  // Fetch intel items for selected region in Intel Geo tab
+  useEffect(() => {
+    if (!selectedCountry) { setRegionIntel(null); return; }
+    (async () => {
+      setRegionLoading(true);
+      try {
+        const res = await getIntelItems({ geo: selectedCountry, page_size: 20, sort_by: "risk_score", sort_order: "desc" });
+        setRegionIntel(res);
+      } catch { setRegionIntel(null); }
+      setRegionLoading(false);
+    })();
+  }, [selectedCountry]);
 
   const totalCountries = countries.length;
   const totalIOCsWithGeo = countries.reduce((s, c) => s + c.count, 0);
@@ -197,28 +198,37 @@ export default function GeoViewPage() {
     setDrillLoading(false);
   }, [drillDown]);
 
-  const handleDrillIndustry = useCallback((name: string) => {
+  const handleDrillIndustry = useCallback(async (name: string) => {
     if (drillDown?.type === "industry_intel" && drillDown.filter === name) {
-      setDrillDown(null); return;
+      setDrillDown(null); setDrillIntel(null); return;
     }
-    const matching = (dashboard?.top_risks || []).filter(item =>
-      item.industries?.some(s => s.toLowerCase().includes(name.toLowerCase()))
-    );
-    setDrillDown({ type: "industry_intel", label: name, filter: name, data: matching });
-  }, [drillDown, dashboard]);
+    setDrillDown({ type: "industry_intel", label: name, filter: name });
+    setDrillLoading(true);
+    try {
+      const res = await getIntelItems({ industry: name, page_size: 20, sort_by: "risk_score", sort_order: "desc" });
+      setDrillIntel(res);
+    } catch { setDrillIntel(null); }
+    setDrillLoading(false);
+  }, [drillDown]);
 
-  const handleDrillThreatGeo = useCallback((name: string) => {
+  const handleDrillThreatGeo = useCallback(async (name: string) => {
     if (drillDown?.type === "threat_geo_intel" && drillDown.filter === name) {
-      setDrillDown(null); return;
+      setDrillDown(null); setDrillIntel(null); return;
     }
-    const matching = (dashboard?.top_risks || []).filter(item => item.geo?.includes(name));
-    setDrillDown({ type: "threat_geo_intel", label: name, filter: name, data: matching });
-  }, [drillDown, dashboard]);
+    setDrillDown({ type: "threat_geo_intel", label: name, filter: name });
+    setDrillLoading(true);
+    try {
+      const res = await getIntelItems({ geo: name, page_size: 20, sort_by: "risk_score", sort_order: "desc" });
+      setDrillIntel(res);
+    } catch { setDrillIntel(null); }
+    setDrillLoading(false);
+  }, [drillDown]);
 
   const handleStatClick = useCallback((tab: typeof activeTab) => {
     setActiveTab(tab);
     setDrillDown(null);
     setDrillIOCs(null);
+    setDrillIntel(null);
     setSelectedCountry(null);
   }, []);
 
@@ -275,7 +285,7 @@ export default function GeoViewPage() {
         ]).map((tab) => (
           <button
             key={tab.key}
-            onClick={() => { setActiveTab(tab.key); setSelectedCountry(null); setDrillDown(null); setDrillIOCs(null); }}
+            onClick={() => { setActiveTab(tab.key); setSelectedCountry(null); setDrillDown(null); setDrillIOCs(null); setDrillIntel(null); }}
             className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
               activeTab === tab.key
                 ? "border-primary text-primary"
@@ -394,7 +404,7 @@ export default function GeoViewPage() {
             </Card>
           )}
           {drillDown && (drillDown.type === "country_iocs" || drillDown.type === "threat_geo_intel") && (
-            <DrillDownPanel drillDown={drillDown} drillIOCs={drillIOCs} drillLoading={drillLoading} onClose={() => { setDrillDown(null); setDrillIOCs(null); }} />
+            <DrillDownPanel drillDown={drillDown} drillIOCs={drillIOCs} drillIntel={drillIntel} drillLoading={drillLoading} onClose={() => { setDrillDown(null); setDrillIOCs(null); setDrillIntel(null); }} />
           )}
         </div>
       )}
@@ -452,7 +462,7 @@ export default function GeoViewPage() {
             </CardContent>
           </Card>
           {drillDown?.type === "continent_countries" && (
-            <DrillDownPanel drillDown={drillDown} drillIOCs={drillIOCs} drillLoading={drillLoading} onClose={() => { setDrillDown(null); setDrillIOCs(null); }} />
+            <DrillDownPanel drillDown={drillDown} drillIOCs={drillIOCs} drillIntel={drillIntel} drillLoading={drillLoading} onClose={() => { setDrillDown(null); setDrillIOCs(null); setDrillIntel(null); }} />
           )}
         </div>
       )}
@@ -501,7 +511,7 @@ export default function GeoViewPage() {
             </CardContent>
           </Card>
           {drillDown?.type === "network_iocs" && (
-            <DrillDownPanel drillDown={drillDown} drillIOCs={drillIOCs} drillLoading={drillLoading} onClose={() => { setDrillDown(null); setDrillIOCs(null); }} className="lg:col-span-3" />
+            <DrillDownPanel drillDown={drillDown} drillIOCs={drillIOCs} drillIntel={drillIntel} drillLoading={drillLoading} onClose={() => { setDrillDown(null); setDrillIOCs(null); setDrillIntel(null); }} className="lg:col-span-3" />
           )}
         </div>
       )}
@@ -565,7 +575,7 @@ export default function GeoViewPage() {
             </CardContent>
           </Card>
           {drillDown?.type === "industry_intel" && (
-            <DrillDownPanel drillDown={drillDown} drillIOCs={drillIOCs} drillLoading={drillLoading} onClose={() => { setDrillDown(null); setDrillIOCs(null); }} className="lg:col-span-3" />
+            <DrillDownPanel drillDown={drillDown} drillIOCs={drillIOCs} drillIntel={drillIntel} drillLoading={drillLoading} onClose={() => { setDrillDown(null); setDrillIOCs(null); setDrillIntel(null); }} className="lg:col-span-3" />
           )}
         </div>
       )}
@@ -605,28 +615,27 @@ export default function GeoViewPage() {
             <CardContent className="px-3 pb-3 max-h-[360px] overflow-y-auto">
               {intelGeo.length > 0 ? (
                 <div className="space-y-1">
-                  {intelGeo.map((g) => (
-                    <button
-                      key={g.name}
-                      onClick={() => setSelectedCountry(g.name === selectedCountry ? null : g.name)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs transition-colors ${
-                        selectedCountry === g.name ? "bg-primary/20 text-primary" : "hover:bg-muted/40"
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ background: g.color }} />
-                        {g.name}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        {Object.entries(g.sevMap).sort(([, a], [, b]) => b - a).slice(0, 3).map(([sev, count]) => (
-                          <span key={sev} className="text-[8px] px-1 py-0 rounded" style={{ backgroundColor: (RISK_COLORS[sev] || "#666") + "20", color: RISK_COLORS[sev] || "#666" }}>
-                            {count}
-                          </span>
-                        ))}
-                        <Badge variant="secondary" className="text-[10px] h-5 cursor-pointer hover:bg-primary/20 hover:text-primary transition-colors">{g.count}</Badge>
-                      </div>
-                    </button>
-                  ))}
+                  {intelGeo.map((g) => {
+                    const riskCol = g.avg_risk >= 80 ? "#ef4444" : g.avg_risk >= 60 ? "#f97316" : g.avg_risk >= 40 ? "#eab308" : "#22c55e";
+                    return (
+                      <button
+                        key={g.name}
+                        onClick={() => setSelectedCountry(g.name === selectedCountry ? null : g.name)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs transition-colors ${
+                          selectedCountry === g.name ? "bg-primary/20 text-primary" : "hover:bg-muted/40"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: g.color }} />
+                          {g.name}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-medium" style={{ color: riskCol }}>Risk {Math.round(g.avg_risk)}</span>
+                          <Badge variant="secondary" className="text-[10px] h-5 cursor-pointer hover:bg-primary/20 hover:text-primary transition-colors">{g.count}</Badge>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               ) : <EmptyState />}
             </CardContent>
@@ -636,16 +645,23 @@ export default function GeoViewPage() {
             <CardHeader className="pb-2 pt-4 px-5">
               <CardTitle className="text-sm font-semibold">
                 {selectedCountry ? `Threats targeting ${selectedCountry}` : "Select a region"}
+                {regionIntel && selectedCountry && (
+                  <Badge variant="outline" className="text-[9px] ml-2 border-primary/30 text-primary">{regionIntel.total} total</Badge>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="px-3 pb-3 max-h-[360px] overflow-y-auto">
               {selectedCountry ? (
-                regionThreats.length > 0 ? (
+                regionLoading ? (
+                  <div className="h-[200px] flex items-center justify-center text-xs text-muted-foreground">
+                    <Activity className="h-4 w-4 animate-spin mr-2" />Loading intel items...
+                  </div>
+                ) : regionIntel && regionIntel.items.length > 0 ? (
                   <div className="space-y-2">
-                    {regionThreats.map((item, i) => {
+                    {regionIntel.items.map((item, i) => {
                       const sevCol = RISK_COLORS[item.severity] || "#666";
                       return (
-                        <a key={i} href={`/intel/${item.id}`} className="flex items-center gap-3 px-3 py-2.5 rounded-md border border-border/40 bg-muted/20 hover:bg-muted/30 transition-colors">
+                        <Link key={item.id || i} href={`/intel/${item.id}`} className="flex items-center gap-3 px-3 py-2.5 rounded-md border border-border/40 bg-muted/20 hover:bg-muted/30 transition-colors">
                           <div className="w-1.5 h-8 rounded-full shrink-0" style={{ background: sevCol }} />
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-medium truncate">{item.title}</p>
@@ -653,7 +669,7 @@ export default function GeoViewPage() {
                           </div>
                           <Badge variant="outline" className="text-[10px] shrink-0" style={{ borderColor: sevCol, color: sevCol }}>{item.severity}</Badge>
                           <ChevronRight className="h-3 w-3 text-muted-foreground/30" />
-                        </a>
+                        </Link>
                       );
                     })}
                   </div>
@@ -706,12 +722,14 @@ const RISK_COLOR_MAP: Record<string, string> = {
 function DrillDownPanel({
   drillDown,
   drillIOCs,
+  drillIntel,
   drillLoading,
   onClose,
   className,
 }: {
   drillDown: { type: string; label: string; filter: string; data?: any };
   drillIOCs: IOCListResponse | null;
+  drillIntel: IntelListResponse | null;
   drillLoading: boolean;
   onClose: () => void;
   className?: string;
@@ -731,7 +749,7 @@ function DrillDownPanel({
             <span>{drillDown.label}</span>
             <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-primary/30 text-primary">
               {isIOCDrill && `${drillIOCs?.total || 0} IOCs`}
-              {isIntelDrill && `${drillDown.data?.length || 0} intel items`}
+              {isIntelDrill && `${drillIntel?.total || 0} intel items`}
               {isContinentDrill && `${drillDown.data?.length || 0} countries`}
             </Badge>
           </CardTitle>
@@ -772,12 +790,12 @@ function DrillDownPanel({
               <div className="text-xs text-muted-foreground/60 text-center py-6">No IOCs found</div>
             )}
           </div>
-        ) : isIntelDrill && drillDown.data ? (
+        ) : isIntelDrill && drillIntel ? (
           <div className="space-y-1.5">
-            {drillDown.data.length > 0 ? drillDown.data.map((item: any, i: number) => {
+            {drillIntel.items.length > 0 ? drillIntel.items.map((item) => {
               const sevCol = RISK_COLOR_MAP[item.severity] || "#666";
               return (
-                <Link key={i} href={`/intel/${item.id}`}
+                <Link key={item.id} href={`/intel/${item.id}`}
                   className="flex items-center gap-3 px-3 py-2 rounded-md border border-border/30 hover:bg-muted/20 transition-colors group"
                 >
                   <div className="w-1.5 h-7 rounded-full shrink-0" style={{ background: sevCol }} />
@@ -797,9 +815,9 @@ function DrillDownPanel({
             )}
           </div>
         ) : isContinentDrill && drillDown.data ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {drillDown.data.length > 0 ? drillDown.data.map((c: any) => (
-              <div key={c.code} className="flex items-center gap-2 px-3 py-2 rounded-md border border-border/30 hover:bg-muted/20 transition-colors">
+              <div key={c.code} className="flex items-center gap-2.5 px-3 py-2.5 rounded-md border border-border/30 hover:bg-muted/20 transition-colors">
                 <img
                   src={`https://flagcdn.com/24x18/${c.code.toLowerCase()}.png`}
                   alt={c.code}
@@ -807,10 +825,10 @@ function DrillDownPanel({
                   onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="text-xs font-medium truncate">{c.name}</div>
+                  <div className="text-xs font-medium">{c.name}</div>
                   <div className="text-[9px] text-muted-foreground">{c.code}</div>
                 </div>
-                <span className="text-xs font-bold tabular-nums" style={{ color: c.color }}>{c.count}</span>
+                <span className="text-xs font-bold tabular-nums shrink-0" style={{ color: c.color }}>{c.count.toLocaleString()}</span>
               </div>
             )) : (
               <div className="col-span-full text-xs text-muted-foreground/60 text-center py-6">No countries found</div>
