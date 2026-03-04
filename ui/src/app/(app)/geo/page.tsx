@@ -21,7 +21,9 @@ import {
   ExternalLink,
   Bug,
   Hash,
+  Download,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { getDashboardInsights, getIOCStats, getIOCs, getIntelItems, type IOCStatsResponse, type IOCListResponse } from "@/lib/api";
 import type { DashboardInsights, IntelListResponse } from "@/types";
 import Link from "next/link";
@@ -643,12 +645,48 @@ export default function GeoViewPage() {
 
           <Card className="lg:col-span-2">
             <CardHeader className="pb-2 pt-4 px-5">
-              <CardTitle className="text-sm font-semibold">
-                {selectedCountry ? `Threats targeting ${selectedCountry}` : "Select a region"}
-                {regionIntel && selectedCountry && (
-                  <Badge variant="outline" className="text-[9px] ml-2 border-primary/30 text-primary">{regionIntel.total} total</Badge>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold">
+                  {selectedCountry ? `Threats targeting ${selectedCountry}` : "Select a region"}
+                  {regionIntel && selectedCountry && (
+                    <Badge variant="outline" className="text-[9px] ml-2 border-primary/30 text-primary">{regionIntel.total} total</Badge>
+                  )}
+                </CardTitle>
+                {regionIntel && regionIntel.items.length > 0 && !regionLoading && (
+                  <button
+                    onClick={() => {
+                      const rows = regionIntel.items.map((item) => ({
+                        "Title": item.title,
+                        "Severity": item.severity,
+                        "Risk Score": item.risk_score,
+                        "Source": item.source_name,
+                        "Feed Type": item.feed_type,
+                        "CVEs": (item.cve_ids || []).join(", "),
+                        "Geo": (item.geo || []).join(", "),
+                        "Industries": (item.industries || []).join(", "),
+                        "Tags": (item.tags || []).join(", "),
+                        "Published": item.published_at || "",
+                        "KEV": item.is_kev ? "Yes" : "No",
+                      }));
+                      const wb = XLSX.utils.book_new();
+                      const ws = XLSX.utils.json_to_sheet(rows);
+                      const colWidths = Object.keys(rows[0]).map((key) => {
+                        const maxLen = Math.max(key.length, ...rows.map((r) => String(r[key as keyof typeof r] ?? "").length));
+                        return { wch: Math.min(maxLen + 2, 60) };
+                      });
+                      ws["!cols"] = colWidths;
+                      XLSX.utils.book_append_sheet(wb, ws, "Intel");
+                      const safeName = (selectedCountry || "Region").replace(/[^a-zA-Z0-9_ -]/g, "").slice(0, 31);
+                      XLSX.writeFile(wb, `IntelWatch_${safeName}_Threats_${new Date().toISOString().slice(0, 10)}.xlsx`);
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                    title="Download as Excel"
+                  >
+                    <Download className="h-3 w-3" />
+                    Export
+                  </button>
                 )}
-              </CardTitle>
+              </div>
             </CardHeader>
             <CardContent className="px-3 pb-3 max-h-[360px] overflow-y-auto">
               {selectedCountry ? (
@@ -738,6 +776,71 @@ function DrillDownPanel({
   const isIntelDrill = drillDown.type === "industry_intel" || drillDown.type === "threat_geo_intel";
   const isContinentDrill = drillDown.type === "continent_countries";
 
+  const hasData = (isIOCDrill && drillIOCs && drillIOCs.items.length > 0)
+    || (isIntelDrill && drillIntel && drillIntel.items.length > 0)
+    || (isContinentDrill && drillDown.data && drillDown.data.length > 0);
+
+  const handleDownloadExcel = () => {
+    let rows: Record<string, unknown>[] = [];
+    let sheetName = "Data";
+    const safeLabel = drillDown.label.replace(/[^a-zA-Z0-9_ -]/g, "").slice(0, 31);
+
+    if (isIOCDrill && drillIOCs) {
+      sheetName = "IOCs";
+      rows = drillIOCs.items.map((ioc) => ({
+        "IOC Value": ioc.value,
+        "Type": ioc.ioc_type,
+        "Risk Score": ioc.risk_score,
+        "Country": ioc.country || "",
+        "Country Code": ioc.country_code || "",
+        "ASN": ioc.asn || "",
+        "AS Name": ioc.as_name || "",
+        "Continent": ioc.continent || "",
+        "Tags": (ioc.tags || []).join(", "),
+        "Sightings": ioc.sighting_count,
+        "First Seen": ioc.first_seen || "",
+        "Last Seen": ioc.last_seen || "",
+      }));
+    } else if (isIntelDrill && drillIntel) {
+      sheetName = "Intel";
+      rows = drillIntel.items.map((item) => ({
+        "Title": item.title,
+        "Severity": item.severity,
+        "Risk Score": item.risk_score,
+        "Source": item.source_name,
+        "Feed Type": item.feed_type,
+        "CVEs": (item.cve_ids || []).join(", "),
+        "Geo": (item.geo || []).join(", "),
+        "Industries": (item.industries || []).join(", "),
+        "Tags": (item.tags || []).join(", "),
+        "Published": item.published_at || "",
+        "Ingested": item.ingested_at || "",
+        "KEV": item.is_kev ? "Yes" : "No",
+        "Exploit Available": item.exploit_available ? "Yes" : "No",
+      }));
+    } else if (isContinentDrill && drillDown.data) {
+      sheetName = "Countries";
+      rows = drillDown.data.map((c: any) => ({
+        "Country": c.name,
+        "Code": c.code,
+        "IOC Count": c.count,
+      }));
+    }
+
+    if (rows.length === 0) return;
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    // Auto-size columns
+    const colWidths = Object.keys(rows[0]).map((key) => {
+      const maxLen = Math.max(key.length, ...rows.map((r) => String(r[key] ?? "").length));
+      return { wch: Math.min(maxLen + 2, 60) };
+    });
+    ws["!cols"] = colWidths;
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    XLSX.writeFile(wb, `IntelWatch_${safeLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   return (
     <Card className={`border-primary/20 bg-primary/[0.02] animate-in fade-in slide-in-from-top-2 duration-200 ${className || ""}`}>
       <CardHeader className="pb-2 pt-3 px-4">
@@ -753,9 +856,21 @@ function DrillDownPanel({
               {isContinentDrill && `${drillDown.data?.length || 0} countries`}
             </Badge>
           </CardTitle>
-          <button onClick={onClose} className="p-1 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors">
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {hasData && !drillLoading && (
+              <button
+                onClick={handleDownloadExcel}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                title="Download as Excel"
+              >
+                <Download className="h-3 w-3" />
+                Export
+              </button>
+            )}
+            <button onClick={onClose} className="p-1 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-3 max-h-[350px] overflow-y-auto">
