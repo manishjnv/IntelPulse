@@ -18,8 +18,8 @@ services:
       POSTGRES_USER: ti
       POSTGRES_PASSWORD: ti_secret
       POSTGRES_DB: ti_platform
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
@@ -56,8 +56,8 @@ services:
       memlock:
         soft: -1
         hard: -1
-    ports:
-      - "9200:9200"
+    expose:
+      - "9200"
     volumes:
       - os_data:/usr/share/opensearch/data
     healthcheck:
