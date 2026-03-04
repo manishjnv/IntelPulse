@@ -71,6 +71,7 @@ import type {
   NewsCategory,
   NewsCategoryCount,
   NewsPipelineStatus,
+  NewsStatsResponse,
 } from "@/types";
 
 // ── Category config ──────────────────────────────────────
@@ -274,45 +275,30 @@ function CardSkeleton() {
 // ── Quick Stats Bar ──────────────────────────────────────
 function QuickStatsBar({
   categories,
-  news,
+  stats,
   onFilterCategory,
   onSortBy,
 }: {
   categories: NewsCategoriesResponse | null;
-  news: NewsListResponse | null;
+  stats: NewsStatsResponse | null;
   onFilterCategory?: (cat: string | null) => void;
   onSortBy?: (sort: string) => void;
 }) {
-  if (!categories || !news) return null;
+  if (!categories || !stats) return null;
 
-  const total = categories.total;
   const topCategory = categories.categories.reduce<NewsCategoryCount | null>(
     (best, c) => (!best || c.count > best.count ? c : best),
     null,
   );
-  const avgRelevance = news.items.length
-    ? Math.round(news.items.reduce((s, n) => s + n.relevance_score, 0) / news.items.length)
-    : 0;
-  const criticalCount = news.items.filter((n) => n.relevance_score >= 80).length;
-  const highCount = news.items.filter((n) => n.recommended_priority === "critical" || n.recommended_priority === "high").length;
-  const todayCount = news.items.filter((n) => {
-    if (!n.published_at) return false;
-    const diff = Date.now() - new Date(n.published_at).getTime();
-    return diff < 86400000;
-  }).length;
-  const enrichedPct = news.items.length
-    ? Math.round((news.items.filter((n) => n.ai_enriched).length / news.items.length) * 100)
-    : 0;
-  const sourceCount = new Set(news.items.map((n) => n.source)).size;
 
-  const stats: { label: string; value: string | number; icon: React.ElementType; color: string; onClick?: () => void; title?: string }[] = [
-    { label: "Total", value: total, icon: Newspaper, color: "text-primary", onClick: () => onFilterCategory?.(null), title: "Show all articles" },
-    { label: "Today", value: todayCount, icon: Calendar, color: "text-emerald-400", onClick: () => onSortBy?.("published_at:desc"), title: "Sort by newest" },
-    { label: "Critical", value: criticalCount, icon: AlertTriangle, color: "text-red-400", onClick: () => onSortBy?.("relevance_score:desc"), title: "Sort by relevance (critical first)" },
-    { label: "High", value: highCount, icon: Shield, color: "text-orange-400", onClick: () => onSortBy?.("relevance_score:desc"), title: "Sort by priority" },
-    { label: "Avg Score", value: avgRelevance, icon: TrendingUp, color: "text-yellow-400", onClick: () => onSortBy?.("relevance_score:desc"), title: "Sort by relevance score" },
-    { label: "Sources", value: sourceCount, icon: Globe, color: "text-sky-400", title: "Unique sources on this page" },
-    { label: "Enriched", value: `${enrichedPct}%`, icon: Sparkles, color: "text-purple-400", title: "AI enrichment rate" },
+  const statItems: { label: string; value: string | number; icon: React.ElementType; color: string; onClick?: () => void; title?: string }[] = [
+    { label: "Total", value: stats.total, icon: Newspaper, color: "text-primary", onClick: () => onFilterCategory?.(null), title: "Show all articles" },
+    { label: "Today", value: stats.today, icon: Calendar, color: "text-emerald-400", onClick: () => onSortBy?.("published_at:desc"), title: "Sort by newest" },
+    { label: "Critical", value: stats.critical, icon: AlertTriangle, color: "text-red-400", onClick: () => onSortBy?.("relevance_score:desc"), title: "Sort by relevance (critical first)" },
+    { label: "High", value: stats.high, icon: Shield, color: "text-orange-400", onClick: () => onSortBy?.("relevance_score:desc"), title: "Sort by priority" },
+    { label: "Avg Score", value: stats.avg_score, icon: TrendingUp, color: "text-yellow-400", onClick: () => onSortBy?.("relevance_score:desc"), title: "Sort by relevance score" },
+    { label: "Sources", value: stats.sources, icon: Globe, color: "text-sky-400", title: "Unique sources across all articles" },
+    { label: "Enriched", value: `${stats.enriched_pct}%`, icon: Sparkles, color: "text-purple-400", title: "AI enrichment rate" },
     {
       label: "Top",
       value: topCategory ? CATEGORY_META[topCategory.category]?.shortLabel || topCategory.category : "\u2014",
@@ -325,7 +311,7 @@ function QuickStatsBar({
 
   return (
     <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
-      {stats.map((s, i) => {
+      {statItems.map((s, i) => {
         const Icon = s.icon;
         const isClickable = !!s.onClick;
         return (
@@ -1102,6 +1088,7 @@ export default function CyberNewsPage() {
   // Data
   const [news, setNews] = useState<NewsListResponse | null>(null);
   const [categories, setCategories] = useState<NewsCategoriesResponse | null>(null);
+  const [newsStats, setNewsStats] = useState<NewsStatsResponse | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<NewsPipelineStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [catLoading, setCatLoading] = useState(true);
@@ -1140,6 +1127,13 @@ export default function CyberNewsPage() {
     } finally {
       setCatLoading(false);
     }
+  }, []);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const data = await api.getNewsStats();
+      setNewsStats(data);
+    } catch { /* ignore */ }
   }, []);
 
   const fetchPipelineStatus = useCallback(async () => {
@@ -1189,7 +1183,7 @@ export default function CyberNewsPage() {
     }
   }, [page, selectedCategory, searchQuery, selectedTag, sortKey]);
 
-  useEffect(() => { fetchCategories(); }, [fetchCategories]);
+  useEffect(() => { fetchCategories(); fetchStats(); }, [fetchCategories, fetchStats]);
   useEffect(() => { fetchNews(); }, [fetchNews]);
   useEffect(() => { fetchPipelineStatus(); }, [fetchPipelineStatus]);
 
@@ -1198,6 +1192,7 @@ export default function CyberNewsPage() {
     autoRefreshRef.current = setInterval(() => {
       fetchNews(true);
       fetchCategories();
+      fetchStats();
       fetchPipelineStatus();
     }, 60000);
     return () => {
@@ -1212,6 +1207,7 @@ export default function CyberNewsPage() {
       setTimeout(() => {
         fetchNews();
         fetchCategories();
+        fetchStats();
         setRefreshing(false);
       }, 2000);
     } catch {
@@ -1342,7 +1338,7 @@ export default function CyberNewsPage() {
         </div>
         <QuickStatsBar
           categories={categories}
-          news={news}
+          stats={newsStats}
           onFilterCategory={(cat) => { setSelectedCategory(cat); setPage(1); }}
           onSortBy={(sort) => { setSortKey(sort); setPage(1); }}
         />

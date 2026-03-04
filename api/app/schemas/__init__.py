@@ -694,3 +694,14 @@ class NewsPipelineStatusResponse(BaseModel):
     total_sources_failing: int = 0
     last_article_at: datetime | None = None
     status: str = "ok"  # ok, stale, degraded, down
+
+
+class NewsStatsResponse(BaseModel):
+    """Global stats computed across ALL articles — not page-scoped."""
+    total: int = 0
+    today: int = 0
+    critical: int = 0       # relevance_score >= 80
+    high: int = 0           # recommended_priority in (critical, high)
+    avg_score: int = 0
+    sources: int = 0        # distinct source count
+    enriched_pct: int = 0   # percentage AI-enriched

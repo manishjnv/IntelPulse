@@ -709,3 +709,13 @@ export interface NewsCategoriesResponse {
   categories: NewsCategoryCount[];
   total: number;
 }
+
+export interface NewsStatsResponse {
+  total: number;
+  today: number;
+  critical: number;
+  high: number;
+  avg_score: number;
+  sources: number;
+  enriched_pct: number;
+}

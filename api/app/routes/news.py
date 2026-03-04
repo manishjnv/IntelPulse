@@ -34,6 +34,7 @@ from app.schemas import (
     NewsCategoriesResponse,
     NewsFeedStatusResponse,
     NewsPipelineStatusResponse,
+    NewsStatsResponse,
 )
 
 router = APIRouter(prefix="/news", tags=["news"])
@@ -151,6 +152,52 @@ async def list_news(
         pages=pages,
     )
 
+    await set_cached(ck, response.model_dump(), ttl=60)
+    return response
+
+
+@router.get("/stats", response_model=NewsStatsResponse)
+async def news_stats(
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Global stats across ALL articles — used by the QuickStatsBar."""
+    from datetime import timedelta
+
+    ck = cache_key("news_stats")
+    cached = await get_cached(ck)
+    if cached:
+        return cached
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Single query for all scalar stats
+    q = select(
+        func.count(NewsItem.id).label("total"),
+        func.count(NewsItem.id).filter(NewsItem.published_at >= today_start).label("today"),
+        func.count(NewsItem.id).filter(NewsItem.relevance_score >= 80).label("critical"),
+        func.count(NewsItem.id).filter(
+            NewsItem.recommended_priority.in_(["critical", "high"])
+        ).label("high"),
+        func.coalesce(func.round(func.avg(NewsItem.relevance_score)), 0).label("avg_score"),
+        func.count(func.distinct(NewsItem.source)).label("sources"),
+        func.count(NewsItem.id).filter(NewsItem.ai_enriched == True).label("enriched"),
+    )
+    row = (await db.execute(q)).one()
+
+    total = row.total or 0
+    enriched_pct = round(100 * row.enriched / total) if total else 0
+
+    response = NewsStatsResponse(
+        total=total,
+        today=row.today or 0,
+        critical=row.critical or 0,
+        high=row.high or 0,
+        avg_score=int(row.avg_score or 0),
+        sources=row.sources or 0,
+        enriched_pct=enriched_pct,
+    )
     await set_cached(ck, response.model_dump(), ttl=60)
     return response
 
