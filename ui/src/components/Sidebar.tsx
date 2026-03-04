@@ -76,11 +76,11 @@ function DesktopSidebar() {
     <aside
       className={cn(
         "hidden md:flex flex-col border-r border-border/50 bg-sidebar transition-all duration-300 ease-in-out shrink-0 relative group/sidebar",
-        sidebarOpen ? "w-60" : "w-[60px]"
+        sidebarOpen ? "w-48" : "w-[52px]"
       )}
     >
       {/* Logo */}
-      <div className="flex h-14 items-center border-b border-border/50 px-3 gap-2">
+      <div className="flex h-14 items-center border-b border-border/50 px-2.5 gap-2">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 shrink-0">
           <Shield className="h-4 w-4 text-primary" />
         </div>
@@ -93,7 +93,7 @@ function DesktopSidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-4">
+      <nav className="flex-1 overflow-y-auto py-2 px-1.5 space-y-3">
         {NAV_SECTIONS.map((section) => (
           <div key={section.label}>
             {sidebarOpen && (
@@ -112,7 +112,7 @@ function DesktopSidebar() {
                     href={item.href}
                     title={!sidebarOpen ? item.label : undefined}
                     className={cn(
-                      "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] font-medium transition-all duration-150",
+                      "flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] font-medium transition-all duration-150",
                       active
                         ? "bg-primary/10 text-primary shadow-sm"
                         : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
@@ -130,50 +130,51 @@ function DesktopSidebar() {
 
       {/* User */}
       {user && (
-        <div className="border-t border-border/50 px-3 py-2.5">
+        <div className="border-t border-border/50 px-2.5 py-2">
           <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-              <User className="h-3.5 w-3.5 text-primary" />
+            <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+              <User className="h-3 w-3 text-primary" />
             </div>
             {sidebarOpen && (
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium truncate">{user.name || user.email}</p>
-                <p className="text-[10px] text-muted-foreground capitalize">{user.role}</p>
+                <p className="text-[11px] font-medium truncate">{user.name || user.email}</p>
+                <p className="text-[9px] text-muted-foreground capitalize">{user.role}</p>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Floating toggle pill — appears on sidebar hover */}
+      {/* Floating toggle pill — always visible, highlighted */}
       <button
         onClick={toggleSidebar}
         className={cn(
-          "absolute -right-3.5 top-[72px] z-30",
-          "w-7 h-7 rounded-full",
-          "bg-card border border-border shadow-lg",
+          "absolute -right-3 top-[72px] z-30",
+          "w-6 h-6 rounded-full",
+          "bg-primary/20 border border-primary/50 shadow-lg shadow-primary/20",
           "flex items-center justify-center",
-          "text-muted-foreground hover:text-foreground hover:bg-primary/10 hover:border-primary/40",
+          "text-primary hover:text-primary-foreground hover:bg-primary hover:border-primary",
           "transition-all duration-200",
-          "opacity-0 group-hover/sidebar:opacity-100 focus:opacity-100",
-          "hover:scale-110"
+          "hover:scale-110",
+          "animate-pulse hover:animate-none"
         )}
         title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
         aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
       >
         {sidebarOpen ? (
-          <ChevronLeft className="h-3.5 w-3.5" />
+          <ChevronLeft className="h-3 w-3" />
         ) : (
-          <ChevronRight className="h-3.5 w-3.5" />
+          <ChevronRight className="h-3 w-3" />
         )}
       </button>
 
-      {/* Bottom bar toggle — always visible */}
+      {/* Bottom bar toggle — always visible, highlighted */}
       <button
         onClick={toggleSidebar}
         className={cn(
-          "flex h-9 items-center justify-center gap-2 border-t border-border/50",
-          "text-muted-foreground/70 hover:text-foreground hover:bg-accent/30 transition-colors"
+          "flex h-8 items-center justify-center gap-1.5 border-t border-primary/20",
+          "bg-primary/5 text-primary hover:bg-primary/15 hover:text-primary transition-colors",
+          "font-medium"
         )}
         title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
       >
