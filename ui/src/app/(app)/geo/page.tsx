@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useAppStore } from "@/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,9 +17,14 @@ import {
   ChevronRight,
   Building2,
   Layers,
+  X,
+  ExternalLink,
+  Bug,
+  Hash,
 } from "lucide-react";
-import { getDashboardInsights, getIOCStats, type IOCStatsResponse } from "@/lib/api";
+import { getDashboardInsights, getIOCStats, getIOCs, type IOCStatsResponse, type IOCListResponse } from "@/lib/api";
 import type { DashboardInsights } from "@/types";
+import Link from "next/link";
 
 /* ─── Constants ─────────────────────────────────────────── */
 
@@ -49,6 +54,16 @@ export default function GeoViewPage() {
   const [loading, setLoading] = useState(true);
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"countries" | "continents" | "networks" | "industries" | "intel">("countries");
+
+  // Drill-down state
+  const [drillDown, setDrillDown] = useState<{
+    type: "country_iocs" | "continent_countries" | "network_iocs" | "industry_intel" | "threat_geo_intel" | "stat_overview";
+    label: string;
+    filter: string;
+    data?: any;
+  } | null>(null);
+  const [drillLoading, setDrillLoading] = useState(false);
+  const [drillIOCs, setDrillIOCs] = useState<IOCListResponse | null>(null);
 
   useEffect(() => {
     fetchDashboard();
@@ -136,6 +151,77 @@ export default function GeoViewPage() {
     ? Math.round((iocStats.enrichment_coverage.enriched / Math.max(iocStats.enrichment_coverage.total_ips, 1)) * 100)
     : 0;
 
+  // Drill-down handlers
+  const handleDrillCountry = useCallback(async (name: string, code: string, count: number) => {
+    if (drillDown?.type === "country_iocs" && drillDown.filter === code) {
+      setDrillDown(null); setDrillIOCs(null); return;
+    }
+    setDrillDown({ type: "country_iocs", label: `${name} (${code})`, filter: code });
+    setDrillLoading(true);
+    try {
+      const res = await getIOCs({ country_code: code, page_size: 20, sort_by: "risk_score", sort_dir: "desc" });
+      setDrillIOCs(res);
+    } catch { setDrillIOCs(null); }
+    setDrillLoading(false);
+  }, [drillDown]);
+
+  const handleDrillContinent = useCallback((name: string, code: string) => {
+    if (drillDown?.type === "continent_countries" && drillDown.filter === code) {
+      setDrillDown(null); return;
+    }
+    const matching = countries.filter(c => {
+      // Map country codes to continents (simplified)
+      const continentMap: Record<string, string[]> = {
+        EU: ["DE","FR","GB","NL","IT","ES","PL","SE","NO","FI","DK","BE","AT","CH","CZ","PT","IE","RO","BG","HR","HU","SK","SI","LT","LV","EE","LU","MT","CY","GR","UA","BY","RU","RS","BA","ME","MK","AL","MD","IS","XK"],
+        NA: ["US","CA","MX","CU","JM","HT","DO","PR","TT","BZ","GT","HN","SV","NI","CR","PA","BS","BB","AG","KN","LC","VC","GD","DM"],
+        SA: ["BR","AR","CO","CL","PE","VE","EC","BO","PY","UY","GY","SR","GF"],
+        AS: ["CN","JP","IN","KR","SG","ID","TH","VN","MY","PH","TW","HK","BD","PK","LK","NP","MM","KH","LA","MN","KZ","UZ","KG","TJ","TM","AZ","GE","AM","AF","IQ","IR","SA","AE","IL","JO","LB","SY","OM","QA","BH","KW","YE"],
+        AF: ["ZA","NG","KE","EG","MA","DZ","TN","GH","SN","CI","CM","ET","TZ","UG","SD","LY","AO","MZ","MG","ZW","MW","ZM","BW","NA","RW","BF","ML","NE","TD","SO","ER","DJ","GA","CG","CD","MU","SC","CV"],
+        OC: ["AU","NZ","FJ","PG","NC","PF","GU","WS","TO","VU","SB","FM","KI","MH","PW","NR","TV","CK"],
+      };
+      return (continentMap[code] || []).includes(c.code);
+    });
+    setDrillDown({ type: "continent_countries", label: name, filter: code, data: matching });
+  }, [drillDown, countries]);
+
+  const handleDrillNetwork = useCallback(async (asn: string, name: string, count: number) => {
+    if (drillDown?.type === "network_iocs" && drillDown.filter === asn) {
+      setDrillDown(null); setDrillIOCs(null); return;
+    }
+    setDrillDown({ type: "network_iocs", label: `${name} (${asn})`, filter: asn });
+    setDrillLoading(true);
+    try {
+      const res = await getIOCs({ asn, page_size: 20, sort_by: "risk_score", sort_dir: "desc" });
+      setDrillIOCs(res);
+    } catch { setDrillIOCs(null); }
+    setDrillLoading(false);
+  }, [drillDown]);
+
+  const handleDrillIndustry = useCallback((name: string) => {
+    if (drillDown?.type === "industry_intel" && drillDown.filter === name) {
+      setDrillDown(null); return;
+    }
+    const matching = (dashboard?.top_risks || []).filter(item =>
+      item.targeted_sectors?.some(s => s.toLowerCase().includes(name.toLowerCase()))
+    );
+    setDrillDown({ type: "industry_intel", label: name, filter: name, data: matching });
+  }, [drillDown, dashboard]);
+
+  const handleDrillThreatGeo = useCallback((name: string) => {
+    if (drillDown?.type === "threat_geo_intel" && drillDown.filter === name) {
+      setDrillDown(null); return;
+    }
+    const matching = (dashboard?.top_risks || []).filter(item => item.geo?.includes(name));
+    setDrillDown({ type: "threat_geo_intel", label: name, filter: name, data: matching });
+  }, [drillDown, dashboard]);
+
+  const handleStatClick = useCallback((tab: typeof activeTab) => {
+    setActiveTab(tab);
+    setDrillDown(null);
+    setDrillIOCs(null);
+    setSelectedCountry(null);
+  }, []);
+
   const countryDonut = useMemo(
     () => countries.slice(0, 10).map((c) => ({ name: `${c.code} ${c.name}`, value: c.count, color: c.color })),
     [countries]
@@ -171,11 +257,11 @@ export default function GeoViewPage() {
 
       {/* ── Stats Row ──────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-        <StatMini icon={<Globe className="h-3.5 w-3.5 text-blue-400" />} label="Countries" value={totalCountries} bgClass="bg-blue-500/[0.04] border-blue-500/10" iconBg="bg-blue-500/10" />
-        <StatMini icon={<Layers className="h-3.5 w-3.5 text-purple-400" />} label="Continents" value={totalContinents} bgClass="bg-purple-500/[0.04] border-purple-500/10" iconBg="bg-purple-500/10" />
-        <StatMini icon={<MapPin className="h-3.5 w-3.5 text-cyan-400" />} label="IOCs with Geo" value={totalIOCsWithGeo} bgClass="bg-cyan-500/[0.04] border-cyan-500/10" iconBg="bg-cyan-500/10" />
-        <StatMini icon={<AlertTriangle className="h-3.5 w-3.5 text-red-400" />} label="Threat Regions" value={totalThreatRegions} bgClass="bg-red-500/[0.04] border-red-500/10" iconBg="bg-red-500/10" />
-        <StatMini icon={<Building2 className="h-3.5 w-3.5 text-orange-400" />} label="Industries" value={industries.length} bgClass="bg-orange-500/[0.04] border-orange-500/10" iconBg="bg-orange-500/10" />
+        <StatMini icon={<Globe className="h-3.5 w-3.5 text-blue-400" />} label="Countries" value={totalCountries} bgClass="bg-blue-500/[0.04] border-blue-500/10" iconBg="bg-blue-500/10" onClick={() => handleStatClick("countries")} />
+        <StatMini icon={<Layers className="h-3.5 w-3.5 text-purple-400" />} label="Continents" value={totalContinents} bgClass="bg-purple-500/[0.04] border-purple-500/10" iconBg="bg-purple-500/10" onClick={() => handleStatClick("continents")} />
+        <StatMini icon={<MapPin className="h-3.5 w-3.5 text-cyan-400" />} label="IOCs with Geo" value={totalIOCsWithGeo} bgClass="bg-cyan-500/[0.04] border-cyan-500/10" iconBg="bg-cyan-500/10" onClick={() => handleStatClick("countries")} />
+        <StatMini icon={<AlertTriangle className="h-3.5 w-3.5 text-red-400" />} label="Threat Regions" value={totalThreatRegions} bgClass="bg-red-500/[0.04] border-red-500/10" iconBg="bg-red-500/10" onClick={() => handleStatClick("intel")} />
+        <StatMini icon={<Building2 className="h-3.5 w-3.5 text-orange-400" />} label="Industries" value={industries.length} bgClass="bg-orange-500/[0.04] border-orange-500/10" iconBg="bg-orange-500/10" onClick={() => handleStatClick("industries")} />
       </div>
 
       {/* ── Tab Navigation ─────────────────────────────── */}
@@ -189,7 +275,7 @@ export default function GeoViewPage() {
         ]).map((tab) => (
           <button
             key={tab.key}
-            onClick={() => { setActiveTab(tab.key); setSelectedCountry(null); }}
+            onClick={() => { setActiveTab(tab.key); setSelectedCountry(null); setDrillDown(null); setDrillIOCs(null); }}
             className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-[1px] ${
               activeTab === tab.key
                 ? "border-primary text-primary"
@@ -249,7 +335,14 @@ export default function GeoViewPage() {
                           <div className="text-[9px] text-muted-foreground">{c.code}</div>
                         </div>
                         <div className="text-right">
-                          <div className="text-sm font-bold tabular-nums" style={{ color: c.color }}>{c.count}</div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDrillCountry(c.name, c.code, c.count); }}
+                            className="text-sm font-bold tabular-nums hover:underline cursor-pointer transition-colors"
+                            style={{ color: c.color }}
+                            title={`View ${c.count} IOCs from ${c.name}`}
+                          >
+                            {c.count}
+                          </button>
                           <div className="text-[8px] text-muted-foreground">IOCs</div>
                         </div>
                       </button>
@@ -277,7 +370,13 @@ export default function GeoViewPage() {
                       <div key={g.name} className="rounded-lg border border-border/30 p-2.5 bg-muted/10 hover:bg-muted/20 transition-colors">
                         <div className="text-xs font-semibold truncate" title={g.name}>{g.name}</div>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-lg font-bold tabular-nums">{g.count}</span>
+                          <button
+                            onClick={() => handleDrillThreatGeo(g.name)}
+                            className="text-lg font-bold tabular-nums hover:underline cursor-pointer transition-colors"
+                            title={`View threats targeting ${g.name}`}
+                          >
+                            {g.count}
+                          </button>
                           <span className="text-[9px] text-muted-foreground">mentions</span>
                         </div>
                         <div className="flex items-center gap-1 mt-1">
@@ -293,6 +392,9 @@ export default function GeoViewPage() {
                 </div>
               </CardContent>
             </Card>
+          )}
+          {drillDown && (drillDown.type === "country_iocs" || drillDown.type === "threat_geo_intel") && (
+            <DrillDownPanel drillDown={drillDown} drillIOCs={drillIOCs} drillLoading={drillLoading} onClose={() => { setDrillDown(null); setDrillIOCs(null); }} />
           )}
         </div>
       )}
@@ -327,7 +429,14 @@ export default function GeoViewPage() {
                           <div className="flex-1">
                             <div className="flex items-center justify-between">
                               <span className="text-sm font-semibold">{c.name || c.code}</span>
-                              <span className="text-sm font-bold" style={{ color: c.color }}>{c.count.toLocaleString()}</span>
+                              <button
+                                onClick={() => handleDrillContinent(c.name || c.code, c.code)}
+                                className="text-sm font-bold hover:underline cursor-pointer transition-colors"
+                                style={{ color: c.color }}
+                                title={`View countries in ${c.name || c.code}`}
+                              >
+                                {c.count.toLocaleString()}
+                              </button>
                             </div>
                             <div className="h-2 rounded-full bg-muted/30 overflow-hidden mt-1.5">
                               <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: c.color }} />
@@ -342,6 +451,9 @@ export default function GeoViewPage() {
               ) : <EmptyState />}
             </CardContent>
           </Card>
+          {drillDown?.type === "continent_countries" && (
+            <DrillDownPanel drillDown={drillDown} drillIOCs={drillIOCs} drillLoading={drillLoading} onClose={() => { setDrillDown(null); setDrillIOCs(null); }} />
+          )}
         </div>
       )}
 
@@ -375,13 +487,22 @@ export default function GeoViewPage() {
                         <div className="text-[11px] font-medium truncate">{n.name || "Unknown"}</div>
                         <div className="text-[9px] text-muted-foreground font-mono">{n.asn}</div>
                       </div>
-                      <Badge variant="secondary" className="text-[10px] h-5 shrink-0 ml-2">{n.count} IOCs</Badge>
+                      <button
+                        onClick={() => handleDrillNetwork(n.asn, n.name || "Unknown", n.count)}
+                        className="text-[10px] h-5 shrink-0 ml-2 px-2 rounded-full bg-secondary text-secondary-foreground font-medium hover:bg-primary/20 hover:text-primary cursor-pointer transition-colors"
+                        title={`View ${n.count} IOCs from ${n.name || n.asn}`}
+                      >
+                        {n.count} IOCs
+                      </button>
                     </div>
                   ))}
                 </div>
               ) : <EmptyState />}
             </CardContent>
           </Card>
+          {drillDown?.type === "network_iocs" && (
+            <DrillDownPanel drillDown={drillDown} drillIOCs={drillIOCs} drillLoading={drillLoading} onClose={() => { setDrillDown(null); setDrillIOCs(null); }} className="lg:col-span-3" />
+          )}
         </div>
       )}
 
@@ -415,10 +536,23 @@ export default function GeoViewPage() {
                       <div key={ind.name} className="rounded-md border border-border/30 p-2.5 hover:bg-muted/10 transition-colors">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-medium truncate">{ind.name}</span>
-                          <span className="text-[10px] font-bold" style={{ color: rCol }}>{Math.round(ind.avg_risk)}</span>
+                          <button
+                            onClick={() => handleDrillIndustry(ind.name)}
+                            className="text-[10px] font-bold hover:underline cursor-pointer transition-colors"
+                            style={{ color: rCol }}
+                            title={`View intel targeting ${ind.name}`}
+                          >
+                            {Math.round(ind.avg_risk)}
+                          </button>
                         </div>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[9px] text-muted-foreground">{ind.count} mentions</span>
+                          <button
+                            onClick={() => handleDrillIndustry(ind.name)}
+                            className="text-[9px] text-muted-foreground hover:text-primary hover:underline cursor-pointer transition-colors"
+                            title={`View ${ind.count} intel items targeting ${ind.name}`}
+                          >
+                            {ind.count} mentions
+                          </button>
                           <div className="flex-1 h-1 rounded-full bg-muted/40 overflow-hidden">
                             <div className="h-full rounded-full" style={{ width: `${Math.min(ind.avg_risk, 100)}%`, backgroundColor: rCol }} />
                           </div>
@@ -430,6 +564,9 @@ export default function GeoViewPage() {
               ) : <EmptyState />}
             </CardContent>
           </Card>
+          {drillDown?.type === "industry_intel" && (
+            <DrillDownPanel drillDown={drillDown} drillIOCs={drillIOCs} drillLoading={drillLoading} onClose={() => { setDrillDown(null); setDrillIOCs(null); }} className="lg:col-span-3" />
+          )}
         </div>
       )}
 
@@ -486,7 +623,7 @@ export default function GeoViewPage() {
                             {count}
                           </span>
                         ))}
-                        <Badge variant="secondary" className="text-[10px] h-5">{g.count}</Badge>
+                        <Badge variant="secondary" className="text-[10px] h-5 cursor-pointer hover:bg-primary/20 hover:text-primary transition-colors">{g.count}</Badge>
                       </div>
                     </button>
                   ))}
@@ -538,13 +675,13 @@ export default function GeoViewPage() {
 
 /* ── Helper Components ─────────────────────────────────── */
 
-function StatMini({ icon, label, value, bgClass, iconBg }: { icon: React.ReactNode; label: string; value: number; bgClass: string; iconBg: string }) {
+function StatMini({ icon, label, value, bgClass, iconBg, onClick }: { icon: React.ReactNode; label: string; value: number; bgClass: string; iconBg: string; onClick?: () => void }) {
   return (
-    <Card className={bgClass}>
+    <Card className={`${bgClass} ${onClick ? "cursor-pointer hover:ring-1 hover:ring-primary/30 transition-all" : ""}`} onClick={onClick}>
       <CardContent className="p-2.5 flex items-center gap-2.5">
         <div className={`p-1.5 rounded-lg ${iconBg}`}>{icon}</div>
         <div>
-          <p className="text-base font-bold leading-none">{value.toLocaleString()}</p>
+          <p className={`text-base font-bold leading-none ${onClick ? "hover:text-primary" : ""}`}>{value.toLocaleString()}</p>
           <p className="text-[9px] text-muted-foreground mt-0.5">{label}</p>
         </div>
       </CardContent>
@@ -557,5 +694,132 @@ function EmptyState() {
     <div className="h-[180px] flex items-center justify-center text-xs text-muted-foreground/60">
       No geographic data available
     </div>
+  );
+}
+
+/* ── Drill-Down Panel ──────────────────────────────────── */
+
+const RISK_COLOR_MAP: Record<string, string> = {
+  critical: "#ef4444", high: "#f97316", medium: "#eab308", low: "#22c55e",
+};
+
+function DrillDownPanel({
+  drillDown,
+  drillIOCs,
+  drillLoading,
+  onClose,
+  className,
+}: {
+  drillDown: { type: string; label: string; filter: string; data?: any };
+  drillIOCs: IOCListResponse | null;
+  drillLoading: boolean;
+  onClose: () => void;
+  className?: string;
+}) {
+  const isIOCDrill = drillDown.type === "country_iocs" || drillDown.type === "network_iocs";
+  const isIntelDrill = drillDown.type === "industry_intel" || drillDown.type === "threat_geo_intel";
+  const isContinentDrill = drillDown.type === "continent_countries";
+
+  return (
+    <Card className={`border-primary/20 bg-primary/[0.02] animate-in fade-in slide-in-from-top-2 duration-200 ${className || ""}`}>
+      <CardHeader className="pb-2 pt-3 px-4">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            {isIOCDrill && <Bug className="h-4 w-4 text-primary" />}
+            {isIntelDrill && <AlertTriangle className="h-4 w-4 text-red-400" />}
+            {isContinentDrill && <Globe className="h-4 w-4 text-purple-400" />}
+            <span>{drillDown.label}</span>
+            <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-primary/30 text-primary">
+              {isIOCDrill && `${drillIOCs?.total || 0} IOCs`}
+              {isIntelDrill && `${drillDown.data?.length || 0} intel items`}
+              {isContinentDrill && `${drillDown.data?.length || 0} countries`}
+            </Badge>
+          </CardTitle>
+          <button onClick={onClose} className="p-1 rounded-md hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </CardHeader>
+      <CardContent className="px-4 pb-3 max-h-[350px] overflow-y-auto">
+        {drillLoading ? (
+          <div className="flex items-center justify-center py-8 text-xs text-muted-foreground">
+            <Activity className="h-4 w-4 animate-spin mr-2" />Loading...
+          </div>
+        ) : isIOCDrill && drillIOCs ? (
+          <div className="space-y-1.5">
+            {drillIOCs.items.length > 0 ? drillIOCs.items.map((ioc) => {
+              const riskCol = ioc.risk_score >= 80 ? "#ef4444" : ioc.risk_score >= 60 ? "#f97316" : ioc.risk_score >= 40 ? "#eab308" : "#22c55e";
+              return (
+                <Link key={ioc.id} href={`/iocs?search=${encodeURIComponent(ioc.value)}`}
+                  className="flex items-center gap-3 px-3 py-2 rounded-md border border-border/30 hover:bg-muted/20 transition-colors group"
+                >
+                  <div className="w-1.5 h-7 rounded-full shrink-0" style={{ background: riskCol }} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-mono font-medium truncate group-hover:text-primary transition-colors">{ioc.value}</p>
+                    <p className="text-[9px] text-muted-foreground flex items-center gap-2">
+                      <span>{ioc.ioc_type}</span>
+                      <span>·</span>
+                      <span>Risk: {ioc.risk_score}</span>
+                      {ioc.country && <><span>·</span><span>{ioc.country}</span></>}
+                      {ioc.as_name && <><span>·</span><span className="truncate max-w-[120px]">{ioc.as_name}</span></>}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-[9px] shrink-0" style={{ borderColor: riskCol, color: riskCol }}>{ioc.risk_score}</Badge>
+                  <ChevronRight className="h-3 w-3 text-muted-foreground/30 group-hover:text-primary transition-colors" />
+                </Link>
+              );
+            }) : (
+              <div className="text-xs text-muted-foreground/60 text-center py-6">No IOCs found</div>
+            )}
+          </div>
+        ) : isIntelDrill && drillDown.data ? (
+          <div className="space-y-1.5">
+            {drillDown.data.length > 0 ? drillDown.data.map((item: any, i: number) => {
+              const sevCol = RISK_COLOR_MAP[item.severity] || "#666";
+              return (
+                <Link key={i} href={`/intel/${item.id}`}
+                  className="flex items-center gap-3 px-3 py-2 rounded-md border border-border/30 hover:bg-muted/20 transition-colors group"
+                >
+                  <div className="w-1.5 h-7 rounded-full shrink-0" style={{ background: sevCol }} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium truncate group-hover:text-primary transition-colors">{item.title}</p>
+                    <p className="text-[9px] text-muted-foreground">
+                      {item.source_name} · Risk {item.risk_score}
+                      {item.geo?.length > 0 && ` · ${item.geo.slice(0, 3).join(", ")}`}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-[9px] shrink-0" style={{ borderColor: sevCol, color: sevCol }}>{item.severity}</Badge>
+                  <ChevronRight className="h-3 w-3 text-muted-foreground/30 group-hover:text-primary transition-colors" />
+                </Link>
+              );
+            }) : (
+              <div className="text-xs text-muted-foreground/60 text-center py-6">No intel items found</div>
+            )}
+          </div>
+        ) : isContinentDrill && drillDown.data ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+            {drillDown.data.length > 0 ? drillDown.data.map((c: any) => (
+              <div key={c.code} className="flex items-center gap-2 px-3 py-2 rounded-md border border-border/30 hover:bg-muted/20 transition-colors">
+                <img
+                  src={`https://flagcdn.com/24x18/${c.code.toLowerCase()}.png`}
+                  alt={c.code}
+                  className="h-3.5 shrink-0 rounded-[1px]"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium truncate">{c.name}</div>
+                  <div className="text-[9px] text-muted-foreground">{c.code}</div>
+                </div>
+                <span className="text-xs font-bold tabular-nums" style={{ color: c.color }}>{c.count}</span>
+              </div>
+            )) : (
+              <div className="col-span-full text-xs text-muted-foreground/60 text-center py-6">No countries found</div>
+            )}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
   );
 }
