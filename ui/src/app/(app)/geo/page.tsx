@@ -202,7 +202,7 @@ export default function GeoViewPage() {
       setDrillDown(null); return;
     }
     const matching = (dashboard?.top_risks || []).filter(item =>
-      item.targeted_sectors?.some(s => s.toLowerCase().includes(name.toLowerCase()))
+      item.industries?.some(s => s.toLowerCase().includes(name.toLowerCase()))
     );
     setDrillDown({ type: "industry_intel", label: name, filter: name, data: matching });
   }, [drillDown, dashboard]);
