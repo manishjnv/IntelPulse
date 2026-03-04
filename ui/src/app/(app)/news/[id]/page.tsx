@@ -795,10 +795,26 @@ export default function NewsDetailPage() {
       )}
 
       {/* ── Reference Links ────────────────────────────── */}
-      {item.reference_links && item.reference_links.length > 0 && (
+      {(item.source_url || (item.reference_links && item.reference_links.length > 0)) && (
         <Section icon={Link2} title="Reference Sources" accent="text-violet-400">
           <ul className="space-y-2">
-            {item.reference_links.map((link, i) => (
+            {/* Always show the actual source URL first */}
+            {item.source_url && (
+              <li>
+                <a
+                  href={item.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-xs text-emerald-400 hover:text-emerald-300 hover:underline transition-colors group font-medium"
+                >
+                  <ExternalLink className="h-3 w-3 shrink-0 opacity-80 group-hover:opacity-100" />
+                  <span className="break-all">{item.source_url}</span>
+                  <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-emerald-500/30 text-emerald-400 ml-1">Original Source</Badge>
+                </a>
+              </li>
+            )}
+            {/* Additional reference links (skip if same as source_url) */}
+            {item.reference_links?.filter(link => link !== item.source_url).map((link, i) => (
               <li key={i}>
                 <a
                   href={link}

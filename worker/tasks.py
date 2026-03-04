@@ -1687,7 +1687,15 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
                 item.mitigation_recommendations = enrichment.get("mitigation_recommendations", [])
                 item.yara_rule = enrichment.get("yara_rule")
                 item.kql_rule = enrichment.get("kql_rule")
-                item.reference_links = enrichment.get("reference_links", [])
+                # Always put the actual source URL first, then AI-suggested links (deduped)
+                ai_refs = enrichment.get("reference_links", [])
+                seen = {item.source_url}
+                deduped_refs = [item.source_url]
+                for ref in ai_refs:
+                    if ref and ref not in seen:
+                        seen.add(ref)
+                        deduped_refs.append(ref)
+                item.reference_links = deduped_refs
                 item.confidence = enrichment.get("confidence", "medium") if enrichment.get("confidence") in ("high", "medium", "low") else "medium"
                 item.relevance_score = max(1, min(100, enrichment.get("relevance_score", 50)))
                 item.ai_enriched = True
@@ -1847,7 +1855,15 @@ def re_enrich_fallback_news(batch_size: int = 10) -> dict:
                 item.mitigation_recommendations = enrichment.get("mitigation_recommendations", [])
                 item.yara_rule = enrichment.get("yara_rule")
                 item.kql_rule = enrichment.get("kql_rule")
-                item.reference_links = enrichment.get("reference_links", [])
+                # Always put the actual source URL first, then AI-suggested links (deduped)
+                ai_refs = enrichment.get("reference_links", [])
+                seen = {item.source_url}
+                deduped_refs = [item.source_url]
+                for ref in ai_refs:
+                    if ref and ref not in seen:
+                        seen.add(ref)
+                        deduped_refs.append(ref)
+                item.reference_links = deduped_refs
                 item.confidence = (
                     enrichment.get("confidence", "medium")
                     if enrichment.get("confidence") in ("high", "medium", "low")
