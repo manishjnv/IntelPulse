@@ -4,7 +4,7 @@ x-common-env: &common-env
   POSTGRES_DB: ti_platform
   POSTGRES_USER: ti
   POSTGRES_PASSWORD: ti_secret
-  REDIS_URL: redis://redis:6379/0
+  REDIS_URL: redis://:IntelWatch_R3dis_2026@redis:6379/0
   OPENSEARCH_URL: http://opensearch:9200
   LOG_LEVEL: INFO
   ENVIRONMENT: production
@@ -32,12 +32,13 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    command: redis-server --requirepass IntelWatch_R3dis_2026 --protected-mode yes --rename-command REPLICAOF "" --rename-command SLAVEOF "" --rename-command DEBUG "" --rename-command CONFIG ""
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "IntelWatch_R3dis_2026", "--no-auth-warning", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
