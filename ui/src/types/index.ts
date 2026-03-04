@@ -68,6 +68,7 @@ export interface FeedStatus {
   items_stored: number;
   error_message: string | null;
   run_count: number;
+  total_items_ingested: number;
 }
 
 export interface NewsFeedStatus {

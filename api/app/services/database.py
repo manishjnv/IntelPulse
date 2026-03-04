@@ -252,6 +252,13 @@ async def get_dashboard_stats(db: AsyncSession) -> dict:
     # Feed statuses
     feeds = (await db.execute(select(FeedSyncState))).scalars().all()
 
+    # Total items per source (intel_items.source_name → count)
+    source_counts_rows = (await db.execute(
+        select(IntelItem.source_name, func.count(IntelItem.id).label("cnt"))
+        .group_by(IntelItem.source_name)
+    )).all()
+    source_counts = {r.source_name: r.cnt for r in source_counts_rows}
+
     return {
         "total_items": total,
         "items_last_24h": last_24h,
@@ -260,6 +267,7 @@ async def get_dashboard_stats(db: AsyncSession) -> dict:
         "severity_distribution": severity_distribution,
         "top_risks": top_items,
         "feed_status": feeds,
+        "source_counts": source_counts,
     }
 
 

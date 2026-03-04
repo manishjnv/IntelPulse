@@ -95,6 +95,9 @@ class VirusTotalConnector(BaseFeedConnector):
         )
 
         # 2. Lookup IPs on VT
+        # Initial delay to avoid rate-limit from seed HTTP requests counting
+        # against VT's per-minute window
+        await asyncio.sleep(VT_CALL_DELAY)
         call_count = 0
         rate_limited = False
         for ip in batch_ips:

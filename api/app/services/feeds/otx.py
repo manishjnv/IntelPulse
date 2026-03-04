@@ -41,19 +41,22 @@ class OTXConnector(BaseFeedConnector):
             logger.debug("otx_subscribed_error", error=str(e))
             pulses = []
 
-        # Fallback: if no subscribed pulses, fetch recent public activity
+        # Fallback: if no subscribed pulses, search for recent threat pulses
         if not pulses:
             try:
-                activity_url = f"{OTX_BASE_URL}/pulses/activity"
-                act_params: dict = {"limit": 50, "page": 1}
-                if last_cursor:
-                    act_params["modified_since"] = last_cursor
-                response = await self.client.get(activity_url, headers=headers, params=act_params)
+                search_url = f"{OTX_BASE_URL}/search/pulses"
+                search_params: dict = {
+                    "q": "malware OR ransomware OR apt OR exploit OR vulnerability",
+                    "sort": "modified",
+                    "limit": 50,
+                }
+                response = await self.client.get(search_url, headers=headers, params=search_params)
                 response.raise_for_status()
                 data = response.json()
                 pulses = data.get("results", [])
+                logger.info("otx_search_fallback", total=len(pulses))
             except Exception as e:
-                logger.error("otx_activity_error", error=str(e))
+                logger.error("otx_search_error", error=str(e))
                 pulses = []
 
         logger.info("otx_fetch", total=len(pulses))

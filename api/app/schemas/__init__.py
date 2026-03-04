@@ -204,6 +204,7 @@ class FeedStatusResponse(BaseModel):
     items_stored: int
     error_message: str | None = None
     run_count: int
+    total_items_ingested: int = 0
 
 
 # ─── User ────────────────────────────────────────────────

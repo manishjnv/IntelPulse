@@ -12,7 +12,13 @@ from app.services.feeds.base import BaseFeedConnector
 logger = get_logger(__name__)
 settings = get_settings()
 
-ABUSEIPDB_URL = "https://api.abuseipdb.com/api/v2/blacklist"
+ABUSEIPDB_BLACKLIST_URL = "https://api.abuseipdb.com/api/v2/blacklist"
+ABUSEIPDB_CHECK_URL = "https://api.abuseipdb.com/api/v2/check"
+
+# Public seed source for IPs to check (stamparm/ipsum — high-confidence malicious IPs)
+IPSUM_URL = "https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt"
+IPSUM_MIN_SCORE = 8
+MAX_CHECKS_PER_CYCLE = 25  # Stay well under 1000/day free-tier limit
 
 
 class AbuseIPDBConnector(BaseFeedConnector):
@@ -28,18 +34,86 @@ class AbuseIPDBConnector(BaseFeedConnector):
             "Key": settings.abuseipdb_api_key,
             "Accept": "application/json",
         }
-        params = {
-            "confidenceMinimum": 90,
-            "limit": 500,
-        }
 
-        response = await self.client.get(ABUSEIPDB_URL, headers=headers, params=params)
-        response.raise_for_status()
-        data = response.json()
+        # Try the blacklist endpoint first (requires paid plan)
+        try:
+            params = {"confidenceMinimum": 90, "limit": 500}
+            response = await self.client.get(ABUSEIPDB_BLACKLIST_URL, headers=headers, params=params)
+            response.raise_for_status()
+            data = response.json()
+            items = data.get("data", [])
+            if items:
+                logger.info("abuseipdb_fetch_blacklist", total=len(items))
+                return items
+        except Exception as e:
+            logger.info("abuseipdb_blacklist_unavailable", error=str(e)[:200])
 
-        items = data.get("data", [])
-        logger.info("abuseipdb_fetch", total=len(items))
+        # Fallback: check individual IPs from public threat lists (free tier)
+        seed_ips = await self._fetch_seed_ips()
+        if not seed_ips:
+            logger.warning("abuseipdb_no_seed_ips")
+            return []
+
+        # Rotate through seed IPs using cursor offset
+        offset = 0
+        if last_cursor:
+            try:
+                offset = int(last_cursor)
+            except (ValueError, TypeError):
+                pass
+
+        offset = offset % len(seed_ips)
+        batch = seed_ips[offset : offset + MAX_CHECKS_PER_CYCLE]
+        if len(batch) < MAX_CHECKS_PER_CYCLE:
+            batch += seed_ips[: MAX_CHECKS_PER_CYCLE - len(batch)]
+
+        items = []
+        for ip in batch:
+            try:
+                resp = await self.client.get(
+                    ABUSEIPDB_CHECK_URL,
+                    headers=headers,
+                    params={"ipAddress": ip, "maxAgeInDays": 90, "verbose": ""},
+                )
+                if resp.status_code == 429:
+                    logger.warning("abuseipdb_rate_limited")
+                    break
+                if resp.status_code == 200:
+                    entry = resp.json().get("data", {})
+                    if entry and entry.get("abuseConfidenceScore", 0) >= 50:
+                        items.append(entry)
+            except Exception as e:
+                logger.debug("abuseipdb_check_error", ip=ip, error=str(e)[:100])
+
+        self._next_cursor = str(offset + MAX_CHECKS_PER_CYCLE)
+        logger.info("abuseipdb_fetch_check", total=len(items), checked=len(batch))
         return items
+
+    async def _fetch_seed_ips(self) -> list[str]:
+        """Fetch high-confidence malicious IPs from IPsum."""
+        import random
+        try:
+            resp = await self.client.get(IPSUM_URL, timeout=30)
+            if resp.status_code != 200:
+                return []
+            ips = []
+            for line in resp.text.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) >= 2:
+                    try:
+                        score = int(parts[1])
+                        if score >= IPSUM_MIN_SCORE:
+                            ips.append(parts[0])
+                    except ValueError:
+                        continue
+            random.shuffle(ips)
+            return ips[:500]
+        except Exception as e:
+            logger.error("abuseipdb_seed_error", error=str(e))
+            return []
 
     def normalize(self, raw_items: list[dict]) -> list[dict]:
         items = []

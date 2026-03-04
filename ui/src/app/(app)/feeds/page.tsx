@@ -128,13 +128,15 @@ export default function FeedStatusPage() {
   /* ── Intel Feeds data ─────────────────────────────── */
   const intelFeeds = useMemo(() => {
     if (!dashboard?.feed_status) return [];
-    return dashboard.feed_status.map((fs) => ({
-      name: fs.feed_name,
-      status: fs.status || "unknown",
-      last_run: fs.last_run || fs.last_success || null,
-      items: fs.items_fetched ?? fs.items_stored ?? null,
-      error: fs.error_message || null,
-    }));
+    return dashboard.feed_status
+      .map((fs) => ({
+        name: fs.feed_name,
+        status: fs.status || "unknown",
+        last_run: fs.last_run || fs.last_success || null,
+        items: fs.total_items_ingested ?? fs.items_fetched ?? fs.items_stored ?? null,
+        error: fs.error_message || null,
+      }))
+      .sort((a, b) => (b.items ?? 0) - (a.items ?? 0));
   }, [dashboard]);
 
   /* ── Stats ────────────────────────────────────────── */
@@ -420,7 +422,7 @@ export default function FeedStatusPage() {
                 </CardContent>
               </Card>
             ) : (
-              newsFeeds.map((feed) => {
+              [...newsFeeds].sort((a, b) => b.total_articles - a.total_articles).map((feed) => {
                 const meta = getStatusMeta(feed.status);
                 const hasConsecutiveFailures =
                   feed.consecutive_failures > 0 && feed.status !== "ok";

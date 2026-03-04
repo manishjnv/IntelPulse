@@ -371,7 +371,13 @@ async def fetch_rss_feed(feed: dict) -> dict:
             entries = root.findall("atom:entry", ns) or root.findall("entry")
             for entry in entries:
                 title = (entry.findtext("atom:title", namespaces=ns) or entry.findtext("title") or "").strip()
-                link_el = entry.find("atom:link[@rel='alternate']", ns) or entry.find("atom:link", ns) or entry.find("link")
+                # Use explicit 'is not None' checks — ElementTree Elements
+                # with no children are falsy, so 'or' chains skip valid <link/> tags.
+                link_el = entry.find("atom:link[@rel='alternate']", ns)
+                if link_el is None:
+                    link_el = entry.find("atom:link", ns)
+                if link_el is None:
+                    link_el = entry.find("link")
                 link = ""
                 if link_el is not None:
                     link = link_el.get("href", "").strip()
@@ -576,7 +582,7 @@ async def get_news_feed_statuses() -> list:
 
     async with async_session_factory() as session:
         result = await session.execute(
-            select(NewsFeedStatus).order_by(NewsFeedStatus.source_name)
+            select(NewsFeedStatus).order_by(NewsFeedStatus.total_articles.desc())
         )
         return result.scalars().all()
 

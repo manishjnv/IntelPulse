@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -19,6 +19,11 @@ class NVDConnector(BaseFeedConnector):
     FEED_NAME = "nvd"
     SOURCE_RELIABILITY = 90
 
+    @staticmethod
+    def _nvd_date(dt: datetime) -> str:
+        """Format datetime for NVD API 2.0 (milliseconds + UTC offset)."""
+        return dt.strftime("%Y-%m-%dT%H:%M:%S.000+00:00")
+
     async def fetch(self, last_cursor: str | None = None) -> list[dict]:
         params: dict = {
             "resultsPerPage": 100,
@@ -26,16 +31,22 @@ class NVDConnector(BaseFeedConnector):
             "noRejected": "",
         }
 
+        now = self.now_utc()
+
         # Incremental: fetch CVEs modified since last cursor
         if last_cursor:
-            params["lastModStartDate"] = last_cursor
-            params["lastModEndDate"] = self.now_utc().strftime("%Y-%m-%dT%H:%M:%S.000")
+            # Re-format cursor to NVD-compatible date to avoid microsecond/TZ mismatches
+            try:
+                cursor_dt = datetime.fromisoformat(last_cursor)
+            except (ValueError, TypeError):
+                cursor_dt = now - timedelta(minutes=20)
+            params["lastModStartDate"] = self._nvd_date(cursor_dt)
+            params["lastModEndDate"] = self._nvd_date(now)
         else:
             # First run: only recent 30 days to avoid rate limiting on huge result sets
-            from datetime import timedelta
-            start = (self.now_utc() - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S.000")
-            params["pubStartDate"] = start
-            params["pubEndDate"] = self.now_utc().strftime("%Y-%m-%dT%H:%M:%S.000")
+            start = now - timedelta(days=30)
+            params["pubStartDate"] = self._nvd_date(start)
+            params["pubEndDate"] = self._nvd_date(now)
 
         headers = {}
         if settings.nvd_api_key:

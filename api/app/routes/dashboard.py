@@ -32,6 +32,21 @@ async def get_dashboard(
 
     stats = await db_service.get_dashboard_stats(db)
 
+    # Map feed_name → source_name for total items count
+    _feed_to_source = {
+        "abuseipdb": "AbuseIPDB", "cisa_kev": "CISA KEV",
+        "malwarebazaar": "MalwareBazaar", "nvd": "NVD", "otx": "OTX",
+        "shodan": "Shodan CVEDB", "threatfox": "ThreatFox",
+        "urlhaus": "URLhaus", "virustotal": "VirusTotal",
+    }
+    source_counts: dict = stats.get("source_counts", {})
+    feed_statuses = []
+    for f in stats["feed_status"]:
+        fs = FeedStatusResponse.model_validate(f)
+        src = _feed_to_source.get(f.feed_name, "")
+        fs.total_items_ingested = source_counts.get(src, 0)
+        feed_statuses.append(fs)
+
     response = DashboardResponse(
         severity_distribution=stats["severity_distribution"],
         top_risks=[IntelItemResponse.model_validate(i) for i in stats["top_risks"]],
@@ -39,7 +54,7 @@ async def get_dashboard(
         items_last_24h=stats["items_last_24h"],
         avg_risk_score=stats["avg_risk_score"],
         kev_count=stats["kev_count"],
-        feed_status=[FeedStatusResponse.model_validate(f) for f in stats["feed_status"]],
+        feed_status=feed_statuses,
     )
 
     await set_cached(ck, response.model_dump(), ttl=settings.cache_ttl_dashboard)
