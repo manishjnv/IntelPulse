@@ -19,7 +19,6 @@ import {
   Clock,
   Brain,
   Bug,
-  Swords,
   Building2,
   ShieldAlert,
   Flame,
@@ -191,12 +190,14 @@ export default function AnalyticsPage() {
           title="Total Intel"
           value={totalItems.toLocaleString()}
           icon={<Shield className="h-5 w-5" />}
+          href="/intel"
         />
         <StatCard
           title="Today"
           value={stats?.today ?? dashboard?.items_last_24h ?? 0}
           icon={<Clock className="h-5 w-5" />}
           variant="success"
+          href="/intel"
         />
         <StatCard
           title="Critical"
@@ -204,6 +205,7 @@ export default function AnalyticsPage() {
           subtitle={totalItems > 0 ? `${((stats?.critical ?? 0) / totalItems * 100).toFixed(1)}% of total` : undefined}
           icon={<AlertTriangle className="h-5 w-5" />}
           variant="danger"
+          href="/threats?severity=critical"
         />
         <StatCard
           title="High Severity"
@@ -211,6 +213,7 @@ export default function AnalyticsPage() {
           subtitle={totalItems > 0 ? `${((stats?.high ?? 0) / totalItems * 100).toFixed(1)}% of total` : undefined}
           icon={<TrendingUp className="h-5 w-5" />}
           variant="warning"
+          href="/threats?severity=high"
         />
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -219,12 +222,14 @@ export default function AnalyticsPage() {
           value={stats?.kev_count ?? dashboard?.kev_count ?? 0}
           icon={<ShieldAlert className="h-5 w-5" />}
           variant="danger"
+          href="/threats?severity=critical"
         />
         <StatCard
           title="Exploits"
           value={stats?.exploit_count ?? 0}
           icon={<Flame className="h-5 w-5" />}
           variant="warning"
+          href="/threats"
         />
         <StatCard
           title="AI Enriched"
@@ -232,11 +237,13 @@ export default function AnalyticsPage() {
           subtitle={totalItems > 0 ? `${((stats?.ai_enriched ?? 0) / totalItems * 100).toFixed(0)}% coverage` : undefined}
           icon={<Brain className="h-5 w-5" />}
           variant="success"
+          href="/intel"
         />
         <StatCard
           title="Sources"
           value={stats?.sources ?? 0}
           icon={<Server className="h-5 w-5" />}
+          href="/feeds"
         />
       </div>
 
@@ -340,18 +347,23 @@ export default function AnalyticsPage() {
           <CardContent className="px-5 pb-4">
             <div className="space-y-1.5">
               {insights.top_cves.slice(0, 10).map((cve, idx) => (
-                <div key={cve.cve_id} className="flex items-center gap-3 p-2 rounded-lg border bg-card hover:bg-accent/30 transition-colors text-xs">
+                <Link
+                  key={cve.cve_id}
+                  href={`/search?q=${encodeURIComponent(cve.cve_id)}`}
+                  className="flex items-center gap-3 p-2 rounded-lg border bg-card hover:bg-accent/50 transition-colors text-xs group"
+                >
                   <span className="text-[10px] font-medium text-muted-foreground/50 w-4 text-right">{idx + 1}</span>
                   <span className={cn("flex items-center justify-center h-6 w-6 rounded text-[10px] font-bold shrink-0", RISK_BG(cve.max_risk))}>
                     {cve.max_risk}
                   </span>
-                  <span className="font-mono font-semibold text-primary">{cve.cve_id}</span>
+                  <span className="font-mono font-semibold text-primary group-hover:underline">{cve.cve_id}</span>
                   <div className="flex items-center gap-1.5 ml-auto">
                     {cve.is_kev && <Badge variant="destructive" className="text-[9px] px-1 py-0">KEV</Badge>}
                     {cve.has_exploit && <Badge className="text-[9px] px-1 py-0 bg-pink-600">Exploit</Badge>}
                     <span className="text-muted-foreground tabular-nums">{cve.count} refs</span>
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-primary" />
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </CardContent>
@@ -500,83 +512,7 @@ export default function AnalyticsPage() {
         </Card>
       </div>
 
-      {/* ═══════ EXECUTIVE SUMMARIES ═══════ */}
-      {insights?.executive_summaries && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {([
-            { key: "threat_actor", label: "Threat Actors", icon: <Skull className="h-4 w-4" />, accent: "text-red-400", accentBg: "bg-red-500/10", borderColor: "border-red-500/30" },
-            { key: "campaign", label: "Campaigns", icon: <Swords className="h-4 w-4" />, accent: "text-violet-400", accentBg: "bg-violet-500/10", borderColor: "border-violet-500/30" },
-            { key: "exploit", label: "Exploits", icon: <Flame className="h-4 w-4" />, accent: "text-pink-400", accentBg: "bg-pink-500/10", borderColor: "border-pink-500/30" },
-            { key: "advisory", label: "Advisories", icon: <ShieldAlert className="h-4 w-4" />, accent: "text-blue-400", accentBg: "bg-blue-500/10", borderColor: "border-blue-500/30" },
-          ] as const).map(({ key, label, icon, accent, accentBg, borderColor }) => {
-            const s = insights.executive_summaries?.[key];
-            if (!s || s.total === 0) return null;
-            return (
-              <Card key={key} className={cn("border-l-2", borderColor)}>
-                <CardHeader className="pb-2 pt-4 px-5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={cn("flex items-center justify-center h-7 w-7 rounded-md", accent, accentBg)}>
-                        {icon}
-                      </span>
-                      <div>
-                        <CardTitle className="text-sm font-semibold">{label}</CardTitle>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">
-                          {s.total} total · {s.recent_7d} new this week · Avg risk {s.avg_risk}
-                        </p>
-                      </div>
-                    </div>
-                    <Link
-                      href={`/threats?feed_type=${key}`}
-                      className={cn("text-xs hover:underline flex items-center gap-1", accent)}
-                    >
-                      View all <ChevronRight className="h-3 w-3" />
-                    </Link>
-                  </div>
-                </CardHeader>
-                <CardContent className="px-5 pb-4 space-y-3">
-                  <div className="flex items-center gap-1.5">
-                    {[
-                      { label: "Critical", count: s.critical, color: "bg-red-500" },
-                      { label: "High", count: s.high, color: "bg-orange-500" },
-                      { label: "Medium", count: s.medium, color: "bg-yellow-500" },
-                      { label: "Low", count: s.low, color: "bg-green-500" },
-                    ].map((sev) =>
-                      sev.count > 0 ? (
-                        <span key={sev.label} className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium text-white", sev.color)}>
-                          {sev.count} {sev.label}
-                        </span>
-                      ) : null
-                    )}
-                  </div>
-                  <div className="space-y-1.5">
-                    {s.top_items.slice(0, 3).map((item) => (
-                      <Link
-                        key={item.id}
-                        href={`/intel/${item.id}`}
-                        className="flex items-center gap-2.5 p-2 rounded-lg border bg-card hover:bg-accent/50 transition-colors group"
-                      >
-                        <span className={cn("flex items-center justify-center h-6 w-6 rounded text-[10px] font-bold shrink-0", RISK_BG(item.risk_score))}>
-                          {item.risk_score}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium truncate group-hover:text-primary transition-colors">{item.title}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <Badge variant={item.severity as any} className="text-[9px] px-1 py-0">{item.severity.toUpperCase()}</Badge>
-                            <span className="text-[10px] text-muted-foreground">{item.source}</span>
-                            {item.cve_ids.length > 0 && <span className="text-[10px] font-mono text-primary">{item.cve_ids[0]}</span>}
-                          </div>
-                        </div>
-                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-primary shrink-0" />
-                      </Link>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+
     </div>
   );
 }

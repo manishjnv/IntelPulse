@@ -27,7 +27,6 @@ import {
   Bug,
   Lock,
   Globe,
-  Building2,
   ChevronRight,
   ExternalLink,
   Eye,
@@ -462,65 +461,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Exploit & EPSS Highlights ──────────────────── */}
-      {insights?.exploit_summary && (
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-lg border bg-card p-3">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">With Exploits</p>
-            <p className="text-lg font-bold text-red-400">
-              {insights.exploit_summary.with_exploit.toLocaleString()}
-              <span className="text-xs font-normal text-muted-foreground ml-1">({insights.exploit_summary.exploit_pct}%)</span>
-            </p>
-          </div>
-          <div className="rounded-lg border bg-card p-3">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Avg EPSS Score</p>
-            <p className="text-lg font-bold text-blue-400">{insights.exploit_summary.avg_epss.toFixed(3)}</p>
-          </div>
-          <div className="rounded-lg border bg-card p-3">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">High EPSS (&ge;0.5)</p>
-            <p className="text-lg font-bold text-purple-400">{insights.exploit_summary.high_epss_count.toLocaleString()}</p>
-          </div>
-        </div>
-      )}
 
-      {/* ── Threat Geography & Target Industries & Attack Techniques ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-5">
-            <div className="flex items-center gap-2">
-              <Globe className="h-4 w-4 text-cyan-400" />
-              <CardTitle className="text-sm font-semibold">Threat Geography</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="px-5 pb-4">
-            <RankedBarList items={insights?.threat_geography} colorClass="bg-cyan-500" emptyText="No geographic data" />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-5">
-            <div className="flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-amber-400" />
-              <CardTitle className="text-sm font-semibold">Target Industries</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="px-5 pb-4">
-            <RankedBarList items={insights?.target_industries} colorClass="bg-amber-500" capitalize emptyText="No industry targeting data" />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-5">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-rose-400" />
-              <CardTitle className="text-sm font-semibold">Attack Techniques</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="px-5 pb-4">
-            <RankedBarList items={insights?.attack_techniques} colorClass="bg-rose-500" capitalize showRisk={false} formatName={(n) => n.replace(/_/g, " ")} emptyText="No attack technique data" />
-          </CardContent>
-        </Card>
-      </div>
 
       {/* ═══════════════════════════════════════════════════════
           THREAT LANDSCAPE INSIGHTS
