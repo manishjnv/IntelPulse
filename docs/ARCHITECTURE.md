@@ -263,7 +263,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | **Services** | `api/app/services/` | All business logic: auth, database access, scoring, search, AI, export, MITRE ATT&CK, graph, notifications, reports, domain config, live internet lookup, feed connectors |
 | **Feeds** | `api/app/services/feeds/` | Plugin-based feed connectors (inherit from `BaseFeedConnector`) |
 
-### Endpoint Map (47 endpoints across 10 route files)
+### Endpoint Map (63 endpoints across 11 route files)
 
 | Method | Endpoint | Auth | Handler | Service |
 | ------ | -------- | ---- | ------- | ------- |
@@ -322,6 +322,20 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | `POST` | `/api/v1/reports/{id}/ai-summary` | Analyst | `routes/reports.py` | `services/reports.py` |
 | `POST` | `/api/v1/reports/{id}/ai-generate` | Analyst | `routes/reports.py` | `services/reports.py`, `services/research.py` |
 | `GET` | `/api/v1/reports/{id}/export?format=` | Viewer | `routes/reports.py` | `services/reports.py` |
+| `GET` | `/api/v1/cases` | Viewer | `routes/cases.py` | `services/cases.py` |
+| `GET` | `/api/v1/cases/stats` | Viewer | `routes/cases.py` | `services/cases.py` |
+| `GET` | `/api/v1/cases/assignees` | Viewer | `routes/cases.py` | `services/cases.py` |
+| `GET` | `/api/v1/cases/export` | Viewer | `routes/cases.py` | `services/cases.py` |
+| `GET` | `/api/v1/cases/{id}` | Viewer | `routes/cases.py` | `services/cases.py` |
+| `POST` | `/api/v1/cases` | Analyst | `routes/cases.py` | `services/cases.py` |
+| `PUT` | `/api/v1/cases/{id}` | Analyst | `routes/cases.py` | `services/cases.py` |
+| `DELETE` | `/api/v1/cases/{id}` | Analyst | `routes/cases.py` | `services/cases.py` |
+| `POST` | `/api/v1/cases/{id}/comments` | Analyst | `routes/cases.py` | `services/cases.py` |
+| `POST` | `/api/v1/cases/{id}/items` | Analyst | `routes/cases.py` | `services/cases.py` |
+| `DELETE` | `/api/v1/cases/{id}/items/{item_id}` | Analyst | `routes/cases.py` | `services/cases.py` |
+| `POST` | `/api/v1/cases/bulk/status` | Analyst | `routes/cases.py` | `services/cases.py` |
+| `POST` | `/api/v1/cases/bulk/assign` | Analyst | `routes/cases.py` | `services/cases.py` |
+| `POST` | `/api/v1/cases/bulk/delete` | Analyst | `routes/cases.py` | `services/cases.py` |
 
 ---
 
@@ -678,6 +692,8 @@ Real-time monitoring and correlation for large-scale global events (natural disa
 
 | Date | Change |
 | ---- | ------ |
+| 2026-03-05 | Phase 2.1 Case Management — P2 Improvements: **Status transition validation** — enforced allowed state machine transitions (new→in_progress/pending/closed, etc.), 422 error on invalid transitions, `ALLOWED_TRANSITIONS` constant in frontend for smart status dropdown. **Expanded filters** — severity, TLP, date range (date_from/date_to), and tag filtering on cases list; PostgreSQL `func.any()` for ARRAY tag filter. **Bulk operations** — bulk status update, bulk assign, bulk delete endpoints (`POST /cases/bulk/status`, `/bulk/assign`, `/bulk/delete`); UI bulk action bar with select-all, per-row checkboxes. **Export** — JSON and CSV export (`GET /cases/export?format=json|csv&ids=...`), download button in UI header. **Assignee selector** — `GET /cases/assignees` endpoint (admin+analyst users), assignee dropdown in create modal and edit mode. **Edit severity/TLP/tags** — full editing of severity, TLP, tags, and assignee in case detail page edit mode. **Linked items clickable** — intel items link to `/intel/{id}`, IOCs link to `/search?q={value}`. |
+| 2026-03-05 | Phase 2.1 Case Management — P1 Improvements: severity/TLP/tags in create modal, duplicate item detection (409), activity logging on item removal, owner/assignee email on list view (batch loaded), activity user emails (batch loaded), error handling on delete and add item. |
 | 2026-03-04 | UI Improvements Phase 7: **Intel Detail Page** — new IOCs tab showing linked indicators with InternetDB enrichment (ports, vulns, CPEs, hostnames, tags), EPSS scores, IPinfo geolocation; enhanced Timeline tab with event type legend, color-coded cards, relative dates, source badges; improved Threat Actor section with motivation emoji icons, confidence coloring, "Hunt" search link, technique counts; improved Notable Campaigns section with visual timeline, severity-based dots, Impact Assessment box. New API endpoint `GET /intel/{id}/iocs` (joins IOC+IntelIOCLink with enrichment data). **IOC Database Page** — enrichment side panel now shows stored IPinfo (country, ASN, network), InternetDB (ports, vulns, CVE links to NVD, technologies/CPEs, hostnames, tags), and EPSS scores with probability bar before VT/Shodan on-demand results. **Geo View Page** — complete overhaul from single-source to 5-tab layout: Countries (flag grid + donut + AI threat geography), Continents (emoji progress bars), Networks (ASN bar chart), Industries (AI-enriched targeting), Intel Geo (original region data with severity pills + detail drill-down); uses `getDashboardInsights()` + `getIOCStats()` for comprehensive data. |
 | 2026-03-03 | ATT&CK Page Improvements: **Status bar** — ATT&CK coverage pill now shows 7-day trend arrow (↑/↓/—) via new `attack_coverage_prev_pct` field (SQL lookback on `intel_attack_links.created_at`); cache key bumped to v3. **ATT&CK page** — new `CoverageRing` SVG donut chart (animated, color-coded by %), new `DetectionGapsCard` showing top 20 unmapped high-priority techniques (initial-access, execution, persistence, priv-esc, defense-evasion, lateral-movement, impact). **ATT&CK matrix** — per-tactic mini coverage bars (mapped/total, 3-tier color), rich hover tooltips with `SeverityMicroBar` stacked severity breakdown, ATT&CK Navigator v4.5 JSON layer export (download button). API: severity counts via `literal_column()` ENUM casts in `case()`, `DetectionGap` schema, `mapped`/`total` per tactic. |
 | 2026-03-03 | Structured AI Analysis: replaced plain-text `_ai_summarize()` with `_ai_analyze()` returning structured JSON (summary, threat_actors, timeline, affected_products, fix_remediation, known_breaches, key_findings); date-descending sort on live lookup results; `ai_analysis: dict` in `LiveLookupResponse` schema |
