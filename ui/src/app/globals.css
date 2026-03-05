@@ -70,6 +70,13 @@
   }
 }
 
+/* ── Native <select> / <option> dark-mode fix ── */
+.dark select,
+.dark option {
+  background-color: hsl(222 47% 8%);
+  color: hsl(210 20% 98%);
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
