@@ -136,7 +136,7 @@ def ingest_feed(feed_name: str) -> dict:
 
 def ingest_all_feeds() -> list[dict]:
     """Ingest all feeds sequentially."""
-    feeds = ["cisa_kev", "nvd", "urlhaus", "abuseipdb", "otx", "virustotal", "shodan", "threatfox", "malwarebazaar"]
+    feeds = ["cisa_kev", "nvd", "urlhaus", "abuseipdb", "otx", "virustotal", "shodan", "threatfox", "malwarebazaar", "mitre_attack", "exploitdb", "cisa_advisories"]
     results = []
     for feed in feeds:
         result = ingest_feed(feed)
@@ -631,6 +631,9 @@ def _get_connector(feed_name: str):
     from app.services.feeds.shodan import ShodanConnector
     from app.services.feeds.threatfox import ThreatFoxConnector
     from app.services.feeds.malwarebazaar import MalwareBazaarConnector
+    from app.services.feeds.mitre_attack import MITREAttackConnector
+    from app.services.feeds.exploitdb import ExploitDBConnector
+    from app.services.feeds.cisa_advisories import CISAAdvisoriesConnector
 
     connectors = {
         "nvd": NVDConnector,
@@ -642,6 +645,9 @@ def _get_connector(feed_name: str):
         "shodan": ShodanConnector,
         "threatfox": ThreatFoxConnector,
         "malwarebazaar": MalwareBazaarConnector,
+        "mitre_attack": MITREAttackConnector,
+        "exploitdb": ExploitDBConnector,
+        "cisa_advisories": CISAAdvisoriesConnector,
     }
     cls = connectors.get(feed_name)
     return cls() if cls else None

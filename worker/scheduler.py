@@ -35,7 +35,7 @@ redis_conn = Redis.from_url(settings.redis_url)
 scheduler = Scheduler(queue_name="default", connection=redis_conn)
 
 # ── Constants ────────────────────────────────────────────
-EXPECTED_JOB_COUNT = 23          # total scheduled jobs we register
+EXPECTED_JOB_COUNT = 26          # total scheduled jobs we register
 WATCHDOG_INTERVAL = 120          # seconds between health checks
 HEARTBEAT_KEY = "scheduler:heartbeat"
 HEARTBEAT_TTL = 300              # seconds — expires if scheduler dies
@@ -201,6 +201,36 @@ def setup_schedules():
         interval=timedelta(minutes=30).total_seconds(),
         queue_name="default",
         meta={"feed": "malwarebazaar"},
+    )
+
+    # MITRE ATT&CK — every 24 hours (GitHub raw JSON, large payload)
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc),
+        func="worker.tasks.ingest_feed",
+        args=["mitre_attack"],
+        interval=timedelta(hours=24).total_seconds(),
+        queue_name="low",
+        meta={"feed": "mitre_attack"},
+    )
+
+    # Exploit-DB — every 6 hours (RSS feed, free)
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc),
+        func="worker.tasks.ingest_feed",
+        args=["exploitdb"],
+        interval=timedelta(hours=6).total_seconds(),
+        queue_name="default",
+        meta={"feed": "exploitdb"},
+    )
+
+    # CISA ICS Advisories — every 6 hours (RSS feed, free)
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc),
+        func="worker.tasks.ingest_feed",
+        args=["cisa_advisories"],
+        interval=timedelta(hours=6).total_seconds(),
+        queue_name="default",
+        meta={"feed": "cisa_advisories"},
     )
 
     # ─── Dashboard refresh — every 2 minutes ─────────────
