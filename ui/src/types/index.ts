@@ -719,3 +719,23 @@ export interface NewsStatsResponse {
   sources: number;
   enriched_pct: number;
 }
+
+export interface IntelStatsResponse {
+  total: number;
+  today: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  info: number;
+  kev_count: number;
+  exploit_count: number;
+  avg_risk: number;
+  sources: number;
+  ai_enriched: number;
+  top_sources: { name: string; count: number }[];
+  top_tags: string[];
+  top_cves: string[];
+  feed_type_counts: Record<string, number>;
+  asset_type_counts: Record<string, number>;
+}

@@ -608,6 +608,10 @@ export async function getNewsStats(): Promise<import("@/types").NewsStatsRespons
   return fetcher<import("@/types").NewsStatsResponse>("/news/stats");
 }
 
+export async function getIntelStats(): Promise<import("@/types").IntelStatsResponse> {
+  return fetcher<import("@/types").IntelStatsResponse>("/intel/stats");
+}
+
 export async function getNewsFeedStatus(): Promise<import("@/types").NewsFeedStatus[]> {
   return fetcher<import("@/types").NewsFeedStatus[]>("/news/feed-status");
 }

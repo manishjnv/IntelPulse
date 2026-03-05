@@ -705,3 +705,24 @@ class NewsStatsResponse(BaseModel):
     avg_score: int = 0
     sources: int = 0        # distinct source count
     enriched_pct: int = 0   # percentage AI-enriched
+
+
+class IntelStatsResponse(BaseModel):
+    """Global stats for the Active Threats feed."""
+    total: int = 0
+    today: int = 0            # ingested in last 24h
+    critical: int = 0
+    high: int = 0
+    medium: int = 0
+    low: int = 0
+    info: int = 0
+    kev_count: int = 0        # CISA KEV items
+    exploit_count: int = 0    # items with exploit_available
+    avg_risk: int = 0
+    sources: int = 0          # distinct source_name
+    ai_enriched: int = 0      # items with ai_summary
+    top_sources: list[dict] = []   # [{name, count}]
+    top_tags: list[str] = []
+    top_cves: list[str] = []
+    feed_type_counts: dict = {}    # {vulnerability: N, ioc: N, ...}
+    asset_type_counts: dict = {}   # {cve: N, url: N, ...}

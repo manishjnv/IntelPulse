@@ -19,7 +19,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.middleware.auth import get_current_user, require_viewer
 from app.models.models import IntelItem, User, IOC, IntelIOCLink
-from app.schemas import IntelItemListResponse, IntelItemResponse
+from app.schemas import IntelItemListResponse, IntelItemResponse, IntelStatsResponse
 from app.services import database as db_service
 from app.services.ai import chat_completion
 from app.services.export import export_to_excel
@@ -107,6 +107,104 @@ async def export_intel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/stats", response_model=IntelStatsResponse)
+async def intel_stats(
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Global stats for the Active Threats feed."""
+    ck = cache_key("intel_stats")
+    cached = await get_cached(ck)
+    if cached:
+        return cached
+
+    from datetime import timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    day_ago = now - timedelta(hours=24)
+
+    # Single aggregate query
+    row = (await db.execute(
+        select(
+            func.count().label("total"),
+            func.count().filter(IntelItem.ingested_at >= day_ago).label("today"),
+            func.count().filter(IntelItem.severity == "critical").label("critical"),
+            func.count().filter(IntelItem.severity == "high").label("high"),
+            func.count().filter(IntelItem.severity == "medium").label("medium"),
+            func.count().filter(IntelItem.severity == "low").label("low"),
+            func.count().filter(IntelItem.severity == "info").label("info"),
+            func.count().filter(IntelItem.is_kev.is_(True)).label("kev_count"),
+            func.count().filter(IntelItem.exploit_available.is_(True)).label("exploit_count"),
+            func.coalesce(func.avg(IntelItem.risk_score), 0).label("avg_risk"),
+            func.count(func.distinct(IntelItem.source_name)).label("sources"),
+            func.count().filter(IntelItem.ai_summary.isnot(None)).label("ai_enriched"),
+        )
+    )).one()
+
+    # Top sources
+    src_rows = (await db.execute(
+        select(IntelItem.source_name, func.count().label("cnt"))
+        .group_by(IntelItem.source_name)
+        .order_by(desc("cnt"))
+        .limit(10)
+    )).all()
+    top_sources = [{"name": r.source_name, "count": r.cnt} for r in src_rows]
+
+    # Top tags (unnest array)
+    tag_rows = (await db.execute(
+        select(
+            func.unnest(IntelItem.tags).label("tag"),
+            func.count().label("cnt")
+        ).group_by("tag").order_by(desc("cnt")).limit(15)
+    )).all()
+    top_tags = [r.tag for r in tag_rows]
+
+    # Top CVEs
+    cve_rows = (await db.execute(
+        select(
+            func.unnest(IntelItem.cve_ids).label("cve"),
+            func.count().label("cnt")
+        ).group_by("cve").order_by(desc("cnt")).limit(10)
+    )).all()
+    top_cves = [r.cve for r in cve_rows]
+
+    # Feed type distribution
+    ft_rows = (await db.execute(
+        select(IntelItem.feed_type, func.count().label("cnt"))
+        .group_by(IntelItem.feed_type)
+    )).all()
+    feed_type_counts = {r.feed_type: r.cnt for r in ft_rows}
+
+    # Asset type distribution
+    at_rows = (await db.execute(
+        select(IntelItem.asset_type, func.count().label("cnt"))
+        .group_by(IntelItem.asset_type)
+    )).all()
+    asset_type_counts = {r.asset_type: r.cnt for r in at_rows}
+
+    response = IntelStatsResponse(
+        total=row.total,
+        today=row.today,
+        critical=row.critical,
+        high=row.high,
+        medium=row.medium,
+        low=row.low,
+        info=row.info,
+        kev_count=row.kev_count,
+        exploit_count=row.exploit_count,
+        avg_risk=int(row.avg_risk),
+        sources=row.sources,
+        ai_enriched=row.ai_enriched,
+        top_sources=top_sources,
+        top_tags=top_tags,
+        top_cves=top_cves,
+        feed_type_counts=feed_type_counts,
+        asset_type_counts=asset_type_counts,
+    )
+    await set_cached(ck, response.model_dump(), ttl=60)
+    return response
 
 
 @router.get("/{item_id}", response_model=IntelItemResponse)
