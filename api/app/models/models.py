@@ -404,3 +404,74 @@ class NewsFeedStatus(Base):
     last_checked: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+# ─── Case / Incident Management ──────────────────────────
+
+
+class Case(Base):
+    __tablename__ = "cases"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    case_type: Mapped[str] = mapped_column(
+        SAEnum("incident_response", "investigation", "hunt", "rfi",
+               name="case_type", create_type=False),
+        nullable=False, default="investigation",
+    )
+    status: Mapped[str] = mapped_column(
+        SAEnum("new", "in_progress", "pending", "resolved", "closed",
+               name="case_status", create_type=False),
+        nullable=False, default="new",
+    )
+    priority: Mapped[str] = mapped_column(
+        SAEnum("critical", "high", "medium", "low",
+               name="case_priority", create_type=False),
+        nullable=False, default="medium",
+    )
+    severity: Mapped[str] = mapped_column(
+        SAEnum("critical", "high", "medium", "low", "info", "unknown",
+               name="severity_level", create_type=False),
+        nullable=False, default="medium",
+    )
+    tlp: Mapped[str] = mapped_column(
+        SAEnum("TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR",
+               name="tlp_level", create_type=False),
+        nullable=False, default="TLP:GREEN",
+    )
+    owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    tags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    linked_intel_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    linked_ioc_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    linked_observable_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CaseItem(Base):
+    __tablename__ = "case_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    case_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    item_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    item_id: Mapped[str] = mapped_column(Text, nullable=False)
+    item_title: Mapped[str | None] = mapped_column(Text)
+    item_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    added_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CaseActivity(Base):
+    __tablename__ = "case_activities"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    case_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    action: Mapped[str] = mapped_column(String(100), nullable=False)
+    detail: Mapped[str | None] = mapped_column(Text)
+    meta: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

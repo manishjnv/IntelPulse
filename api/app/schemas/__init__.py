@@ -726,3 +726,133 @@ class IntelStatsResponse(BaseModel):
     top_cves: list[str] = []
     feed_type_counts: dict = {}    # {vulnerability: N, ioc: N, ...}
     asset_type_counts: dict = {}   # {cve: N, url: N, ...}
+
+
+# ─── Case / Incident Management ─────────────────────────
+
+class CaseType(str, Enum):
+    incident_response = "incident_response"
+    investigation = "investigation"
+    hunt = "hunt"
+    rfi = "rfi"
+
+
+class CaseStatus(str, Enum):
+    new = "new"
+    in_progress = "in_progress"
+    pending = "pending"
+    resolved = "resolved"
+    closed = "closed"
+
+
+class CasePriority(str, Enum):
+    critical = "critical"
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+
+class CaseItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    case_id: uuid.UUID
+    item_type: str
+    item_id: str
+    item_title: str | None = None
+    item_metadata: dict = Field(default_factory=dict)
+    added_by: uuid.UUID | None = None
+    notes: str | None = None
+    created_at: datetime
+
+
+class CaseItemCreate(BaseModel):
+    item_type: str = Field(..., pattern="^(intel|ioc|technique|observable)$")
+    item_id: str
+    item_title: str | None = None
+    item_metadata: dict = Field(default_factory=dict)
+    notes: str | None = None
+
+
+class CaseActivityResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    case_id: uuid.UUID
+    user_id: uuid.UUID | None = None
+    user_email: str | None = None
+    action: str
+    detail: str | None = None
+    metadata: dict = Field(default_factory=dict)
+    created_at: datetime
+
+
+class CaseResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    description: str | None = None
+    case_type: CaseType
+    status: CaseStatus
+    priority: CasePriority
+    severity: SeverityLevel
+    tlp: TLPLevel
+    owner_id: uuid.UUID
+    assignee_id: uuid.UUID | None = None
+    tags: list[str] = Field(default_factory=list)
+    linked_intel_count: int = 0
+    linked_ioc_count: int = 0
+    linked_observable_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+    closed_at: datetime | None = None
+    # Enriched fields (populated on detail)
+    owner_email: str | None = None
+    assignee_email: str | None = None
+    items: list[CaseItemResponse] = Field(default_factory=list)
+    activities: list[CaseActivityResponse] = Field(default_factory=list)
+
+
+class CaseCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=500)
+    description: str | None = None
+    case_type: CaseType = CaseType.investigation
+    priority: CasePriority = CasePriority.medium
+    severity: SeverityLevel = SeverityLevel.medium
+    tlp: TLPLevel = TLPLevel.green
+    assignee_id: uuid.UUID | None = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class CaseUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    case_type: CaseType | None = None
+    status: CaseStatus | None = None
+    priority: CasePriority | None = None
+    severity: SeverityLevel | None = None
+    tlp: TLPLevel | None = None
+    assignee_id: uuid.UUID | None = None
+    tags: list[str] | None = None
+
+
+class CaseListResponse(BaseModel):
+    cases: list[CaseResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class CaseStatsResponse(BaseModel):
+    total_cases: int = 0
+    open_cases: int = 0
+    by_status: dict[str, int] = Field(default_factory=dict)
+    by_priority: dict[str, int] = Field(default_factory=dict)
+    by_type: dict[str, int] = Field(default_factory=dict)
+    recent_closed: int = 0
+
+
+class CaseCommentCreate(BaseModel):
+    comment: str = Field(..., min_length=1, max_length=5000)

@@ -649,3 +649,76 @@ export async function downloadNewsReport(
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// ─── Cases / Incident Management ────────────────────────
+export async function getCases(params: {
+  page?: number;
+  page_size?: number;
+  status?: string;
+  priority?: string;
+  case_type?: string;
+  assignee_id?: string;
+  search?: string;
+  sort_by?: string;
+  sort_order?: string;
+} = {}): Promise<import("@/types").CaseListResponse> {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") query.set(k, String(v));
+  });
+  return fetcher<import("@/types").CaseListResponse>(`/cases?${query}`);
+}
+
+export async function getCase(id: string): Promise<import("@/types").Case> {
+  return fetcher<import("@/types").Case>(`/cases/${id}`);
+}
+
+export async function createCase(data: import("@/types").CaseCreate): Promise<import("@/types").Case> {
+  return fetcher<import("@/types").Case>("/cases", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateCase(id: string, data: import("@/types").CaseUpdate): Promise<import("@/types").Case> {
+  return fetcher<import("@/types").Case>(`/cases/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteCase(id: string): Promise<{ deleted: boolean }> {
+  return fetcher<{ deleted: boolean }>(`/cases/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getCaseStats(): Promise<import("@/types").CaseStats> {
+  return fetcher<import("@/types").CaseStats>("/cases/stats");
+}
+
+export async function addCaseItem(caseId: string, data: {
+  item_type: string;
+  item_id: string;
+  item_title?: string;
+  item_metadata?: Record<string, unknown>;
+  notes?: string;
+}): Promise<import("@/types").CaseItem> {
+  return fetcher<import("@/types").CaseItem>(`/cases/${caseId}/items`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function removeCaseItem(caseId: string, itemId: string): Promise<{ deleted: boolean }> {
+  return fetcher<{ deleted: boolean }>(`/cases/${caseId}/items/${itemId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function addCaseComment(caseId: string, comment: string): Promise<import("@/types").CaseActivity> {
+  return fetcher<import("@/types").CaseActivity>(`/cases/${caseId}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ comment }),
+  });
+}

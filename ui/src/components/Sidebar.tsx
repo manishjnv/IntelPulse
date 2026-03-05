@@ -28,6 +28,7 @@ import {
   PanelLeftOpen,
   Menu,
   Newspaper,
+  Briefcase,
 } from "lucide-react";
 
 const NAV_SECTIONS = [
@@ -43,6 +44,7 @@ const NAV_SECTIONS = [
     label: "Investigation",
     items: [
       { href: "/intel", label: "Intel Items", icon: List },
+      { href: "/cases", label: "Cases", icon: Briefcase },
       { href: "/reports", label: "Reports", icon: FileText },
       { href: "/investigate", label: "Investigate", icon: Telescope },
       { href: "/techniques", label: "ATT&CK Map", icon: Crosshair },

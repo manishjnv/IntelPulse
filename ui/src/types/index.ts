@@ -762,3 +762,95 @@ export interface IntelStatsResponse {
   feed_type_counts: Record<string, number>;
   asset_type_counts: Record<string, number>;
 }
+
+// ─── Case / Incident Management ─────────────────────────
+export type CaseType = 'incident_response' | 'investigation' | 'hunt' | 'rfi';
+export type CaseStatus = 'new' | 'in_progress' | 'pending' | 'resolved' | 'closed';
+export type CasePriority = 'critical' | 'high' | 'medium' | 'low';
+
+export interface CaseItem {
+  id: string;
+  case_id: string;
+  item_type: 'intel' | 'ioc' | 'technique' | 'observable';
+  item_id: string;
+  item_title: string | null;
+  item_metadata: Record<string, unknown>;
+  added_by: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface CaseActivity {
+  id: string;
+  case_id: string;
+  user_id: string | null;
+  user_email: string | null;
+  action: string;
+  detail: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface Case {
+  id: string;
+  title: string;
+  description: string | null;
+  case_type: CaseType;
+  status: CaseStatus;
+  priority: CasePriority;
+  severity: Severity;
+  tlp: string;
+  owner_id: string;
+  assignee_id: string | null;
+  tags: string[];
+  linked_intel_count: number;
+  linked_ioc_count: number;
+  linked_observable_count: number;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  owner_email: string | null;
+  assignee_email: string | null;
+  items: CaseItem[];
+  activities: CaseActivity[];
+}
+
+export interface CaseListResponse {
+  cases: Case[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export interface CaseCreate {
+  title: string;
+  description?: string;
+  case_type?: CaseType;
+  priority?: CasePriority;
+  severity?: Severity;
+  tlp?: string;
+  assignee_id?: string;
+  tags?: string[];
+}
+
+export interface CaseUpdate {
+  title?: string;
+  description?: string;
+  case_type?: CaseType;
+  status?: CaseStatus;
+  priority?: CasePriority;
+  severity?: Severity;
+  tlp?: string;
+  assignee_id?: string;
+  tags?: string[];
+}
+
+export interface CaseStats {
+  total_cases: number;
+  open_cases: number;
+  by_status: Record<string, number>;
+  by_priority: Record<string, number>;
+  by_type: Record<string, number>;
+  recent_closed: number;
+}
