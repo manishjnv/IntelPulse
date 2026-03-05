@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import select, or_, and_, cast, func, desc
+from sqlalchemy import select, or_, and_, cast, func, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy import Text as SAText
@@ -130,11 +130,11 @@ async def intel_stats(
         select(
             func.count().label("total"),
             func.count().filter(IntelItem.ingested_at >= day_ago).label("today"),
-            func.count().filter(IntelItem.severity == "critical").label("critical"),
-            func.count().filter(IntelItem.severity == "high").label("high"),
-            func.count().filter(IntelItem.severity == "medium").label("medium"),
-            func.count().filter(IntelItem.severity == "low").label("low"),
-            func.count().filter(IntelItem.severity == "info").label("info"),
+            func.count().filter(IntelItem.severity == text("'critical'::severity_level")).label("critical"),
+            func.count().filter(IntelItem.severity == text("'high'::severity_level")).label("high"),
+            func.count().filter(IntelItem.severity == text("'medium'::severity_level")).label("medium"),
+            func.count().filter(IntelItem.severity == text("'low'::severity_level")).label("low"),
+            func.count().filter(IntelItem.severity == text("'info'::severity_level")).label("info"),
             func.count().filter(IntelItem.is_kev.is_(True)).label("kev_count"),
             func.count().filter(IntelItem.exploit_available.is_(True)).label("exploit_count"),
             func.coalesce(func.avg(IntelItem.risk_score), 0).label("avg_risk"),
@@ -172,17 +172,21 @@ async def intel_stats(
 
     # Feed type distribution
     ft_rows = (await db.execute(
-        select(IntelItem.feed_type, func.count().label("cnt"))
-        .group_by(IntelItem.feed_type)
+        select(
+            cast(IntelItem.feed_type, SAText).label("ft"),
+            func.count().label("cnt"),
+        ).group_by(IntelItem.feed_type)
     )).all()
-    feed_type_counts = {r.feed_type: r.cnt for r in ft_rows}
+    feed_type_counts = {r.ft: r.cnt for r in ft_rows}
 
     # Asset type distribution
     at_rows = (await db.execute(
-        select(IntelItem.asset_type, func.count().label("cnt"))
-        .group_by(IntelItem.asset_type)
+        select(
+            cast(IntelItem.asset_type, SAText).label("at"),
+            func.count().label("cnt"),
+        ).group_by(IntelItem.asset_type)
     )).all()
-    asset_type_counts = {r.asset_type: r.cnt for r in at_rows}
+    asset_type_counts = {r.at: r.cnt for r in at_rows}
 
     response = IntelStatsResponse(
         total=row.total,
