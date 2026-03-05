@@ -8,7 +8,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, func, select, case as sa_case
+from sqlalchemy import delete, func, literal, select, case as sa_case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -108,7 +108,7 @@ async def list_cases(
     if date_to:
         query = query.where(Case.created_at <= date_to)
     if tag:
-        query = query.where(Case.tags.contains([tag]))
+        query = query.where(literal(tag) == func.any(Case.tags))
     if search:
         query = query.where(Case.title.ilike(f"%{search}%"))
 
