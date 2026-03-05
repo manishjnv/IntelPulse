@@ -514,9 +514,7 @@ export default function CasesPage() {
         <Pagination
           page={page}
           pages={pages}
-          total={total}
-          pageSize={20}
-          onChange={handlePageChange}
+          onPageChange={handlePageChange}
         />
       )}
 
