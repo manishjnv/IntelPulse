@@ -150,14 +150,14 @@ export default function IntelDetailPage() {
           {reportMenuOpen && (
             <>
             <div className="fixed inset-0 z-[199]" onClick={() => setReportMenuOpen(false)} />
-            <div className="absolute right-0 top-full mt-1 w-64 border border-border rounded-lg bg-gray-900 shadow-2xl z-[200] p-1 max-h-60 overflow-y-auto">
+            <div className="absolute right-0 top-full mt-1 w-64 border border-border rounded-lg bg-white dark:bg-[hsl(222,47%,8%)] shadow-2xl z-[200] p-1 max-h-60 overflow-y-auto">
               {userReports.length === 0 ? (
                 <p className="text-xs text-muted-foreground p-2">No draft reports. Create one first.</p>
               ) : (
                 userReports.map((r) => (
                   <button
                     key={r.id}
-                    className="w-full text-left px-3 py-1.5 text-sm rounded hover:bg-accent/50 truncate"
+                    className="w-full text-left px-3 py-1.5 text-sm rounded hover:bg-gray-100 dark:hover:bg-accent/50 truncate"
                     onClick={async () => {
                       setAddingToReport(true);
                       setReportMenuOpen(false);
