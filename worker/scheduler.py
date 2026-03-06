@@ -371,6 +371,18 @@ def setup_schedules():
         meta={"task": "news_cleanup"},
     )
 
+    # ─── Intelligence Extraction — every 10 min ──────
+    # Scans recently-enriched news and extracts vulnerable products
+    # (48h window) and threat campaigns (7d window) into dedicated tables.
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=7),
+        func="worker.tasks.extract_intel_from_news",
+        kwargs={"lookback_hours": 2},
+        interval=timedelta(minutes=10).total_seconds(),
+        queue_name="low",
+        meta={"task": "intel_extraction"},
+    )
+
     print(f"Scheduled {len(list(scheduler.get_jobs()))} jobs")
 
     # Log each registered job for debugging

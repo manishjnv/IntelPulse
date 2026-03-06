@@ -728,6 +728,68 @@ class IntelStatsResponse(BaseModel):
     asset_type_counts: dict = {}   # {cve: N, url: N, ...}
 
 
+# ─── Intelligence Extraction ────────────────────────────
+
+class VulnerableProductResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    product_name: str
+    vendor: str | None = None
+    cve_id: str | None = None
+    cvss_score: float | None = None
+    epss_score: float | None = None
+    severity: str = "unknown"
+    is_kev: bool = False
+    exploit_available: bool = False
+    patch_available: bool = False
+    affected_versions: str | None = None
+    targeted_sectors: list[str] = Field(default_factory=list)
+    targeted_regions: list[str] = Field(default_factory=list)
+    source_count: int = 1
+    first_seen: datetime
+    last_seen: datetime
+    confidence: str = "medium"
+
+
+class VulnerableProductsListResponse(BaseModel):
+    items: list[VulnerableProductResponse]
+    total: int
+    window_hours: int = 48
+
+
+class ThreatCampaignResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    actor_name: str
+    campaign_name: str | None = None
+    first_seen: datetime
+    last_seen: datetime
+    severity: str = "unknown"
+    targeted_sectors: list[str] = Field(default_factory=list)
+    targeted_regions: list[str] = Field(default_factory=list)
+    malware_used: list[str] = Field(default_factory=list)
+    techniques_used: list[str] = Field(default_factory=list)
+    cves_exploited: list[str] = Field(default_factory=list)
+    source_count: int = 1
+    confidence: str = "medium"
+
+
+class ThreatCampaignsListResponse(BaseModel):
+    items: list[ThreatCampaignResponse]
+    total: int
+    window_days: int = 7
+
+
+class ExtractionStatsResponse(BaseModel):
+    vulnerable_products_count: int = 0
+    threat_campaigns_count: int = 0
+    last_extraction_at: datetime | None = None
+    products_window_hours: int = 48
+    campaigns_window_days: int = 7
+
+
 # ─── Case / Incident Management ─────────────────────────
 
 class CaseType(str, Enum):

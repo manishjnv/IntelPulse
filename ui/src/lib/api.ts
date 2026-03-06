@@ -650,6 +650,40 @@ export async function downloadNewsReport(
   URL.revokeObjectURL(url);
 }
 
+// ─── Intelligence Extraction ────────────────────────────
+
+export async function getVulnerableProducts(params: {
+  search?: string;
+  severity?: string;
+  sort_by?: string;
+  sort_order?: string;
+  limit?: number;
+} = {}): Promise<import("@/types").VulnerableProductsListResponse> {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") query.set(k, String(v));
+  });
+  return fetcher<import("@/types").VulnerableProductsListResponse>(`/news/vulnerable-products?${query}`);
+}
+
+export async function getThreatCampaigns(params: {
+  search?: string;
+  severity?: string;
+  sort_by?: string;
+  sort_order?: string;
+  limit?: number;
+} = {}): Promise<import("@/types").ThreatCampaignsListResponse> {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") query.set(k, String(v));
+  });
+  return fetcher<import("@/types").ThreatCampaignsListResponse>(`/news/threat-campaigns?${query}`);
+}
+
+export async function getExtractionStats(): Promise<import("@/types").ExtractionStatsResponse> {
+  return fetcher<import("@/types").ExtractionStatsResponse>("/news/extraction-stats");
+}
+
 // ─── Cases / Incident Management ────────────────────────
 export async function getCases(params: {
   page?: number;

@@ -406,6 +406,57 @@ class NewsFeedStatus(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+# ─── Intelligence Extraction (derived from news) ─────────
+
+
+class VulnerableProduct(Base):
+    """Aggregated vulnerable products extracted from AI-enriched news (48h window)."""
+    __tablename__ = "intel_vulnerable_products"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_name: Mapped[str] = mapped_column(String(300), nullable=False)
+    vendor: Mapped[str | None] = mapped_column(String(200))
+    cve_id: Mapped[str | None] = mapped_column(String(30))
+    cvss_score: Mapped[float | None] = mapped_column(Float)
+    epss_score: Mapped[float | None] = mapped_column(Float)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False, default="unknown")
+    is_kev: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    exploit_available: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    patch_available: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    affected_versions: Mapped[str | None] = mapped_column(Text)
+    targeted_sectors: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    targeted_regions: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    source_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    source_news_ids: Mapped[list[str]] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=False, default=list)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    confidence: Mapped[str] = mapped_column(String(10), nullable=False, default="medium")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ThreatCampaign(Base):
+    """Aggregated threat actors & campaigns from AI-enriched news (7d window)."""
+    __tablename__ = "intel_threat_campaigns"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    actor_name: Mapped[str] = mapped_column(String(300), nullable=False)
+    campaign_name: Mapped[str | None] = mapped_column(String(300))
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    severity: Mapped[str] = mapped_column(String(20), nullable=False, default="unknown")
+    targeted_sectors: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    targeted_regions: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    malware_used: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    techniques_used: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    cves_exploited: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    source_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    source_news_ids: Mapped[list[str]] = mapped_column(ARRAY(UUID(as_uuid=True)), nullable=False, default=list)
+    confidence: Mapped[str] = mapped_column(String(10), nullable=False, default="medium")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 # ─── Case / Incident Management ──────────────────────────
 
 

@@ -763,6 +763,64 @@ export interface IntelStatsResponse {
   asset_type_counts: Record<string, number>;
 }
 
+// ─── Intelligence Extraction ────────────────────────────
+
+export interface VulnerableProduct {
+  id: string;
+  product_name: string;
+  vendor: string | null;
+  cve_id: string | null;
+  cvss_score: number | null;
+  epss_score: number | null;
+  severity: string;
+  is_kev: boolean;
+  exploit_available: boolean;
+  patch_available: boolean;
+  affected_versions: string | null;
+  targeted_sectors: string[];
+  targeted_regions: string[];
+  source_count: number;
+  first_seen: string;
+  last_seen: string;
+  confidence: string;
+}
+
+export interface VulnerableProductsListResponse {
+  items: VulnerableProduct[];
+  total: number;
+  window_hours: number;
+}
+
+export interface ThreatCampaign {
+  id: string;
+  actor_name: string;
+  campaign_name: string | null;
+  first_seen: string;
+  last_seen: string;
+  severity: string;
+  targeted_sectors: string[];
+  targeted_regions: string[];
+  malware_used: string[];
+  techniques_used: string[];
+  cves_exploited: string[];
+  source_count: number;
+  confidence: string;
+}
+
+export interface ThreatCampaignsListResponse {
+  items: ThreatCampaign[];
+  total: number;
+  window_days: number;
+}
+
+export interface ExtractionStatsResponse {
+  vulnerable_products_count: number;
+  threat_campaigns_count: number;
+  last_extraction_at: string | null;
+  products_window_hours: number;
+  campaigns_window_days: number;
+}
+
 // ─── Case / Incident Management ─────────────────────────
 export type CaseType = 'incident_response' | 'investigation' | 'hunt' | 'rfi';
 export type CaseStatus = 'new' | 'in_progress' | 'pending' | 'resolved' | 'closed';

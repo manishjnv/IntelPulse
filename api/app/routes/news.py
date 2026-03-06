@@ -35,6 +35,11 @@ from app.schemas import (
     NewsFeedStatusResponse,
     NewsPipelineStatusResponse,
     NewsStatsResponse,
+    VulnerableProductResponse,
+    VulnerableProductsListResponse,
+    ThreatCampaignResponse,
+    ThreatCampaignsListResponse,
+    ExtractionStatsResponse,
 )
 
 router = APIRouter(prefix="/news", tags=["news"])
@@ -254,6 +259,89 @@ async def news_categories(
 
     response = NewsCategoriesResponse(categories=categories, total=total)
     await set_cached(ck, response.model_dump(), ttl=60)
+    return response
+
+
+# ── Intelligence Extraction Endpoints ──────────────────────
+
+@router.get("/vulnerable-products", response_model=VulnerableProductsListResponse)
+async def list_vulnerable_products(
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    search: str | None = Query(None, max_length=200),
+    severity: str | None = Query(None, pattern="^(critical|high|medium|low|info|unknown)$"),
+    sort_by: str = Query("last_seen", pattern="^(last_seen|cvss_score|epss_score|severity|source_count|product_name)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Get vulnerable products extracted from news in the last 48 hours."""
+    from app.services.intel_extraction import get_vulnerable_products, PRODUCTS_WINDOW_HOURS
+
+    ck = cache_key("vuln_products", search, severity, sort_by, sort_order, limit)
+    cached = await get_cached(ck)
+    if cached:
+        return cached
+
+    items, total = await get_vulnerable_products(
+        db, search=search, severity=severity, sort_by=sort_by, sort_order=sort_order, limit=limit
+    )
+
+    response = VulnerableProductsListResponse(
+        items=[VulnerableProductResponse.model_validate(i) for i in items],
+        total=total,
+        window_hours=PRODUCTS_WINDOW_HOURS,
+    )
+    await set_cached(ck, response.model_dump(), ttl=60)
+    return response
+
+
+@router.get("/threat-campaigns", response_model=ThreatCampaignsListResponse)
+async def list_threat_campaigns(
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    search: str | None = Query(None, max_length=200),
+    severity: str | None = Query(None, pattern="^(critical|high|medium|low|info|unknown)$"),
+    sort_by: str = Query("last_seen", pattern="^(last_seen|severity|source_count|actor_name)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Get active threat actors & campaigns from news in the last 7 days."""
+    from app.services.intel_extraction import get_threat_campaigns, CAMPAIGNS_WINDOW_DAYS
+
+    ck = cache_key("threat_campaigns", search, severity, sort_by, sort_order, limit)
+    cached = await get_cached(ck)
+    if cached:
+        return cached
+
+    items, total = await get_threat_campaigns(
+        db, search=search, severity=severity, sort_by=sort_by, sort_order=sort_order, limit=limit
+    )
+
+    response = ThreatCampaignsListResponse(
+        items=[ThreatCampaignResponse.model_validate(i) for i in items],
+        total=total,
+        window_days=CAMPAIGNS_WINDOW_DAYS,
+    )
+    await set_cached(ck, response.model_dump(), ttl=60)
+    return response
+
+
+@router.get("/extraction-stats", response_model=ExtractionStatsResponse)
+async def extraction_stats(
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Get intelligence extraction pipeline statistics."""
+    from app.services.intel_extraction import get_extraction_stats
+
+    ck = cache_key("extraction_stats")
+    cached = await get_cached(ck)
+    if cached:
+        return cached
+
+    data = await get_extraction_stats(db)
+    response = ExtractionStatsResponse(**data)
+    await set_cached(ck, response.model_dump(), ttl=30)
     return response
 
 

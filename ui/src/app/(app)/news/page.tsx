@@ -60,6 +60,8 @@ import {
   FileType2,
   ChevronsLeft,
   ChevronsRight,
+  ShieldAlert,
+  ArrowUpDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -72,6 +74,11 @@ import type {
   NewsCategoryCount,
   NewsPipelineStatus,
   NewsStatsResponse,
+  VulnerableProduct,
+  VulnerableProductsListResponse,
+  ThreatCampaign,
+  ThreatCampaignsListResponse,
+  ExtractionStatsResponse,
 } from "@/types";
 
 // ── Category config ──────────────────────────────────────
@@ -1080,6 +1087,413 @@ function ReadingPane({
   );
 }
 
+// ── Subtopic types ────────────────────────────────────────
+type Subtopic = "news" | "vulnerable-products" | "threat-campaigns";
+
+const SUBTOPIC_META: { id: Subtopic; label: string; shortLabel: string; icon: React.ElementType; color: string; bg: string; border: string; description: string }[] = [
+  {
+    id: "news",
+    label: "Cyber News Feed",
+    shortLabel: "News",
+    icon: Newspaper,
+    color: "text-primary",
+    bg: "bg-primary/10",
+    border: "border-primary/40",
+    description: "Structured intelligence from all sources",
+  },
+  {
+    id: "vulnerable-products",
+    label: "Vulnerable Products",
+    shortLabel: "Vulns",
+    icon: Bug,
+    color: "text-orange-400",
+    bg: "bg-orange-500/10",
+    border: "border-orange-500/40",
+    description: "Products with active vulnerabilities (48h)",
+  },
+  {
+    id: "threat-campaigns",
+    label: "Threat Actors & Campaigns",
+    shortLabel: "Actors",
+    icon: Swords,
+    color: "text-red-400",
+    bg: "bg-red-500/10",
+    border: "border-red-500/40",
+    description: "Active threat actors and campaigns (7d)",
+  },
+];
+
+// ── Severity badge helper ──────────────────────────────────
+function severityBadge(sev: string) {
+  switch (sev) {
+    case "critical": return { color: "bg-red-500/20 text-red-300 border-red-500/30", label: "Critical" };
+    case "high": return { color: "bg-orange-500/20 text-orange-300 border-orange-500/30", label: "High" };
+    case "medium": return { color: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30", label: "Medium" };
+    case "low": return { color: "bg-green-500/20 text-green-300 border-green-500/30", label: "Low" };
+    default: return { color: "bg-zinc-500/20 text-zinc-300 border-zinc-500/30", label: sev || "Unknown" };
+  }
+}
+
+// ── Vulnerable Products Table ─────────────────────────────
+function VulnerableProductsTable() {
+  const [data, setData] = useState<VulnerableProductsListResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("last_seen");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [sevFilter, setSevFilter] = useState("");
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await api.getVulnerableProducts({
+        search: search.trim() || undefined,
+        severity: sevFilter || undefined,
+        sort_by: sortBy,
+        sort_order: sortOrder,
+        limit: 200,
+      });
+      setData(result);
+    } catch { /* ignore */ } finally {
+      setLoading(false);
+    }
+  }, [search, sevFilter, sortBy, sortOrder]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const toggleSort = (col: string) => {
+    if (sortBy === col) {
+      setSortOrder(sortOrder === "desc" ? "asc" : "desc");
+    } else {
+      setSortBy(col);
+      setSortOrder("desc");
+    }
+  };
+
+  const SortHeader = ({ col, children }: { col: string; children: React.ReactNode }) => (
+    <button
+      onClick={() => toggleSort(col)}
+      className={cn(
+        "flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider hover:text-foreground transition-colors",
+        sortBy === col ? "text-primary" : "text-muted-foreground/70",
+      )}
+    >
+      {children}
+      <ArrowUpDown className="h-3 w-3" />
+    </button>
+  );
+
+  return (
+    <div className="space-y-3">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
+          <input
+            type="text"
+            placeholder="Search products, CVEs, vendors..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-8 pr-3 py-1.5 text-xs bg-card/50 border border-border/50 rounded-md focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40"
+          />
+        </div>
+        <select
+          value={sevFilter}
+          onChange={(e) => setSevFilter(e.target.value)}
+          className="text-[11px] bg-card/50 border border-border/50 rounded-md px-2 py-1.5"
+        >
+          <option value="">All Severities</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <span className="text-[10px] text-muted-foreground/60 ml-auto">
+          {data ? `${data.total} products • ${data.window_hours}h window` : ""}
+        </span>
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/40" />
+        </div>
+      ) : !data || data.items.length === 0 ? (
+        <Card className="card-3d">
+          <CardContent className="py-12 text-center">
+            <Bug className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">No vulnerable products found in the last {data?.window_hours || 48} hours.</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Products are extracted automatically from enriched news articles.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="rounded-lg border border-border/50 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-card/80 border-b border-border/30">
+                  <th className="text-left px-3 py-2"><SortHeader col="product_name">Product</SortHeader></th>
+                  <th className="text-left px-3 py-2 hidden md:table-cell">Vendor</th>
+                  <th className="text-left px-3 py-2">CVE</th>
+                  <th className="text-center px-3 py-2 hidden lg:table-cell"><SortHeader col="cvss_score">CVSS</SortHeader></th>
+                  <th className="text-center px-3 py-2"><SortHeader col="severity">Severity</SortHeader></th>
+                  <th className="text-center px-3 py-2 hidden lg:table-cell">KEV</th>
+                  <th className="text-center px-3 py-2 hidden lg:table-cell">Exploit</th>
+                  <th className="text-center px-3 py-2 hidden xl:table-cell"><SortHeader col="source_count">Sources</SortHeader></th>
+                  <th className="text-right px-3 py-2"><SortHeader col="last_seen">Last Seen</SortHeader></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/20">
+                {data.items.map((item) => {
+                  const sev = severityBadge(item.severity);
+                  return (
+                    <tr key={item.id} className="hover:bg-accent/10 transition-colors">
+                      <td className="px-3 py-2 font-medium max-w-[200px] truncate" title={item.product_name}>
+                        {item.product_name}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground hidden md:table-cell">{item.vendor || "—"}</td>
+                      <td className="px-3 py-2">
+                        {item.cve_id ? (
+                          <a
+                            href={`https://nvd.nist.gov/vuln/detail/${item.cve_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline font-mono text-[10px]"
+                          >
+                            {item.cve_id}
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground/40">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center hidden lg:table-cell">
+                        {item.cvss_score != null ? (
+                          <span className={cn(
+                            "font-mono text-[10px] font-bold",
+                            item.cvss_score >= 9 ? "text-red-400" :
+                            item.cvss_score >= 7 ? "text-orange-400" :
+                            item.cvss_score >= 4 ? "text-yellow-400" : "text-green-400"
+                          )}>
+                            {item.cvss_score.toFixed(1)}
+                          </span>
+                        ) : <span className="text-muted-foreground/40">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <Badge variant="outline" className={cn("text-[9px] h-4 px-1.5 border", sev.color)}>
+                          {sev.label}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2 text-center hidden lg:table-cell">
+                        {item.is_kev && <span title="CISA KEV"><ShieldAlert className="h-3.5 w-3.5 text-red-400 mx-auto" /></span>}
+                      </td>
+                      <td className="px-3 py-2 text-center hidden lg:table-cell">
+                        {item.exploit_available && <span title="Exploit available"><Zap className="h-3.5 w-3.5 text-amber-400 mx-auto" /></span>}
+                      </td>
+                      <td className="px-3 py-2 text-center hidden xl:table-cell text-muted-foreground">
+                        {item.source_count}
+                      </td>
+                      <td className="px-3 py-2 text-right text-muted-foreground text-[10px]">
+                        {timeAgo(item.last_seen)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Threat Campaigns Table ────────────────────────────────
+function ThreatCampaignsTable() {
+  const [data, setData] = useState<ThreatCampaignsListResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("last_seen");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [sevFilter, setSevFilter] = useState("");
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await api.getThreatCampaigns({
+        search: search.trim() || undefined,
+        severity: sevFilter || undefined,
+        sort_by: sortBy,
+        sort_order: sortOrder,
+        limit: 200,
+      });
+      setData(result);
+    } catch { /* ignore */ } finally {
+      setLoading(false);
+    }
+  }, [search, sevFilter, sortBy, sortOrder]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const toggleSort = (col: string) => {
+    if (sortBy === col) {
+      setSortOrder(sortOrder === "desc" ? "asc" : "desc");
+    } else {
+      setSortBy(col);
+      setSortOrder("desc");
+    }
+  };
+
+  const SortHeader = ({ col, children }: { col: string; children: React.ReactNode }) => (
+    <button
+      onClick={() => toggleSort(col)}
+      className={cn(
+        "flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider hover:text-foreground transition-colors",
+        sortBy === col ? "text-primary" : "text-muted-foreground/70",
+      )}
+    >
+      {children}
+      <ArrowUpDown className="h-3 w-3" />
+    </button>
+  );
+
+  return (
+    <div className="space-y-3">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
+          <input
+            type="text"
+            placeholder="Search actors, campaigns..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-8 pr-3 py-1.5 text-xs bg-card/50 border border-border/50 rounded-md focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40"
+          />
+        </div>
+        <select
+          value={sevFilter}
+          onChange={(e) => setSevFilter(e.target.value)}
+          className="text-[11px] bg-card/50 border border-border/50 rounded-md px-2 py-1.5"
+        >
+          <option value="">All Severities</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <span className="text-[10px] text-muted-foreground/60 ml-auto">
+          {data ? `${data.total} campaigns • ${data.window_days}d window` : ""}
+        </span>
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/40" />
+        </div>
+      ) : !data || data.items.length === 0 ? (
+        <Card className="card-3d">
+          <CardContent className="py-12 text-center">
+            <Swords className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">No active threat campaigns found in the last {data?.window_days || 7} days.</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Campaigns are extracted automatically from enriched news articles.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="rounded-lg border border-border/50 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-card/80 border-b border-border/30">
+                  <th className="text-left px-3 py-2"><SortHeader col="actor_name">Threat Actor</SortHeader></th>
+                  <th className="text-left px-3 py-2 hidden md:table-cell">Campaign</th>
+                  <th className="text-center px-3 py-2"><SortHeader col="severity">Severity</SortHeader></th>
+                  <th className="text-left px-3 py-2 hidden lg:table-cell">Malware</th>
+                  <th className="text-left px-3 py-2 hidden lg:table-cell">Techniques</th>
+                  <th className="text-left px-3 py-2 hidden xl:table-cell">CVEs</th>
+                  <th className="text-left px-3 py-2 hidden xl:table-cell">Targets</th>
+                  <th className="text-center px-3 py-2 hidden md:table-cell"><SortHeader col="source_count">Sources</SortHeader></th>
+                  <th className="text-right px-3 py-2"><SortHeader col="last_seen">Last Seen</SortHeader></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/20">
+                {data.items.map((item) => {
+                  const sev = severityBadge(item.severity);
+                  return (
+                    <tr key={item.id} className="hover:bg-accent/10 transition-colors">
+                      <td className="px-3 py-2 font-medium max-w-[160px] truncate" title={item.actor_name}>
+                        <div className="flex items-center gap-1.5">
+                          <Users className="h-3 w-3 text-red-400 shrink-0" />
+                          {item.actor_name}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground hidden md:table-cell max-w-[140px] truncate" title={item.campaign_name || ""}>
+                        {item.campaign_name || "—"}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <Badge variant="outline" className={cn("text-[9px] h-4 px-1.5 border", sev.color)}>
+                          {sev.label}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2 hidden lg:table-cell">
+                        <div className="flex gap-1 flex-wrap max-w-[120px]">
+                          {item.malware_used.slice(0, 2).map((m) => (
+                            <Badge key={m} variant="outline" className="text-[8px] h-3.5 px-1 border-purple-500/30 text-purple-300">
+                              {m}
+                            </Badge>
+                          ))}
+                          {item.malware_used.length > 2 && (
+                            <span className="text-[8px] text-muted-foreground/50">+{item.malware_used.length - 2}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 hidden lg:table-cell">
+                        <div className="flex gap-1 flex-wrap max-w-[120px]">
+                          {item.techniques_used.slice(0, 2).map((t) => (
+                            <Badge key={t} variant="outline" className="text-[8px] h-3.5 px-1 border-sky-500/30 text-sky-300">
+                              {t}
+                            </Badge>
+                          ))}
+                          {item.techniques_used.length > 2 && (
+                            <span className="text-[8px] text-muted-foreground/50">+{item.techniques_used.length - 2}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 hidden xl:table-cell">
+                        <div className="flex gap-1 flex-wrap max-w-[100px]">
+                          {item.cves_exploited.slice(0, 2).map((c) => (
+                            <span key={c} className="text-[8px] font-mono text-orange-300">{c}</span>
+                          ))}
+                          {item.cves_exploited.length > 2 && (
+                            <span className="text-[8px] text-muted-foreground/50">+{item.cves_exploited.length - 2}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 hidden xl:table-cell">
+                        <div className="flex gap-1 flex-wrap max-w-[100px]">
+                          {item.targeted_sectors.slice(0, 2).map((s) => (
+                            <span key={s} className="text-[8px] text-muted-foreground">{s}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-center text-muted-foreground hidden md:table-cell">
+                        {item.source_count}
+                      </td>
+                      <td className="px-3 py-2 text-right text-muted-foreground text-[10px]">
+                        {timeAgo(item.last_seen)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ────────────────────────────────────────────
 export default function CyberNewsPage() {
   const router = useRouter();
@@ -1112,6 +1526,8 @@ export default function CyberNewsPage() {
   const [selectedArticle, setSelectedArticle] = useState<NewsItem | null>(null);
   const [articleLoading, setArticleLoading] = useState(false);
   const [newItemIds, setNewItemIds] = useState<Set<string>>(new Set());
+  const [activeSubtopic, setActiveSubtopic] = useState<Subtopic>("news");
+  const [extractionStats, setExtractionStats] = useState<ExtractionStatsResponse | null>(null);
 
   // Refs
   const prevItemIdsRef = useRef<Set<string>>(new Set());
@@ -1133,6 +1549,13 @@ export default function CyberNewsPage() {
     try {
       const data = await api.getNewsStats();
       setNewsStats(data);
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchExtractionStats = useCallback(async () => {
+    try {
+      const data = await api.getExtractionStats();
+      setExtractionStats(data);
     } catch { /* ignore */ }
   }, []);
 
@@ -1183,7 +1606,7 @@ export default function CyberNewsPage() {
     }
   }, [page, selectedCategory, searchQuery, selectedTag, sortKey]);
 
-  useEffect(() => { fetchCategories(); fetchStats(); }, [fetchCategories, fetchStats]);
+  useEffect(() => { fetchCategories(); fetchStats(); fetchExtractionStats(); }, [fetchCategories, fetchStats, fetchExtractionStats]);
   useEffect(() => { fetchNews(); }, [fetchNews]);
   useEffect(() => { fetchPipelineStatus(); }, [fetchPipelineStatus]);
 
@@ -1194,6 +1617,7 @@ export default function CyberNewsPage() {
       fetchCategories();
       fetchStats();
       fetchPipelineStatus();
+      fetchExtractionStats();
     }, 60000);
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
@@ -1343,6 +1767,50 @@ export default function CyberNewsPage() {
           onSortBy={(sort) => { setSortKey(sort); setPage(1); }}
         />
 
+        {/* ── Subtopic Tabs ─────────────────────────── */}
+        <div className="flex items-center gap-0 bg-card/60 border border-border/40 rounded-lg p-0.5">
+          {SUBTOPIC_META.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeSubtopic === tab.id;
+            const count = tab.id === "vulnerable-products"
+              ? extractionStats?.vulnerable_products_count
+              : tab.id === "threat-campaigns"
+                ? extractionStats?.threat_campaigns_count
+                : categories?.total ?? null;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveSubtopic(tab.id)}
+                className={cn(
+                  "relative flex items-center justify-center gap-2 flex-1 px-4 py-2 rounded-md text-xs font-semibold transition-all duration-200",
+                  isActive
+                    ? `${tab.bg} ${tab.color} shadow-sm border ${tab.border}`
+                    : "text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent/20",
+                )}
+              >
+                <Icon className={cn("h-4 w-4", isActive ? tab.color : "")} />
+                <span>{tab.label}</span>
+                {count != null && (
+                  <span className={cn(
+                    "text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[24px] text-center",
+                    isActive
+                      ? `${tab.bg} ${tab.color} border ${tab.border}`
+                      : "bg-muted/40 text-muted-foreground/70",
+                  )}>
+                    {count}
+                  </span>
+                )}
+                {isActive && (
+                  <span className={cn(
+                    "absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full",
+                    tab.id === "news" ? "bg-primary" : tab.id === "vulnerable-products" ? "bg-orange-400" : "bg-red-400",
+                  )} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         {/* ── Pipeline Status Banner ────────────────── */}
         {pipelineStatus && pipelineStatus.status !== "ok" && (
           <div className={cn(
@@ -1371,6 +1839,15 @@ export default function CyberNewsPage() {
       </div>
 
       {/* ── Main area ───────────────────────────────── */}
+      {activeSubtopic === "vulnerable-products" ? (
+        <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
+          <VulnerableProductsTable />
+        </div>
+      ) : activeSubtopic === "threat-campaigns" ? (
+        <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
+          <ThreatCampaignsTable />
+        </div>
+      ) : (
       <div className="flex-1 flex overflow-hidden">
         {/* ── Left: Collapsible Category Sidebar ────── */}
         <div
@@ -1586,6 +2063,7 @@ export default function CyberNewsPage() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

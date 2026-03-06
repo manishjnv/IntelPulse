@@ -1785,3 +1785,28 @@ def re_enrich_fallback_news(batch_size: int = 10) -> dict:
         return {"error": str(e)}
     finally:
         session.close()
+
+
+# ─── Intelligence Extraction ──────────────────────────────
+
+def extract_intel_from_news(lookback_hours: int = 2) -> dict:
+    """Extract vulnerable products and threat campaigns from enriched news.
+
+    Runs after enrichment batches. Scans recently-enriched articles and
+    upserts structured intelligence into dedicated tables.
+    """
+    from app.services.intel_extraction import extract_from_news_sync
+
+    logger.info("intel_extraction_start", lookback_hours=lookback_hours)
+    session = SyncSession()
+
+    try:
+        result = extract_from_news_sync(session, lookback_hours=lookback_hours)
+        logger.info("intel_extraction_done", **result)
+        return result
+    except Exception as e:
+        logger.error("intel_extraction_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()
