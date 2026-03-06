@@ -27,12 +27,27 @@ echo "  Commit: $(git rev-parse --short HEAD)" | tee -a "$LOG_FILE"
 echo "[2/5] Building Docker images..." | tee -a "$LOG_FILE"
 docker compose -f "$COMPOSE_FILE" build --parallel 2>&1 | tail -5 | tee -a "$LOG_FILE"
 
-# ── 3. Restart services ───────────────────────────────
-echo "[3/5] Starting services..." | tee -a "$LOG_FILE"
+# ── 3. Run SQL migrations ─────────────────────────────
+echo "[3/6] Running SQL migrations..." | tee -a "$LOG_FILE"
+POSTGRES_CONTAINER=$(docker compose ps -q postgres 2>/dev/null || echo "")
+if [ -n "$POSTGRES_CONTAINER" ]; then
+    for migration in db/migrations/*.sql; do
+        if [ -f "$migration" ]; then
+            BASENAME=$(basename "$migration")
+            echo "  Applying $BASENAME..." | tee -a "$LOG_FILE"
+            docker exec -i "$POSTGRES_CONTAINER" psql -U ti -d ti_platform < "$migration" 2>&1 | tail -3 | tee -a "$LOG_FILE"
+        fi
+    done
+else
+    echo "  WARNING: postgres container not running — skipping migrations" | tee -a "$LOG_FILE"
+fi
+
+# ── 4. Restart services ───────────────────────────────
+echo "[4/6] Starting services..." | tee -a "$LOG_FILE"
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans 2>&1 | tee -a "$LOG_FILE"
 
-# ── 4. Wait for health checks ─────────────────────────
-echo "[4/5] Waiting for health checks..." | tee -a "$LOG_FILE"
+# ── 5. Wait for health checks ─────────────────────────
+echo "[5/6] Waiting for health checks..." | tee -a "$LOG_FILE"
 MAX_WAIT=120
 ELAPSED=0
 while [ $ELAPSED -lt $MAX_WAIT ]; do
@@ -46,8 +61,8 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
     ELAPSED=$((ELAPSED + 10))
 done
 
-# ── 5. Cleanup ─────────────────────────────────────────
-echo "[5/5] Cleaning up old images..." | tee -a "$LOG_FILE"
+# ── 6. Cleanup ─────────────────────────────────────────
+echo "[6/6] Cleaning up old images..." | tee -a "$LOG_FILE"
 docker image prune -f --filter "until=48h" 2>&1 | tail -1 | tee -a "$LOG_FILE"
 
 # ── Summary ────────────────────────────────────────────
