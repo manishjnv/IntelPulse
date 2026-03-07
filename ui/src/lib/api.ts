@@ -920,3 +920,40 @@ export async function getBriefings(limit?: number): Promise<import("@/types").Th
   const q = limit ? `?limit=${limit}` : "";
   return fetcher<import("@/types").ThreatBriefingSummary[]>(`/enrichment/briefings${q}`);
 }
+
+// ─── AI Settings (Admin) ────────────────────────────────
+
+export async function getAISettings(): Promise<import("@/types").AISettings> {
+  return fetcher<import("@/types").AISettings>("/ai-settings");
+}
+
+export async function updateAISettings(data: Partial<import("@/types").AISettings>): Promise<import("@/types").AISettings> {
+  return fetcher<import("@/types").AISettings>("/ai-settings", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function testAIProvider(params: {
+  provider: string;
+  api_url: string;
+  api_key: string;
+  model: string;
+}): Promise<{ success: boolean; message: string; latency_ms?: number }> {
+  return fetcher<{ success: boolean; message: string; latency_ms?: number }>("/ai-settings/test-provider", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function getAIUsage(): Promise<import("@/types").AIUsage> {
+  return fetcher<import("@/types").AIUsage>("/ai-settings/usage");
+}
+
+export async function resetAIUsage(): Promise<{ status: string }> {
+  return fetcher<{ status: string }>("/ai-settings/reset-usage", { method: "POST" });
+}
+
+export async function getAIHealth(): Promise<import("@/types").AIHealthStatus> {
+  return fetcher<import("@/types").AIHealthStatus>("/ai-settings/health");
+}

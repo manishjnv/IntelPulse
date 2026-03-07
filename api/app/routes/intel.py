@@ -349,6 +349,7 @@ async def get_intel_enrichment(
         temperature=0.2,
         required_keys=["executive_summary", "threat_actors", "attack_techniques"],
         caller="intel_enrichment",
+        feature="intel_enrichment",
     )
 
     if not enrichment:

@@ -1139,3 +1139,60 @@ export interface ThreatBriefingSummary {
   created_at?: string | null;
 }
 
+// ─── AI Settings ────────────────────────────────────────────
+
+export interface FallbackProvider {
+  name: string;
+  api_url: string;
+  api_key: string;
+  model: string;
+  timeout: number;
+  enabled: boolean;
+}
+
+export interface AISettings {
+  ai_enabled: boolean;
+  primary_provider: string;
+  primary_api_url: string;
+  primary_api_key: string;
+  primary_model: string;
+  primary_timeout: number;
+  fallback_providers: FallbackProvider[];
+  feature_intel_summary: boolean;
+  feature_intel_enrichment: boolean;
+  feature_news_ai: boolean;
+  feature_live_lookup: boolean;
+  feature_report_generation: boolean;
+  feature_threat_briefing: boolean;
+  daily_limit_intel_summary: number;
+  daily_limit_intel_enrichment: number;
+  daily_limit_news_ai: number;
+  daily_limit_live_lookup: number;
+  daily_limit_report_generation: number;
+  daily_limit_threat_briefing: number;
+  prompt_intel_summary: string;
+  prompt_intel_enrichment: string;
+  prompt_news_ai: string;
+  prompt_live_lookup: string;
+  prompt_report_generation: string;
+  prompt_threat_briefing: string;
+  default_temperature: number;
+  default_max_tokens: number;
+  requests_per_minute: number;
+  batch_delay_ms: number;
+  cache_ttl_summary: number;
+  cache_ttl_enrichment: number;
+  cache_ttl_lookup: number;
+  updated_at: string | null;
+  daily_usage?: Record<string, number>;
+}
+
+export interface AIUsage {
+  [key: string]: number;
+}
+
+export interface AIHealthStatus {
+  status: string;
+  providers: Record<string, string>;
+}
+

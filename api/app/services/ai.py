@@ -9,6 +9,8 @@ Features:
   - Timeout fallback
   - Custom system prompts per use-case
   - Graceful "AI unavailable" state
+  - DB-managed settings (admin-configurable via UI)
+  - Per-feature toggles and daily limits
 """
 
 from __future__ import annotations
@@ -16,15 +18,154 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import httpx
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.core.redis import cache_key, get_cached, set_cached
+from app.core.redis import cache_key, get_cached, set_cached, redis_client
 
 logger = get_logger(__name__)
 settings = get_settings()
+
+_DAILY_KEY_PREFIX = "ai_daily_usage"
+
+
+# ── DB-backed AI Settings Cache ───────────────────────────
+
+_db_settings_cache: dict | None = None
+_db_settings_ts: float = 0
+
+
+async def get_ai_db_settings() -> dict | None:
+    """Load AI settings from Redis cache (set by the route on save).
+
+    Falls back to DB query on cold start, then caches for 60s.
+    Returns None if no DB settings exist (use env defaults).
+    """
+    global _db_settings_cache, _db_settings_ts
+    import time
+
+    now = time.time()
+    if _db_settings_cache is not None and (now - _db_settings_ts) < 60:
+        return _db_settings_cache
+
+    # Try Redis cache first
+    cached = await get_cached("ai_settings_cache")
+    if cached and isinstance(cached, dict):
+        _db_settings_cache = cached
+        _db_settings_ts = now
+        return cached
+
+    # Cold start — query DB directly
+    try:
+        from app.core.database import async_session_factory
+        from app.models.models import AISetting
+        from sqlalchemy import select
+
+        async with async_session_factory() as db:
+            result = await db.execute(select(AISetting).where(AISetting.key == "default"))
+            row = result.scalar_one_or_none()
+            if not row:
+                return None
+
+            data = {
+                "ai_enabled": row.ai_enabled,
+                "primary_api_url": row.primary_api_url,
+                "primary_api_key": row.primary_api_key,
+                "primary_model": row.primary_model,
+                "primary_timeout": row.primary_timeout,
+                "primary_provider": row.primary_provider,
+                "fallback_providers": row.fallback_providers or [],
+                "feature_intel_summary": row.feature_intel_summary,
+                "feature_intel_enrichment": row.feature_intel_enrichment,
+                "feature_news_enrichment": row.feature_news_enrichment,
+                "feature_live_lookup": row.feature_live_lookup,
+                "feature_report_gen": row.feature_report_gen,
+                "feature_briefing_gen": row.feature_briefing_gen,
+                "daily_limit_intel_summary": row.daily_limit_intel_summary,
+                "daily_limit_intel_enrichment": row.daily_limit_intel_enrichment,
+                "daily_limit_news_enrichment": row.daily_limit_news_enrichment,
+                "daily_limit_live_lookup": row.daily_limit_live_lookup,
+                "daily_limit_report_gen": row.daily_limit_report_gen,
+                "daily_limit_briefing_gen": row.daily_limit_briefing_gen,
+                "prompt_intel_summary": row.prompt_intel_summary,
+                "prompt_intel_enrichment": row.prompt_intel_enrichment,
+                "prompt_news_enrichment": row.prompt_news_enrichment,
+                "prompt_live_lookup": row.prompt_live_lookup,
+                "prompt_report_gen": row.prompt_report_gen,
+                "prompt_briefing_gen": row.prompt_briefing_gen,
+                "default_temperature": row.default_temperature,
+                "default_max_tokens": row.default_max_tokens,
+                "requests_per_minute": row.requests_per_minute,
+                "batch_delay_ms": row.batch_delay_ms,
+                "cache_ttl_summary": row.cache_ttl_summary,
+                "cache_ttl_enrichment": row.cache_ttl_enrichment,
+                "cache_ttl_lookup": row.cache_ttl_lookup,
+            }
+            await set_cached("ai_settings_cache", data, ttl=60)
+            _db_settings_cache = data
+            _db_settings_ts = now
+            return data
+    except Exception as e:
+        logger.debug("ai_db_settings_load_error", error=str(e))
+        return None
+
+
+async def is_feature_enabled(feature: str) -> bool:
+    """Check if a specific AI feature is enabled (global + per-feature toggle)."""
+    db_cfg = await get_ai_db_settings()
+    if db_cfg is None:
+        # No DB settings — fall back to env
+        return settings.ai_enabled
+
+    if not db_cfg.get("ai_enabled", True):
+        return False
+
+    return db_cfg.get(f"feature_{feature}", True)
+
+
+async def check_daily_limit(feature: str) -> bool:
+    """Check if the daily limit for a feature has been reached. Returns True if OK to proceed."""
+    db_cfg = await get_ai_db_settings()
+    if db_cfg is None:
+        return True  # No limits when no DB settings
+
+    limit = db_cfg.get(f"daily_limit_{feature}", 0)
+    if limit <= 0:
+        return True  # 0 = unlimited
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    r = redis_client
+    count = await r.get(f"{_DAILY_KEY_PREFIX}:{feature}:{today}")
+    return int(count or 0) < limit
+
+
+async def increment_daily_usage(feature: str):
+    """Increment the daily usage counter for a feature."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    r = redis_client
+    key = f"{_DAILY_KEY_PREFIX}:{feature}:{today}"
+    await r.incr(key)
+    await r.expire(key, 86400)
+
+
+async def get_custom_prompt(feature: str) -> str | None:
+    """Get the custom prompt for a feature from DB settings, or None to use default."""
+    db_cfg = await get_ai_db_settings()
+    if db_cfg is None:
+        return None
+    return db_cfg.get(f"prompt_{feature}")
+
+
+async def get_cache_ttl(feature: str) -> int:
+    """Get the cache TTL for a feature from DB settings."""
+    db_cfg = await get_ai_db_settings()
+    defaults = {"summary": 3600, "enrichment": 21600, "lookup": 300}
+    if db_cfg is None:
+        return defaults.get(feature, 3600)
+    return db_cfg.get(f"cache_ttl_{feature}", defaults.get(feature, 3600))
 
 
 # ── Fallback Model Chain ──────────────────────────────────
@@ -101,9 +242,52 @@ def _build_fallback_chain() -> list[_Provider]:
 
 
 _fallback_chain: list[_Provider] | None = None
+_chain_built_ts: float = 0
+
+
+async def _get_chain_async() -> list[_Provider]:
+    """Get the provider chain, rebuilding from DB settings if stale (>60s)."""
+    global _fallback_chain, _chain_built_ts
+    import time
+
+    now = time.time()
+    if _fallback_chain is not None and (now - _chain_built_ts) < 60:
+        return _fallback_chain
+
+    db_cfg = await get_ai_db_settings()
+    chain: list[_Provider] = []
+
+    if db_cfg and db_cfg.get("primary_api_key"):
+        # Build chain from DB settings
+        chain.append(_Provider(
+            name=db_cfg.get("primary_provider", "groq") + "-primary",
+            url=db_cfg["primary_api_url"],
+            key=db_cfg["primary_api_key"],
+            model=db_cfg["primary_model"],
+            timeout=db_cfg.get("primary_timeout", 30),
+        ))
+        for fb in db_cfg.get("fallback_providers", []):
+            if fb.get("enabled") and fb.get("key"):
+                chain.append(_Provider(
+                    name=fb.get("name", "fallback"),
+                    url=fb.get("url", ""),
+                    key=fb["key"],
+                    model=fb.get("model", ""),
+                    timeout=int(fb.get("timeout", 30)),
+                ))
+    else:
+        # Fall back to env-based chain
+        chain = _build_fallback_chain()
+
+    _fallback_chain = chain
+    _chain_built_ts = now
+    names = [f"{p.name}({p.model})" for p in chain]
+    logger.info("ai_chain_loaded", providers=names, source="db" if db_cfg else "env")
+    return chain
 
 
 def _get_chain() -> list[_Provider]:
+    """Synchronous chain getter — uses cached chain, or builds from env."""
     global _fallback_chain
     if _fallback_chain is None:
         _fallback_chain = _build_fallback_chain()
@@ -133,7 +317,7 @@ async def _call_with_fallback(
     Returns the response content string, or None if all providers fail.
     Specifically retries on HTTP 429 (rate-limit) and 503 (overloaded).
     """
-    chain = _get_chain()
+    chain = await _get_chain_async()
     if not chain:
         logger.warning(f"{caller}_no_providers")
         return None
@@ -224,24 +408,33 @@ async def generate_summary(
     Tries each provider in the fallback chain on rate-limit (429).
     Returns None if AI is unavailable or all providers are exhausted.
     """
-    if not settings.ai_enabled:
-        logger.info("ai_disabled")
+    # Check feature toggle and daily limit
+    if not await is_feature_enabled("intel_summary"):
+        logger.info("ai_intel_summary_disabled")
+        return None
+    if not await check_daily_limit("intel_summary"):
+        logger.info("ai_intel_summary_daily_limit_reached")
         return None
 
-    chain = _get_chain()
+    chain = await _get_chain_async()
     if not chain:
         logger.warning("ai_no_providers_configured")
         return None
 
     # Check cache first
+    ttl = await get_cache_ttl("summary")
     ck = cache_key(cache_prefix, title, severity)
     cached = await get_cached(ck)
-    if cached:
+    if cached and isinstance(cached, dict):
         return cached.get("summary")
+
+    # Use custom prompt if configured
+    custom = await get_custom_prompt("intel_summary")
+    final_prompt = system_prompt or custom or _DEFAULT_SYSTEM_PROMPT
 
     prompt = _build_prompt(title, description, severity, source_name, cve_ids or [])
     messages = [
-        {"role": "system", "content": system_prompt or _DEFAULT_SYSTEM_PROMPT},
+        {"role": "system", "content": final_prompt},
         {"role": "user", "content": prompt},
     ]
 
@@ -250,7 +443,8 @@ async def generate_summary(
     )
 
     if summary:
-        await set_cached(ck, {"summary": summary}, ttl=settings.cache_ttl_ai_summary)
+        await set_cached(ck, {"summary": summary}, ttl=ttl)
+        await increment_daily_usage("intel_summary")
 
     return summary
 
@@ -278,29 +472,46 @@ async def chat_completion(
     *,
     max_tokens: int = 800,
     temperature: float = 0.3,
+    feature: str | None = None,
 ) -> str | None:
     """Generic chat completion with automatic provider fallback.
 
     Tries each provider in the fallback chain on rate-limit (429).
     Returns content string or None if all providers are exhausted.
     """
-    if not settings.ai_enabled:
-        logger.info("ai_disabled")
-        return None
+    if feature:
+        if not await is_feature_enabled(feature):
+            logger.info("ai_feature_disabled", feature=feature)
+            return None
+        if not await check_daily_limit(feature):
+            logger.info("ai_daily_limit_reached", feature=feature)
+            return None
 
-    chain = _get_chain()
+    chain = await _get_chain_async()
     if not chain:
         logger.warning("ai_chat_no_providers_configured")
         return None
 
+    # Apply custom prompt override if configured for this feature
+    effective_system = system_prompt
+    if feature:
+        custom = await get_custom_prompt(feature)
+        if custom:
+            effective_system = custom
+
     messages = [
-        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": effective_system},
         {"role": "user", "content": user_prompt},
     ]
 
-    return await _call_with_fallback(
+    result = await _call_with_fallback(
         messages, max_tokens=max_tokens, temperature=temperature, caller="ai_chat"
     )
+
+    if result and feature:
+        await increment_daily_usage(feature)
+
+    return result
 
 
 def _strip_json_fences(text: str) -> str:
@@ -323,6 +534,7 @@ async def chat_completion_json(
     temperature: float = 0.3,
     required_keys: list[str] | None = None,
     caller: str = "ai_json",
+    feature: str | None = None,
 ) -> dict | None:
     """Chat completion that parses and validates JSON response.
 
@@ -335,6 +547,7 @@ async def chat_completion_json(
         user_prompt=user_prompt,
         max_tokens=max_tokens,
         temperature=temperature,
+        feature=feature,
     )
 
     if not raw:

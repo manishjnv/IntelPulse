@@ -1,0 +1,305 @@
+"""AI Settings API — admin-only platform-wide AI configuration."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
+
+from app.core.config import get_settings
+from app.core.database import get_db
+from app.core.logging import get_logger
+from app.core.redis import redis_client
+from app.middleware.auth import require_admin
+from app.models.models import AISetting, User
+
+logger = get_logger(__name__)
+env_settings = get_settings()
+
+router = APIRouter(prefix="/ai-settings", tags=["ai-settings"])
+
+# Redis key for daily usage counters
+_DAILY_KEY_PREFIX = "ai_daily_usage"
+
+# Fields that can be updated
+_UPDATABLE_FIELDS = {
+    "ai_enabled", "primary_provider", "primary_api_url", "primary_api_key",
+    "primary_model", "primary_timeout", "fallback_providers",
+    "feature_intel_summary", "feature_intel_enrichment", "feature_news_enrichment",
+    "feature_live_lookup", "feature_report_gen", "feature_briefing_gen",
+    "daily_limit_intel_summary", "daily_limit_intel_enrichment",
+    "daily_limit_news_enrichment", "daily_limit_live_lookup",
+    "daily_limit_report_gen", "daily_limit_briefing_gen",
+    "prompt_intel_summary", "prompt_intel_enrichment", "prompt_news_enrichment",
+    "prompt_live_lookup", "prompt_report_gen", "prompt_briefing_gen",
+    "default_temperature", "default_max_tokens",
+    "requests_per_minute", "batch_delay_ms",
+    "cache_ttl_summary", "cache_ttl_enrichment", "cache_ttl_lookup",
+}
+
+
+async def _get_or_create_settings(db: AsyncSession) -> AISetting:
+    """Get the singleton AI settings row, creating it if absent."""
+    result = await db.execute(select(AISetting).where(AISetting.key == "default"))
+    row = result.scalar_one_or_none()
+    if not row:
+        row = AISetting(key="default")
+        # Seed from env vars so first load reflects current config
+        row.ai_enabled = env_settings.ai_enabled
+        row.primary_api_url = env_settings.ai_api_url
+        row.primary_api_key = env_settings.ai_api_key
+        row.primary_model = env_settings.ai_model
+        row.primary_timeout = env_settings.ai_timeout
+
+        # Seed fallback providers from env
+        fallbacks = []
+        if env_settings.cerebras_api_key:
+            fallbacks.append({
+                "name": "cerebras", "url": "https://api.cerebras.ai/v1/chat/completions",
+                "key": env_settings.cerebras_api_key, "model": "llama3.1-8b",
+                "timeout": 60, "enabled": True,
+            })
+        if env_settings.hf_api_key:
+            fallbacks.append({
+                "name": "huggingface", "url": "https://api-inference.huggingface.co/v1/chat/completions",
+                "key": env_settings.hf_api_key, "model": "mistralai/Mistral-7B-Instruct-v0.3",
+                "timeout": 60, "enabled": True,
+            })
+        row.fallback_providers = fallbacks
+        db.add(row)
+        await db.flush()
+    return row
+
+
+def _serialize(row: AISetting) -> dict:
+    """Serialize AISetting to JSON-safe dict, masking API keys."""
+    return {
+        "ai_enabled": row.ai_enabled,
+        "primary_provider": row.primary_provider,
+        "primary_api_url": row.primary_api_url,
+        "primary_api_key_set": bool(row.primary_api_key),
+        "primary_api_key_masked": _mask(row.primary_api_key),
+        "primary_model": row.primary_model,
+        "primary_timeout": row.primary_timeout,
+        "fallback_providers": [
+            {**p, "key_set": bool(p.get("key")), "key_masked": _mask(p.get("key", "")), "key": ""}
+            for p in (row.fallback_providers or [])
+        ],
+        "feature_intel_summary": row.feature_intel_summary,
+        "feature_intel_enrichment": row.feature_intel_enrichment,
+        "feature_news_enrichment": row.feature_news_enrichment,
+        "feature_live_lookup": row.feature_live_lookup,
+        "feature_report_gen": row.feature_report_gen,
+        "feature_briefing_gen": row.feature_briefing_gen,
+        "daily_limit_intel_summary": row.daily_limit_intel_summary,
+        "daily_limit_intel_enrichment": row.daily_limit_intel_enrichment,
+        "daily_limit_news_enrichment": row.daily_limit_news_enrichment,
+        "daily_limit_live_lookup": row.daily_limit_live_lookup,
+        "daily_limit_report_gen": row.daily_limit_report_gen,
+        "daily_limit_briefing_gen": row.daily_limit_briefing_gen,
+        "prompt_intel_summary": row.prompt_intel_summary,
+        "prompt_intel_enrichment": row.prompt_intel_enrichment,
+        "prompt_news_enrichment": row.prompt_news_enrichment,
+        "prompt_live_lookup": row.prompt_live_lookup,
+        "prompt_report_gen": row.prompt_report_gen,
+        "prompt_briefing_gen": row.prompt_briefing_gen,
+        "default_temperature": row.default_temperature,
+        "default_max_tokens": row.default_max_tokens,
+        "requests_per_minute": row.requests_per_minute,
+        "batch_delay_ms": row.batch_delay_ms,
+        "cache_ttl_summary": row.cache_ttl_summary,
+        "cache_ttl_enrichment": row.cache_ttl_enrichment,
+        "cache_ttl_lookup": row.cache_ttl_lookup,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+def _mask(key: str) -> str:
+    if not key or len(key) < 8:
+        return "***" if key else ""
+    return key[:4] + "****" + key[-4:]
+
+
+@router.get("")
+async def get_ai_settings(
+    user: Annotated[User, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Get current AI configuration (admin only)."""
+    row = await _get_or_create_settings(db)
+    await db.commit()
+    data = _serialize(row)
+    # Attach daily usage counters
+    data["daily_usage"] = await _get_daily_usage()
+    return data
+
+
+@router.put("")
+async def update_ai_settings(
+    body: dict,
+    user: Annotated[User, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Update AI configuration (admin only). Partial update — only send changed fields."""
+    row = await _get_or_create_settings(db)
+
+    for field, value in body.items():
+        if field not in _UPDATABLE_FIELDS:
+            continue
+
+        # Validate types
+        if field.startswith("feature_") and not isinstance(value, bool):
+            continue
+        if field.startswith("daily_limit_") and not isinstance(value, int):
+            continue
+        if field.startswith("cache_ttl_") and not isinstance(value, int):
+            continue
+        if field in ("default_temperature",) and not isinstance(value, (int, float)):
+            continue
+        if field in ("default_max_tokens", "requests_per_minute", "batch_delay_ms", "primary_timeout") and not isinstance(value, int):
+            continue
+
+        # Special handling for fallback_providers
+        if field == "fallback_providers":
+            if not isinstance(value, list):
+                continue
+            # Preserve existing keys if new entry sends empty key
+            existing = {p.get("name"): p for p in (row.fallback_providers or [])}
+            merged = []
+            for p in value:
+                if not isinstance(p, dict) or not p.get("name"):
+                    continue
+                if not p.get("key") and p["name"] in existing:
+                    p["key"] = existing[p["name"]].get("key", "")
+                merged.append({
+                    "name": p.get("name", ""),
+                    "url": p.get("url", ""),
+                    "key": p.get("key", ""),
+                    "model": p.get("model", ""),
+                    "timeout": int(p.get("timeout", 30)),
+                    "enabled": bool(p.get("enabled", True)),
+                })
+            value = merged
+
+        # Special handling for api key — don't overwrite with empty
+        if field == "primary_api_key" and not value:
+            continue
+
+        setattr(row, field, value)
+
+    row.updated_by = user.id
+    row.updated_at = datetime.now(timezone.utc)
+
+    if row.fallback_providers is not None:
+        flag_modified(row, "fallback_providers")
+
+    await db.commit()
+
+    # Invalidate the cached settings in ai.py
+    await _invalidate_ai_cache()
+
+    data = _serialize(row)
+    data["daily_usage"] = await _get_daily_usage()
+    logger.info("ai_settings_updated", user=user.email)
+    return data
+
+
+@router.post("/test-provider")
+async def test_ai_provider(
+    body: dict,
+    user: Annotated[User, Depends(require_admin)],
+):
+    """Test an AI provider connection with a simple prompt."""
+    import httpx
+
+    url = body.get("url", "")
+    key = body.get("key", "")
+    model = body.get("model", "")
+    timeout = int(body.get("timeout", 15))
+
+    if not url or not key or not model:
+        raise HTTPException(400, "url, key, and model are required")
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(
+                url,
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": "Respond with exactly: OK"},
+                        {"role": "user", "content": "Test"},
+                    ],
+                    "max_tokens": 10,
+                    "temperature": 0,
+                },
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                return {"success": True, "status": resp.status_code, "response": content.strip()[:100]}
+            return {"success": False, "status": resp.status_code, "error": resp.text[:200]}
+    except httpx.TimeoutException:
+        return {"success": False, "status": 0, "error": "Connection timed out"}
+    except Exception as e:
+        return {"success": False, "status": 0, "error": str(e)[:200]}
+
+
+@router.get("/usage")
+async def get_ai_usage(
+    user: Annotated[User, Depends(require_admin)],
+):
+    """Get today's AI usage counters per feature."""
+    return await _get_daily_usage()
+
+
+@router.post("/reset-usage")
+async def reset_ai_usage(
+    user: Annotated[User, Depends(require_admin)],
+):
+    """Reset today's usage counters."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    features = [
+        "intel_summary", "intel_enrichment", "news_enrichment",
+        "live_lookup", "report_gen", "briefing_gen",
+    ]
+    r = redis_client
+    for f in features:
+        await r.delete(f"{_DAILY_KEY_PREFIX}:{f}:{today}")
+    return {"reset": True}
+
+
+@router.get("/health")
+async def ai_provider_health(
+    user: Annotated[User, Depends(require_admin)],
+):
+    """Check health of all configured AI providers."""
+    from app.services.ai import check_ai_health
+    return await check_ai_health()
+
+
+# ─── Helpers ─────────────────────────────────────────────
+
+async def _get_daily_usage() -> dict:
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    features = [
+        "intel_summary", "intel_enrichment", "news_enrichment",
+        "live_lookup", "report_gen", "briefing_gen",
+    ]
+    r = redis_client
+    usage = {}
+    for f in features:
+        val = await r.get(f"{_DAILY_KEY_PREFIX}:{f}:{today}")
+        usage[f] = int(val) if val else 0
+    return usage
+
+
+async def _invalidate_ai_cache():
+    """Clear the cached AI settings so ai.py reloads from DB on next call."""
+    r = redis_client
+    await r.delete("ai_settings_cache")

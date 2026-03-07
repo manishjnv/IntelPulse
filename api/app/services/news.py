@@ -841,6 +841,7 @@ async def enrich_news_item(
         temperature=0.15,
         required_keys=["category", "summary", "executive_brief"],
         caller="news_enrichment",
+        feature="news_ai",
     )
 
     if not data:

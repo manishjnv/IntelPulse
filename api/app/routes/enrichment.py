@@ -231,6 +231,7 @@ FORMAT your response as JSON with these fields:
         max_tokens=4000,
         required_keys=["executive_summary"],
         caller="briefing_gen",
+        feature="intel_enrichment",
     )
 
     # Store in DB — use AI JSON if available, fall back to data-only briefing

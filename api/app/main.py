@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.logging import setup_logging
-from app.routes import health, intel, search, dashboard, admin, auth, techniques, graph, notifications, reports, iocs, news, cases, enrichment
+from app.routes import health, intel, search, dashboard, admin, auth, techniques, graph, notifications, reports, iocs, news, cases, enrichment, ai_settings
 from app.routes import settings as settings_route
 
 settings = get_settings()
@@ -67,6 +67,7 @@ app.include_router(news.router, prefix=PREFIX)
 app.include_router(cases.router, prefix=PREFIX)
 app.include_router(settings_route.router, prefix=PREFIX)
 app.include_router(enrichment.router, prefix=PREFIX)
+app.include_router(ai_settings.router, prefix=PREFIX)
 
 
 @app.get("/")

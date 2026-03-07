@@ -24,8 +24,22 @@ import {
   FileSpreadsheet,
   Globe,
   Server,
+  Brain,
+  Zap,
+  Info,
+  RefreshCw,
+  Plus,
+  X,
+  Activity,
+  BarChart3,
+  MessageSquare,
+  ChevronDown,
+  ChevronUp,
+  FlaskConical,
+  Gauge,
 } from "lucide-react";
 import * as api from "@/lib/api";
+import type { AISettings, FallbackProvider } from "@/types";
 
 interface SettingSection {
   id: string;
@@ -76,6 +90,12 @@ const SECTIONS: SettingSection[] = [
     title: "Organization",
     icon: <Building2 className="h-4 w-4" />,
     description: "Org profile for personalized threat scoring",
+  },
+  {
+    id: "ai",
+    title: "AI Configuration",
+    icon: <Brain className="h-4 w-4" />,
+    description: "Providers, models, limits, and prompts",
   },
 ];
 
@@ -206,6 +226,7 @@ export default function SettingsPage() {
               {activeSection === "org" && (
                 <OrgProfileSettings settings={settings} onChange={updateSetting} />
               )}
+              {activeSection === "ai" && <AIConfigSettings />}
             </>
           )}
         </div>
@@ -1493,4 +1514,825 @@ function OrgProfileSettings({
       </Card>
     </div>
   );
+}
+
+/* ─── AI Configuration (Admin) ────────────────────────── */
+
+const AI_FEATURES = [
+  {
+    key: "intel_summary",
+    label: "Intel Summary",
+    tip: "Auto-generates a concise AI summary for each intelligence item. Helps analysts quickly understand new threats without reading full descriptions.",
+    limitTip: "Max AI summaries per day. Set 0 for unlimited. Each new intel item may trigger one summary call.",
+  },
+  {
+    key: "intel_enrichment",
+    label: "Intel Enrichment",
+    tip: "Deep AI analysis that extracts threat actors, TTPs, MITRE mappings, and actionable recommendations from intel items on demand.",
+    limitTip: "Max enrichment requests per day. Enrichment is heavier than summaries (~3000 tokens). Set 0 for unlimited.",
+  },
+  {
+    key: "news_ai",
+    label: "News AI Extraction",
+    tip: "Extracts IOCs, CVEs, threat actors, and structured intelligence from ingested news articles automatically.",
+    limitTip: "Max news articles processed by AI per day. Each article uses ~3500 tokens. Set 0 for unlimited.",
+  },
+  {
+    key: "live_lookup",
+    label: "Live Lookup",
+    tip: "Real-time AI-powered indicator lookups that provide context, risk assessment, and recommendations for IPs, domains, and hashes.",
+    limitTip: "Max live lookup queries per day. Each query triggers a provider call. Set 0 for unlimited.",
+  },
+  {
+    key: "report_generation",
+    label: "Report Generation",
+    tip: "AI drafts executive threat reports, export summaries, and briefing documents for stakeholder communication.",
+    limitTip: "Max AI-generated reports per day. Reports use higher token counts (~4000). Set 0 for unlimited.",
+  },
+  {
+    key: "threat_briefing",
+    label: "Threat Briefing",
+    tip: "Generates periodic threat briefings that synthesize recent intelligence into an executive-ready summary with key findings and recommendations.",
+    limitTip: "Max threat briefings generated per day. Each briefing analyzes many items at once. Set 0 for unlimited.",
+  },
+] as const;
+
+const PROVIDER_OPTIONS = [
+  { value: "groq", label: "Groq" },
+  { value: "cerebras", label: "Cerebras" },
+  { value: "huggingface", label: "HuggingFace" },
+  { value: "openai", label: "OpenAI" },
+  { value: "anthropic", label: "Anthropic" },
+  { value: "ollama", label: "Ollama (Local)" },
+  { value: "custom", label: "Custom OpenAI-compatible" },
+];
+
+function Tooltip({ text }: { text: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onClick={() => setShow(!show)}
+        className="text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Info className="h-3 w-3" />
+      </button>
+      {show && (
+        <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-56 p-2 rounded-md bg-popover border border-border text-[10px] text-popover-foreground shadow-lg leading-relaxed">
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
+type AISubSection = "provider" | "features" | "limits" | "prompts" | "advanced" | "health";
+
+function AIConfigSettings() {
+  const [cfg, setCfg] = useState<AISettings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; latency_ms?: number } | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [healthData, setHealthData] = useState<Record<string, string> | null>(null);
+  const [usageData, setUsageData] = useState<Record<string, number>>({});
+  const [activeSubSection, setActiveSubSection] = useState<AISubSection>("provider");
+  const [expandedPrompt, setExpandedPrompt] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadAll();
+  }, []);
+
+  const loadAll = async () => {
+    setLoading(true);
+    try {
+      const [settingsData, usage] = await Promise.all([
+        api.getAISettings(),
+        api.getAIUsage().catch(() => ({})),
+      ]);
+      setCfg(settingsData);
+      setUsageData(usage as Record<string, number>);
+    } catch (err: any) {
+      setError(err?.message === "Forbidden" ? "Admin access required" : "Failed to load AI settings");
+    }
+    setLoading(false);
+  };
+
+  const update = (key: keyof AISettings, value: unknown) => {
+    setCfg((prev) => prev ? { ...prev, [key]: value } : prev);
+  };
+
+  const handleSave = async () => {
+    if (!cfg) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await api.updateAISettings(cfg);
+      setCfg(result);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err: any) {
+      setError(err?.message || "Save failed");
+    }
+    setSaving(false);
+  };
+
+  const handleTestProvider = async () => {
+    if (!cfg) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const result = await api.testAIProvider({
+        provider: cfg.primary_provider,
+        api_url: cfg.primary_api_url,
+        api_key: cfg.primary_api_key,
+        model: cfg.primary_model,
+      });
+      setTestResult(result);
+    } catch (err: any) {
+      setTestResult({ success: false, message: err?.message || "Connection failed" });
+    }
+    setTesting(false);
+  };
+
+  const handleCheckHealth = async () => {
+    try {
+      const result = await api.getAIHealth();
+      setHealthData(result.providers);
+    } catch {
+      setHealthData({ error: "Health check failed" });
+    }
+  };
+
+  const handleResetUsage = async () => {
+    try {
+      await api.resetAIUsage();
+      setUsageData({});
+    } catch { /* silent */ }
+  };
+
+  const addFallback = () => {
+    if (!cfg) return;
+    const newFb: FallbackProvider = { name: "groq", api_url: "", api_key: "", model: "", timeout: 30, enabled: true };
+    update("fallback_providers", [...(cfg.fallback_providers || []), newFb]);
+  };
+
+  const updateFallback = (idx: number, field: keyof FallbackProvider, value: unknown) => {
+    if (!cfg) return;
+    const list = [...(cfg.fallback_providers || [])];
+    list[idx] = { ...list[idx], [field]: value };
+    update("fallback_providers", list);
+  };
+
+  const removeFallback = (idx: number) => {
+    if (!cfg) return;
+    const list = [...(cfg.fallback_providers || [])];
+    list.splice(idx, 1);
+    update("fallback_providers", list);
+  };
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="py-12 flex items-center justify-center">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error && !cfg) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center">
+          <AlertCircle className="h-6 w-6 text-red-400 mx-auto mb-2" />
+          <p className="text-xs text-red-400">{error}</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!cfg) return null;
+
+  const SUB_SECTIONS: { id: AISubSection; label: string; icon: React.ReactNode }[] = [
+    { id: "provider", label: "Provider", icon: <Server className="h-3 w-3" /> },
+    { id: "features", label: "Features", icon: <Zap className="h-3 w-3" /> },
+    { id: "limits", label: "Limits & Usage", icon: <Gauge className="h-3 w-3" /> },
+    { id: "prompts", label: "Custom Prompts", icon: <MessageSquare className="h-3 w-3" /> },
+    { id: "advanced", label: "Advanced", icon: <FlaskConical className="h-3 w-3" /> },
+    { id: "health", label: "Health & Stats", icon: <Activity className="h-3 w-3" /> },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Header bar with save */}
+      <Card>
+        <CardContent className="py-3 px-5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Brain className="h-4 w-4 text-primary" />
+            <span className="text-sm font-semibold">AI Configuration</span>
+            <Tooltip text="Global AI settings that control all AI-powered features across the platform. Changes take effect within 60 seconds." />
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Master toggle */}
+            <span className="text-[10px] text-muted-foreground mr-1">AI Engine</span>
+            <ToggleSwitch checked={cfg.ai_enabled} onChange={(v) => update("ai_enabled", v)} />
+            {error && (
+              <span className="text-[10px] text-red-400 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" /> {error}
+              </span>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : saved ? <Check className="h-3 w-3" /> : <Save className="h-3 w-3" />}
+              {saving ? "Saving..." : saved ? "Saved!" : "Save"}
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Sub-section tabs */}
+      <div className="flex gap-1 flex-wrap">
+        {SUB_SECTIONS.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => setActiveSubSection(s.id)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] transition-colors ${
+              activeSubSection === s.id
+                ? "bg-primary/10 text-primary font-medium"
+                : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+            }`}
+          >
+            {s.icon} {s.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Provider Config ── */}
+      {activeSubSection === "provider" && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-5">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Server className="h-3.5 w-3.5" /> Primary Provider
+                <Tooltip text="The main AI provider used for all requests. Fallback providers are tried in order if the primary fails with a rate limit (429) error." />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-5 pb-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] text-muted-foreground mb-1 block">Provider</label>
+                  <select
+                    value={cfg.primary_provider}
+                    onChange={(e) => update("primary_provider", e.target.value)}
+                    className="w-full px-2 py-1.5 rounded-md bg-muted/30 border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    {PROVIDER_OPTIONS.map((p) => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground mb-1 block">Model</label>
+                  <input
+                    type="text"
+                    value={cfg.primary_model}
+                    onChange={(e) => update("primary_model", e.target.value)}
+                    placeholder="e.g. llama-3.3-70b-versatile"
+                    className="w-full px-2 py-1.5 rounded-md bg-muted/30 border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground mb-1 block">API URL</label>
+                <input
+                  type="text"
+                  value={cfg.primary_api_url}
+                  onChange={(e) => update("primary_api_url", e.target.value)}
+                  placeholder="https://api.groq.com/openai/v1"
+                  className="w-full px-2 py-1.5 rounded-md bg-muted/30 border border-border text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] text-muted-foreground mb-1 block">API Key</label>
+                  <input
+                    type="password"
+                    value={cfg.primary_api_key}
+                    onChange={(e) => update("primary_api_key", e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-2 py-1.5 rounded-md bg-muted/30 border border-border text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
+                    Timeout (sec) <Tooltip text="How long to wait for a response before timing out and trying the next provider." />
+                  </label>
+                  <input
+                    type="number"
+                    value={cfg.primary_timeout}
+                    onChange={(e) => update("primary_timeout", Number(e.target.value))}
+                    min={5}
+                    max={120}
+                    className="w-full px-2 py-1.5 rounded-md bg-muted/30 border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  onClick={handleTestProvider}
+                  disabled={testing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted hover:bg-muted/80 text-xs transition-colors disabled:opacity-50"
+                >
+                  {testing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+                  Test Connection
+                </button>
+                {testResult && (
+                  <span className={`text-[10px] flex items-center gap-1 ${testResult.success ? "text-green-400" : "text-red-400"}`}>
+                    {testResult.success ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                    {testResult.message}
+                    {testResult.latency_ms && ` (${testResult.latency_ms}ms)`}
+                  </span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Fallback Providers */}
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-5">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  Fallback Chain
+                  <Tooltip text="When the primary provider returns a 429 rate limit error, the system automatically tries these providers in order. Disabled providers are skipped." />
+                </CardTitle>
+                <button onClick={addFallback} className="flex items-center gap-1 text-[10px] text-primary hover:text-primary/80">
+                  <Plus className="h-3 w-3" /> Add Provider
+                </button>
+              </div>
+            </CardHeader>
+            <CardContent className="px-5 pb-4 space-y-3">
+              {(!cfg.fallback_providers || cfg.fallback_providers.length === 0) && (
+                <p className="text-[10px] text-muted-foreground text-center py-4">No fallback providers configured. The primary provider will be the only option.</p>
+              )}
+              {(cfg.fallback_providers || []).map((fb, idx) => (
+                <div key={idx} className="p-3 rounded-md border border-border/50 bg-muted/10 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-muted-foreground font-medium">Fallback #{idx + 1}</span>
+                    <div className="flex items-center gap-2">
+                      <ToggleSwitch checked={fb.enabled} onChange={(v) => updateFallback(idx, "enabled", v)} />
+                      <button onClick={() => removeFallback(idx)} className="text-red-400 hover:text-red-300">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-0.5 block">Provider</label>
+                      <select
+                        value={fb.name}
+                        onChange={(e) => updateFallback(idx, "name", e.target.value)}
+                        className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] focus:outline-none focus:ring-1 focus:ring-primary"
+                      >
+                        {PROVIDER_OPTIONS.map((p) => (
+                          <option key={p.value} value={p.value}>{p.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-0.5 block">Model</label>
+                      <input
+                        type="text"
+                        value={fb.model}
+                        onChange={(e) => updateFallback(idx, "model", e.target.value)}
+                        className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-0.5 block">API URL</label>
+                      <input
+                        type="text"
+                        value={fb.api_url}
+                        onChange={(e) => updateFallback(idx, "api_url", e.target.value)}
+                        className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-0.5 block">API Key</label>
+                      <input
+                        type="password"
+                        value={fb.api_key}
+                        onChange={(e) => updateFallback(idx, "api_key", e.target.value)}
+                        className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ── Feature Toggles ── */}
+      {activeSubSection === "features" && (
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-5">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Zap className="h-3.5 w-3.5" /> Feature Toggles
+              <Tooltip text="Enable or disable individual AI features. Disabled features return gracefully without calling any AI provider, saving quota and cost." />
+            </CardTitle>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              The master AI toggle must be ON for any feature to work. Individual toggles provide granular control.
+            </p>
+          </CardHeader>
+          <CardContent className="px-5 pb-4">
+            {!cfg.ai_enabled && (
+              <div className="mb-3 p-2 rounded-md bg-yellow-500/10 border border-yellow-500/20 text-[10px] text-yellow-400 flex items-center gap-1.5">
+                <AlertCircle className="h-3 w-3" /> Master AI toggle is OFF. All features are disabled regardless of individual settings.
+              </div>
+            )}
+            {AI_FEATURES.map((f) => {
+              const featureKey = `feature_${f.key}` as keyof AISettings;
+              return (
+                <SettingField key={f.key} label={f.label} description="">
+                  <div className="flex items-center gap-2">
+                    <Tooltip text={f.tip} />
+                    <ToggleSwitch
+                      checked={cfg[featureKey] as boolean}
+                      onChange={(v) => update(featureKey, v)}
+                    />
+                  </div>
+                </SettingField>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Limits & Usage ── */}
+      {activeSubSection === "limits" && (
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-5">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Gauge className="h-3.5 w-3.5" /> Daily Limits & Usage
+              <Tooltip text="Set maximum daily AI calls per feature. Counters reset at midnight UTC. Set 0 for unlimited. Limits prevent runaway costs and quota exhaustion." />
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-5 pb-4 space-y-3">
+            {AI_FEATURES.map((f) => {
+              const limitKey = `daily_limit_${f.key}` as keyof AISettings;
+              const usageKey = f.key;
+              const currentUsage = usageData[usageKey] || 0;
+              const limit = (cfg[limitKey] as number) || 0;
+              const pct = limit > 0 ? Math.min(100, (currentUsage / limit) * 100) : 0;
+              return (
+                <div key={f.key} className="flex items-center gap-3 py-2 border-b border-border/30 last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-medium">{f.label}</span>
+                      <Tooltip text={f.limitTip} />
+                    </div>
+                    {limit > 0 && (
+                      <div className="mt-1 flex items-center gap-2">
+                        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${pct > 90 ? "bg-red-500" : pct > 70 ? "bg-yellow-500" : "bg-primary"}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                          {currentUsage}/{limit}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    value={cfg[limitKey] as number}
+                    onChange={(e) => update(limitKey, Number(e.target.value))}
+                    min={0}
+                    max={100000}
+                    className="w-20 px-2 py-1 rounded-md bg-muted/30 border border-border text-xs text-right focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="0"
+                  />
+                </div>
+              );
+            })}
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-[10px] text-muted-foreground">Counters reset daily at midnight UTC</span>
+              <button
+                onClick={handleResetUsage}
+                className="flex items-center gap-1 text-[10px] text-red-400 hover:text-red-300 transition-colors"
+              >
+                <RefreshCw className="h-3 w-3" /> Reset All Counters
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Custom Prompts ── */}
+      {activeSubSection === "prompts" && (
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-5">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <MessageSquare className="h-3.5 w-3.5" /> Custom Prompts
+              <Tooltip text="Override the default system prompt for each AI feature. Leave empty to use the built-in prompt. Custom prompts let you tailor AI output to your organization's needs." />
+            </CardTitle>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Click a feature to expand and edit its system prompt. Leave blank to use the platform default.
+            </p>
+          </CardHeader>
+          <CardContent className="px-5 pb-4 space-y-2">
+            {AI_FEATURES.map((f) => {
+              const promptKey = `prompt_${f.key}` as keyof AISettings;
+              const isExpanded = expandedPrompt === f.key;
+              const hasCustom = Boolean(cfg[promptKey]);
+              return (
+                <div key={f.key} className="border border-border/30 rounded-md overflow-hidden">
+                  <button
+                    onClick={() => setExpandedPrompt(isExpanded ? null : f.key)}
+                    className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/20 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium">{f.label}</span>
+                      {hasCustom && (
+                        <Badge variant="outline" className="text-[9px] gap-0.5" style={{ borderColor: "#8b5cf6", color: "#8b5cf6" }}>
+                          Custom
+                        </Badge>
+                      )}
+                    </div>
+                    {isExpanded ? <ChevronUp className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
+                  </button>
+                  {isExpanded && (
+                    <div className="px-3 pb-3 space-y-2">
+                      <textarea
+                        value={(cfg[promptKey] as string) || ""}
+                        onChange={(e) => update(promptKey, e.target.value)}
+                        placeholder="Leave empty to use default prompt. Enter your custom system prompt here..."
+                        rows={6}
+                        className="w-full px-2.5 py-2 rounded-md bg-muted/20 border border-border text-[11px] font-mono leading-relaxed focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+                      />
+                      {hasCustom && (
+                        <button
+                          onClick={() => update(promptKey, "")}
+                          className="text-[10px] text-red-400 hover:text-red-300 flex items-center gap-1"
+                        >
+                          <Trash2 className="h-2.5 w-2.5" /> Clear custom prompt
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Advanced ── */}
+      {activeSubSection === "advanced" && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-5">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <FlaskConical className="h-3.5 w-3.5" /> Generation Parameters
+                <Tooltip text="Control how the AI generates responses. Temperature affects creativity (0 = deterministic, 1 = creative). Max tokens limits response length." />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-5 pb-4 space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                    Temperature <Tooltip text="Controls randomness. Lower = more focused and deterministic. Higher = more creative but less predictable. 0.3 is recommended for threat intelligence." />
+                  </label>
+                  <span className="text-xs font-mono text-primary">{cfg.default_temperature}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={cfg.default_temperature}
+                  onChange={(e) => update("default_temperature", Number(e.target.value))}
+                  className="w-full h-1.5 rounded-full appearance-none bg-muted [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:cursor-pointer"
+                />
+                <div className="flex justify-between text-[9px] text-muted-foreground mt-0.5">
+                  <span>Precise (0)</span>
+                  <span>Balanced (0.5)</span>
+                  <span>Creative (1)</span>
+                </div>
+              </div>
+              <SettingField label="Max Tokens" description="Maximum response length in tokens (~4 chars per token)">
+                <input
+                  type="number"
+                  value={cfg.default_max_tokens}
+                  onChange={(e) => update("default_max_tokens", Number(e.target.value))}
+                  min={100}
+                  max={16000}
+                  className="w-24 px-2 py-1 rounded-md bg-muted/30 border border-border text-xs text-right focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </SettingField>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-5">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                Rate Limiting
+                <Tooltip text="Controls how fast the platform sends requests to AI providers. Prevents hitting provider rate limits during batch processing." />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-5 pb-4">
+              <SettingField label="Requests per Minute" description="Max AI requests per minute (0 = unlimited)">
+                <input
+                  type="number"
+                  value={cfg.requests_per_minute}
+                  onChange={(e) => update("requests_per_minute", Number(e.target.value))}
+                  min={0}
+                  max={1000}
+                  className="w-24 px-2 py-1 rounded-md bg-muted/30 border border-border text-xs text-right focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </SettingField>
+              <SettingField label="Batch Delay (ms)" description="Delay between batch AI calls to avoid rate limits">
+                <input
+                  type="number"
+                  value={cfg.batch_delay_ms}
+                  onChange={(e) => update("batch_delay_ms", Number(e.target.value))}
+                  min={0}
+                  max={60000}
+                  step={100}
+                  className="w-24 px-2 py-1 rounded-md bg-muted/30 border border-border text-xs text-right focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </SettingField>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-5">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                Cache TTLs
+                <Tooltip text="How long AI responses are cached before regeneration. Longer TTLs reduce API calls but may show stale results. Values in seconds." />
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-5 pb-4">
+              <SettingField label="Summary Cache" description="Time to cache AI summaries">
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    value={cfg.cache_ttl_summary}
+                    onChange={(e) => update("cache_ttl_summary", Number(e.target.value))}
+                    min={0}
+                    max={604800}
+                    className="w-20 px-2 py-1 rounded-md bg-muted/30 border border-border text-xs text-right focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <span className="text-[10px] text-muted-foreground">{formatTTL(cfg.cache_ttl_summary)}</span>
+                </div>
+              </SettingField>
+              <SettingField label="Enrichment Cache" description="Time to cache AI enrichment results">
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    value={cfg.cache_ttl_enrichment}
+                    onChange={(e) => update("cache_ttl_enrichment", Number(e.target.value))}
+                    min={0}
+                    max={604800}
+                    className="w-20 px-2 py-1 rounded-md bg-muted/30 border border-border text-xs text-right focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <span className="text-[10px] text-muted-foreground">{formatTTL(cfg.cache_ttl_enrichment)}</span>
+                </div>
+              </SettingField>
+              <SettingField label="Lookup Cache" description="Time to cache live lookup results">
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    value={cfg.cache_ttl_lookup}
+                    onChange={(e) => update("cache_ttl_lookup", Number(e.target.value))}
+                    min={0}
+                    max={604800}
+                    className="w-20 px-2 py-1 rounded-md bg-muted/30 border border-border text-xs text-right focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <span className="text-[10px] text-muted-foreground">{formatTTL(cfg.cache_ttl_lookup)}</span>
+                </div>
+              </SettingField>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ── Health & Stats ── */}
+      {activeSubSection === "health" && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-5">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Activity className="h-3.5 w-3.5" /> Provider Health
+                  <Tooltip text="Tests connectivity to all configured AI providers and reports their status." />
+                </CardTitle>
+                <button
+                  onClick={handleCheckHealth}
+                  className="flex items-center gap-1 text-[10px] text-primary hover:text-primary/80"
+                >
+                  <RefreshCw className="h-3 w-3" /> Check Now
+                </button>
+              </div>
+            </CardHeader>
+            <CardContent className="px-5 pb-4">
+              {!healthData ? (
+                <p className="text-[10px] text-muted-foreground text-center py-4">Click &quot;Check Now&quot; to test provider connectivity.</p>
+              ) : (
+                <div className="space-y-2">
+                  {Object.entries(healthData).map(([name, status]) => (
+                    <div key={name} className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0">
+                      <span className="text-xs font-medium capitalize">{name}</span>
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] gap-1"
+                        style={{
+                          borderColor: status === "ok" ? "#22c55e" : "#ef4444",
+                          color: status === "ok" ? "#22c55e" : "#ef4444",
+                        }}
+                      >
+                        {status === "ok" ? <CheckCircle2 className="h-2.5 w-2.5" /> : <XCircle className="h-2.5 w-2.5" />}
+                        {status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-5">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <BarChart3 className="h-3.5 w-3.5" /> Today&apos;s Usage
+                  <Tooltip text="Daily AI call counters for each feature. Counters reset at midnight UTC." />
+                </CardTitle>
+                <button
+                  onClick={handleResetUsage}
+                  className="flex items-center gap-1 text-[10px] text-red-400 hover:text-red-300 transition-colors"
+                >
+                  <RefreshCw className="h-3 w-3" /> Reset
+                </button>
+              </div>
+            </CardHeader>
+            <CardContent className="px-5 pb-4">
+              <div className="space-y-2">
+                {AI_FEATURES.map((f) => {
+                  const count = usageData[f.key] || 0;
+                  const limitKey = `daily_limit_${f.key}` as keyof AISettings;
+                  const limit = (cfg[limitKey] as number) || 0;
+                  return (
+                    <div key={f.key} className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0">
+                      <span className="text-xs">{f.label}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono font-medium">{count}</span>
+                        {limit > 0 && (
+                          <span className="text-[10px] text-muted-foreground">/ {limit}</span>
+                        )}
+                        {limit > 0 && count >= limit && (
+                          <Badge variant="outline" className="text-[9px]" style={{ borderColor: "#ef4444", color: "#ef4444" }}>
+                            Limit Reached
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {Object.keys(usageData).length === 0 && (
+                <p className="text-[10px] text-muted-foreground text-center py-4">No AI usage recorded today.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {cfg.updated_at && (
+            <p className="text-[10px] text-muted-foreground text-center">
+              Last updated: {new Date(cfg.updated_at).toLocaleString()}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatTTL(seconds: number): string {
+  if (seconds <= 0) return "disabled";
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)}h`;
+  return `${Math.round(seconds / 86400)}d`;
 }

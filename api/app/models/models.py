@@ -554,6 +554,70 @@ class ThreatBriefing(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+# ─── AI Settings (Platform-wide) ─────────────────────────
+
+
+class AISetting(Base):
+    __tablename__ = "ai_settings"
+
+    key: Mapped[str] = mapped_column(String(50), primary_key=True, default="default")
+
+    # Global toggle
+    ai_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Primary provider
+    primary_provider: Mapped[str] = mapped_column(String(100), nullable=False, default="groq")
+    primary_api_url: Mapped[str] = mapped_column(Text, nullable=False, default="https://api.groq.com/openai/v1/chat/completions")
+    primary_api_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    primary_model: Mapped[str] = mapped_column(String(200), nullable=False, default="llama-3.3-70b-versatile")
+    primary_timeout: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+
+    # Fallback providers
+    fallback_providers: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+
+    # Per-feature toggles
+    feature_intel_summary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    feature_intel_enrichment: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    feature_news_enrichment: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    feature_live_lookup: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    feature_report_gen: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    feature_briefing_gen: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # Daily limits
+    daily_limit_intel_summary: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    daily_limit_intel_enrichment: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    daily_limit_news_enrichment: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    daily_limit_live_lookup: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    daily_limit_report_gen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    daily_limit_briefing_gen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Custom prompts
+    prompt_intel_summary: Mapped[str | None] = mapped_column(Text)
+    prompt_intel_enrichment: Mapped[str | None] = mapped_column(Text)
+    prompt_news_enrichment: Mapped[str | None] = mapped_column(Text)
+    prompt_live_lookup: Mapped[str | None] = mapped_column(Text)
+    prompt_report_gen: Mapped[str | None] = mapped_column(Text)
+    prompt_briefing_gen: Mapped[str | None] = mapped_column(Text)
+
+    # Generation parameters
+    default_temperature: Mapped[float] = mapped_column(Float, nullable=False, default=0.3)
+    default_max_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=800)
+
+    # Rate limiting
+    requests_per_minute: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    batch_delay_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=1000)
+
+    # Cache TTLs
+    cache_ttl_summary: Mapped[int] = mapped_column(Integer, nullable=False, default=3600)
+    cache_ttl_enrichment: Mapped[int] = mapped_column(Integer, nullable=False, default=21600)
+    cache_ttl_lookup: Mapped[int] = mapped_column(Integer, nullable=False, default=300)
+
+    # Audit
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 # ─── Detection Rules Library ─────────────────────────────
 
 
