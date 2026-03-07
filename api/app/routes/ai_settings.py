@@ -275,10 +275,15 @@ async def test_ai_provider(
     if not url or not key or not model:
         raise HTTPException(400, "url, key, and model are required")
 
+    # Ensure we hit the chat completions endpoint
+    test_url = url.rstrip("/")
+    if not test_url.endswith("/chat/completions"):
+        test_url += "/chat/completions"
+
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
-                url,
+                test_url,
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 json={
                     "model": model,
