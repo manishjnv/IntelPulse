@@ -1392,8 +1392,8 @@ function VulnerableProductsTable() {
                           <td className="px-2 py-1 font-mono text-blue-400">{cve}</td>
                           <td className="px-2 py-1">{p.product_name}</td>
                           <td className="px-2 py-1"><Badge variant="outline" className={cn("text-[9px] px-1", p.severity === "critical" ? "border-red-500/40 text-red-400" : p.severity === "high" ? "border-orange-500/40 text-orange-400" : "border-border")}>{p.severity}</Badge></td>
-                          <td className="px-2 py-1">{p.cvss_score ?? "—"}</td>
-                          <td className="px-2 py-1">{p.epss_score ? `${(p.epss_score * 100).toFixed(1)}%` : "—"}</td>
+                          <td className="px-2 py-1">{p.cvss_score != null ? Number(p.cvss_score).toFixed(1) : "—"}</td>
+                          <td className="px-2 py-1">{p.epss_score != null ? `${Number(p.epss_score).toFixed(1)}%` : "—"}</td>
                           <td className="px-2 py-1">{p.is_kev ? <ShieldAlert className="h-3 w-3 text-red-400" /> : "—"}</td>
                         </tr>
                       ))}

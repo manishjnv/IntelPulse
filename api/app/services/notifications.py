@@ -778,7 +778,7 @@ def _eval_extraction_rule(
     # --- High EPSS score alert ---
     epss_threshold = conditions.get("epss_threshold")
     if epss_threshold is not None:
-        threshold_val = float(epss_threshold) / 100.0  # stored as 0-100, db is 0-1
+        threshold_val = float(epss_threshold)  # both rule condition and DB store 0-100
         high_epss = session.execute(
             select(VulnerableProduct).where(
                 VulnerableProduct.epss_score >= threshold_val,
@@ -790,9 +790,9 @@ def _eval_extraction_rule(
                 session,
                 user_id=rule.user_id,
                 rule_id=rule.id,
-                title=f"High EPSS: {p.product_name} ({p.cve_id or 'N/A'}) — {(p.epss_score or 0) * 100:.0f}%",
+                title=f"High EPSS: {p.product_name} ({p.cve_id or 'N/A'}) — {(p.epss_score or 0):.0f}%",
                 message=f"{p.cve_id or p.product_name} has EPSS score of "
-                        f"{(p.epss_score or 0) * 100:.1f}%, indicating high exploitation probability.",
+                        f"{(p.epss_score or 0):.1f}%, indicating high exploitation probability.",
                 severity="high",
                 category="extraction",
                 entity_type="product",

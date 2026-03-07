@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 
 # ─── Enums ───────────────────────────────────────────────
@@ -765,6 +765,13 @@ class VulnerableProductResponse(BaseModel):
     epss_score: float | None = None
     severity: str = "unknown"
     is_kev: bool = False
+
+    @field_validator("cvss_score", "epss_score", mode="before")
+    @classmethod
+    def round_float_scores(cls, v: float | None) -> float | None:
+        if v is not None:
+            return round(v, 2)
+        return v
     exploit_available: bool = False
     patch_available: bool = False
     affected_versions: str | None = None
