@@ -1390,17 +1390,48 @@ function VulnerableProductsTable() {
                 <div className="border border-border/30 rounded overflow-hidden">
                   <table className="w-full text-[10px]">
                     <thead><tr className="bg-muted/30 text-left text-muted-foreground/60">
-                      <th className="px-2 py-1">CVE</th><th className="px-2 py-1">Product</th><th className="px-2 py-1">Severity</th><th className="px-2 py-1">CVSS</th><th className="px-2 py-1">EPSS</th><th className="px-2 py-1">KEV</th>
+                      <th className="px-2 py-1">CVE</th><th className="px-2 py-1">Product</th><th className="px-2 py-1">Vendor</th><th className="px-2 py-1">Severity</th><th className="px-2 py-1">CVSS</th><th className="px-2 py-1">EPSS</th><th className="px-2 py-1">Flags</th><th className="px-2 py-1">Linked Actors</th><th className="px-2 py-1">Source</th><th className="px-2 py-1">Published</th>
                     </tr></thead>
                     <tbody>
                       {Object.entries(cveLookupResult.results).map(([cve, p]: [string, any]) => (
                         <tr key={cve} className="border-t border-border/20 hover:bg-muted/10">
                           <td className="px-2 py-1 font-mono text-blue-400">{cve}</td>
                           <td className="px-2 py-1">{p.product_name}</td>
+                          <td className="px-2 py-1 text-muted-foreground">{p.vendor || "—"}</td>
                           <td className="px-2 py-1"><Badge variant="outline" className={cn("text-[9px] px-1", p.severity === "critical" ? "border-red-500/40 text-red-400" : p.severity === "high" ? "border-orange-500/40 text-orange-400" : "border-border")}>{p.severity}</Badge></td>
                           <td className="px-2 py-1">{p.cvss_score != null ? Number(p.cvss_score).toFixed(1) : "—"}</td>
                           <td className="px-2 py-1">{p.epss_score != null ? `${Number(p.epss_score).toFixed(1)}%` : "—"}</td>
-                          <td className="px-2 py-1">{p.is_kev ? <ShieldAlert className="h-3 w-3 text-red-400" /> : "—"}</td>
+                          <td className="px-2 py-1">
+                            <div className="flex items-center gap-1">
+                              {p.is_kev && <span title="CISA KEV"><ShieldAlert className="h-3 w-3 text-red-400" /></span>}
+                              {p.exploit_available && <span title="Exploit available"><Zap className="h-3 w-3 text-amber-400" /></span>}
+                              {p.patch_available && <span title="Patch available"><ShieldCheck className="h-3 w-3 text-green-400" /></span>}
+                              {!p.is_kev && !p.exploit_available && !p.patch_available && "—"}
+                            </div>
+                          </td>
+                          <td className="px-2 py-1">
+                            <div className="flex gap-1 flex-wrap max-w-[120px]">
+                              {(p.related_campaigns || []).slice(0, 2).map((c: any) => (
+                                <span key={c.id} className="inline-flex items-center gap-0.5 text-[8px] px-1 py-0 rounded border border-red-500/30 text-red-300" title={c.campaign_name || c.actor_name}>
+                                  <Users className="h-2 w-2" />{c.actor_name}
+                                </span>
+                              ))}
+                              {(p.related_campaigns || []).length > 2 && <span className="text-[8px] text-muted-foreground/50">+{p.related_campaigns.length - 2}</span>}
+                              {(!p.related_campaigns || p.related_campaigns.length === 0) && "—"}
+                            </div>
+                          </td>
+                          <td className="px-2 py-1">
+                            <div className="flex flex-col gap-0.5 max-w-[140px]">
+                              {(p.source_articles || []).slice(0, 1).map((a: any) => (
+                                <a key={a.id} href={a.source_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] text-primary hover:underline truncate" title={a.headline}>
+                                  <ExternalLink className="h-2.5 w-2.5 shrink-0" /><span className="truncate">{a.source}</span>
+                                </a>
+                              ))}
+                              {(p.source_articles || []).length > 1 && <span className="text-[8px] text-muted-foreground/50">+{p.source_articles.length - 1} more</span>}
+                              {(!p.source_articles || p.source_articles.length === 0) && <span className="text-muted-foreground/40">{p.source_count || 1} src</span>}
+                            </div>
+                          </td>
+                          <td className="px-2 py-1 text-muted-foreground">{p.last_seen ? timeAgo(p.last_seen) : "—"}</td>
                         </tr>
                       ))}
                     </tbody>
