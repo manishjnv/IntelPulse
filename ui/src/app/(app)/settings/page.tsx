@@ -1605,8 +1605,8 @@ const PROVIDER_INFO: Record<string, { freeLimit: string; models: string[]; note:
     note: "Wide model variety. Slower inference, best as last fallback.",
   },
   gemini: {
-    freeLimit: "Free: 15 req/min, 1M tokens/day (Gemini 2.0 Flash)",
-    models: ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro"],
+    freeLimit: "Free: 15 req/min, 1M tokens/day (Gemini 2.5 Flash)",
+    models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro"],
     note: "Google AI. Generous free tier via OpenAI-compatible endpoint.",
   },
   openai: {
@@ -1629,6 +1629,16 @@ const PROVIDER_INFO: Record<string, { freeLimit: string; models: string[]; note:
     models: [],
     note: "Any OpenAI-compatible API endpoint.",
   },
+};
+
+const PROVIDER_DEFAULTS: Record<string, { url: string; model: string }> = {
+  groq: { url: "https://api.groq.com/openai/v1/", model: "llama-3.3-70b-versatile" },
+  cerebras: { url: "https://api.cerebras.ai/v1/", model: "llama3.1-8b" },
+  gemini: { url: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-2.5-flash" },
+  openai: { url: "https://api.openai.com/v1/", model: "gpt-4o-mini" },
+  anthropic: { url: "https://api.anthropic.com/v1/", model: "claude-sonnet-4-20250514" },
+  ollama: { url: "http://localhost:11434/v1/", model: "llama3.1:8b" },
+  huggingface: { url: "https://api-inference.huggingface.co/v1/", model: "mistralai/Mistral-7B-Instruct-v0.3" },
 };
 
 function Tooltip({ text }: { text: string }) {
@@ -1952,7 +1962,15 @@ function AIConfigSettings() {
                   <label className="text-[10px] text-muted-foreground mb-1 block">Provider</label>
                   <select
                     value={cfg.primary_provider}
-                    onChange={(e) => update("primary_provider", e.target.value)}
+                    onChange={(e) => {
+                      const prov = e.target.value;
+                      update("primary_provider", prov);
+                      const defaults = PROVIDER_DEFAULTS[prov];
+                      if (defaults) {
+                        update("primary_api_url", defaults.url);
+                        update("primary_model", defaults.model);
+                      }
+                    }}
                     className="w-full px-2 py-1.5 rounded-md bg-muted/30 border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary"
                   >
                     {PROVIDER_OPTIONS.map((p) => (
@@ -2103,7 +2121,15 @@ function AIConfigSettings() {
                       <label className="text-[10px] text-muted-foreground mb-0.5 block">Provider</label>
                       <select
                         value={fb.name}
-                        onChange={(e) => updateFallback(idx, "name", e.target.value)}
+                        onChange={(e) => {
+                          const prov = e.target.value;
+                          updateFallback(idx, "name", prov);
+                          const defaults = PROVIDER_DEFAULTS[prov];
+                          if (defaults) {
+                            updateFallback(idx, "url", defaults.url);
+                            updateFallback(idx, "model", defaults.model);
+                          }
+                        }}
                         className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] focus:outline-none focus:ring-1 focus:ring-primary"
                       >
                         {PROVIDER_OPTIONS.map((p) => (
