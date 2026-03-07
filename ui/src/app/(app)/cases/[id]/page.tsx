@@ -392,7 +392,7 @@ export default function CaseDetailPage() {
           {editing ? (
             <input
               value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
+              onChange={(e) => { setEditTitle(e.target.value); markDirty(); }}
               className="text-lg font-bold w-full bg-muted/50 border border-border rounded-lg px-3 py-1 focus:outline-none focus:ring-1 focus:ring-primary"
             />
           ) : (
@@ -456,7 +456,7 @@ export default function CaseDetailPage() {
               {editing ? (
                 <textarea
                   value={editDesc}
-                  onChange={(e) => setEditDesc(e.target.value)}
+                  onChange={(e) => { setEditDesc(e.target.value); markDirty(); }}
                   className="w-full px-3 py-2 rounded-lg bg-muted/50 border border-border text-sm focus:outline-none focus:ring-1 focus:ring-primary min-h-[100px]"
                   placeholder="Case description..."
                 />
@@ -477,7 +477,7 @@ export default function CaseDetailPage() {
                     <label className="text-[10px] font-medium text-muted-foreground uppercase">Status</label>
                     <select
                       value={editStatus}
-                      onChange={(e) => setEditStatus(e.target.value as CaseStatus)}
+                      onChange={(e) => { setEditStatus(e.target.value as CaseStatus); markDirty(); }}
                       className="w-full mt-1 px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
                     >
                       {/* Show current + allowed transitions */}
@@ -491,7 +491,7 @@ export default function CaseDetailPage() {
                     <label className="text-[10px] font-medium text-muted-foreground uppercase">Priority</label>
                     <select
                       value={editPriority}
-                      onChange={(e) => setEditPriority(e.target.value as CasePriority)}
+                      onChange={(e) => { setEditPriority(e.target.value as CasePriority); markDirty(); }}
                       className="w-full mt-1 px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
                     >
                       {Object.entries(PRIORITY_CONFIG).map(([k, v]) => (
@@ -503,7 +503,7 @@ export default function CaseDetailPage() {
                     <label className="text-[10px] font-medium text-muted-foreground uppercase">Type</label>
                     <select
                       value={editType}
-                      onChange={(e) => setEditType(e.target.value as CaseType)}
+                      onChange={(e) => { setEditType(e.target.value as CaseType); markDirty(); }}
                       className="w-full mt-1 px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
                     >
                       {Object.entries(TYPE_CONFIG).map(([k, v]) => (
@@ -517,7 +517,7 @@ export default function CaseDetailPage() {
                     <label className="text-[10px] font-medium text-muted-foreground uppercase">Severity</label>
                     <select
                       value={editSeverity}
-                      onChange={(e) => setEditSeverity(e.target.value as Severity)}
+                      onChange={(e) => { setEditSeverity(e.target.value as Severity); markDirty(); }}
                       className="w-full mt-1 px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
                     >
                       <option value="critical">Critical</option>
@@ -531,7 +531,7 @@ export default function CaseDetailPage() {
                     <label className="text-[10px] font-medium text-muted-foreground uppercase">TLP</label>
                     <select
                       value={editTlp}
-                      onChange={(e) => setEditTlp(e.target.value)}
+                      onChange={(e) => { setEditTlp(e.target.value); markDirty(); }}
                       className="w-full mt-1 px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
                     >
                       <option value="TLP:RED">TLP:RED</option>
@@ -545,7 +545,7 @@ export default function CaseDetailPage() {
                     <label className="text-[10px] font-medium text-muted-foreground uppercase">Assignee</label>
                     <select
                       value={editAssigneeId}
-                      onChange={(e) => setEditAssigneeId(e.target.value)}
+                      onChange={(e) => { setEditAssigneeId(e.target.value); markDirty(); }}
                       className="w-full mt-1 px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
                     >
                       <option value="">Unassigned</option>
@@ -686,7 +686,12 @@ export default function CaseDetailPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold">Details</CardTitle>
             </CardHeader>
-            <CardC<span aria-hidden="true" className="mr-0.5">{statusCfg.shape}</span>
+            <CardContent className="space-y-2.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Status</span>
+                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${statusCfg.color}`}>
+                  <StatusIcon className="h-3 w-3 mr-0.5" />
+                  <span aria-hidden="true" className="mr-0.5">{statusCfg.shape}</span>
                   {statusCfg.label}
                 </Badge>
               </div>
@@ -701,12 +706,6 @@ export default function CaseDetailPage() {
                 <span className="text-muted-foreground">Severity</span>
                 <span className={`capitalize flex items-center gap-0.5 ${(SEVERITY_STYLES[caseData.severity] || SEVERITY_STYLES.medium).color}`}>
                   <span aria-hidden="true">{(SEVERITY_STYLES[caseData.severity] || SEVERITY_STYLES.medium).shape}</span>
-                  {caseData.severity}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Severity</span>
-                <span className={`capitalize ${SEVERITY_COLORS[caseData.severity] || ""}`}>
                   {caseData.severity}
                 </span>
               </div>
