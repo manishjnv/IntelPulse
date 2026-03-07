@@ -103,6 +103,12 @@ async def get_ai_db_settings() -> dict | None:
                 "cache_ttl_summary": row.cache_ttl_summary,
                 "cache_ttl_enrichment": row.cache_ttl_enrichment,
                 "cache_ttl_lookup": row.cache_ttl_lookup,
+                "model_intel_summary": row.model_intel_summary,
+                "model_intel_enrichment": row.model_intel_enrichment,
+                "model_news_enrichment": row.model_news_enrichment,
+                "model_live_lookup": row.model_live_lookup,
+                "model_report_gen": row.model_report_gen,
+                "model_briefing_gen": row.model_briefing_gen,
             }
             await set_cached("ai_settings_cache", data, ttl=60)
             _db_settings_cache = data
@@ -166,6 +172,15 @@ async def get_cache_ttl(feature: str) -> int:
     if db_cfg is None:
         return defaults.get(feature, 3600)
     return db_cfg.get(f"cache_ttl_{feature}", defaults.get(feature, 3600))
+
+
+async def get_feature_model(feature: str) -> str | None:
+    """Get per-feature model override from DB settings, or None to use primary."""
+    db_cfg = await get_ai_db_settings()
+    if db_cfg is None:
+        return None
+    model = db_cfg.get(f"model_{feature}", "")
+    return model if model else None
 
 
 # ── Fallback Model Chain ──────────────────────────────────
@@ -311,6 +326,7 @@ async def _call_with_fallback(
     max_tokens: int = 800,
     temperature: float = 0.3,
     caller: str = "ai",
+    model_override: str | None = None,
 ) -> str | None:
     """Try each provider in the fallback chain until one succeeds.
 
@@ -331,7 +347,7 @@ async def _call_with_fallback(
                     "User-Agent": "IntelWatch/1.0",
                 }
                 payload = {
-                    "model": provider.model,
+                    "model": model_override if (model_override and i == 0) else provider.model,
                     "messages": messages,
                     "max_tokens": max_tokens,
                     "temperature": temperature,
@@ -439,7 +455,8 @@ async def generate_summary(
     ]
 
     summary = await _call_with_fallback(
-        messages, max_tokens=max_tokens, temperature=0.3, caller="ai_summary"
+        messages, max_tokens=max_tokens, temperature=0.3, caller="ai_summary",
+        model_override=await get_feature_model("intel_summary"),
     )
 
     if summary:
@@ -505,7 +522,8 @@ async def chat_completion(
     ]
 
     result = await _call_with_fallback(
-        messages, max_tokens=max_tokens, temperature=temperature, caller="ai_chat"
+        messages, max_tokens=max_tokens, temperature=temperature, caller="ai_chat",
+        model_override=await get_feature_model(feature) if feature else None,
     )
 
     if result and feature:

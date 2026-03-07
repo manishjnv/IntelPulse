@@ -37,6 +37,7 @@ import {
   ChevronUp,
   FlaskConical,
   Gauge,
+  RotateCcw,
 } from "lucide-react";
 import * as api from "@/lib/api";
 import type { AISettings, FallbackProvider } from "@/types";
@@ -1524,36 +1525,48 @@ const AI_FEATURES = [
     label: "Intel Summary",
     tip: "Auto-generates a concise AI summary for each intelligence item. Helps analysts quickly understand new threats without reading full descriptions.",
     limitTip: "Max AI summaries per day. Set 0 for unlimited. Each new intel item may trigger one summary call.",
+    effects: "Intel list auto-summary, Intel detail page",
+    modelTip: "Fast 8B model recommended — outputs are short summaries (~150 tokens).",
   },
   {
     key: "intel_enrichment",
     label: "Intel Enrichment",
     tip: "Deep AI analysis that extracts threat actors, TTPs, MITRE mappings, and actionable recommendations from intel items on demand.",
     limitTip: "Max enrichment requests per day. Enrichment is heavier than summaries (~3000 tokens). Set 0 for unlimited.",
+    effects: "Intel detail page \u2018Enrich\u2019 button",
+    modelTip: "Large 70B model recommended — complex structured JSON extraction needs higher reasoning.",
   },
   {
     key: "news_enrichment",
     label: "News AI Extraction",
     tip: "Extracts IOCs, CVEs, threat actors, and structured intelligence from ingested news articles automatically.",
     limitTip: "Max news articles processed by AI per day. Each article uses ~3500 tokens. Set 0 for unlimited.",
+    effects: "News pipeline ingestion, News detail page",
+    modelTip: "Large 70B model recommended — multi-field entity extraction requires strong comprehension.",
   },
   {
     key: "live_lookup",
     label: "Live Lookup",
     tip: "Real-time AI-powered indicator lookups that provide context, risk assessment, and recommendations for IPs, domains, and hashes.",
     limitTip: "Max live lookup queries per day. Each query triggers a provider call. Set 0 for unlimited.",
+    effects: "Investigate page, Search results context",
+    modelTip: "Fast 8B model recommended — quick response time is critical for interactive lookups.",
   },
   {
     key: "report_gen",
     label: "Report Generation",
     tip: "AI drafts executive threat reports, export summaries, and briefing documents for stakeholder communication.",
     limitTip: "Max AI-generated reports per day. Reports use higher token counts (~4000). Set 0 for unlimited.",
+    effects: "Reports page, Report builder AI draft",
+    modelTip: "Large 70B model recommended — long-form generation requires coherent multi-paragraph output.",
   },
   {
     key: "briefing_gen",
     label: "Threat Briefing",
     tip: "Generates periodic threat briefings that synthesize recent intelligence into an executive-ready summary with key findings and recommendations.",
     limitTip: "Max threat briefings generated per day. Each briefing analyzes many items at once. Set 0 for unlimited.",
+    effects: "Briefings page, Scheduled daily briefings",
+    modelTip: "Large 70B model recommended — synthesizes multiple intel items into cohesive narrative.",
   },
 ] as const;
 
@@ -1591,6 +1604,35 @@ function Tooltip({ text }: { text: string }) {
 
 type AISubSection = "provider" | "features" | "limits" | "prompts" | "advanced" | "health";
 
+function getModelGuidance(model: string): { size: string; tempRange: string; tokensRange: string; bestFor: string; note: string } {
+  const m = model.toLowerCase();
+  if (m.includes("70b") || m.includes("72b") || m.includes("mixtral") || m.includes("32b") || m.includes("405b")) {
+    return {
+      size: "Large",
+      tempRange: "0.2 \u2013 0.4",
+      tokensRange: "800 \u2013 4000",
+      bestFor: "Enrichment, Reports, Briefings, Complex analysis",
+      note: "Higher quality output. Consider using a faster model for summaries and lookups via per-feature overrides.",
+    };
+  }
+  if (m.includes("8b") || m.includes("7b") || m.includes("9b") || m.includes("instant") || m.includes("mini")) {
+    return {
+      size: "Small / Fast",
+      tempRange: "0.1 \u2013 0.3",
+      tokensRange: "300 \u2013 800",
+      bestFor: "Summaries, Lookups, Quick analysis",
+      note: "Fast inference but lower quality for complex tasks. Consider a larger model for enrichment and reports.",
+    };
+  }
+  return {
+    size: "Standard",
+    tempRange: "0.2 \u2013 0.5",
+    tokensRange: "500 \u2013 2000",
+    bestFor: "General purpose",
+    note: "Adjust temperature and max tokens based on output quality.",
+  };
+}
+
 function AIConfigSettings() {
   const [cfg, setCfg] = useState<AISettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1603,6 +1645,8 @@ function AIConfigSettings() {
   const [usageData, setUsageData] = useState<Record<string, number>>({});
   const [activeSubSection, setActiveSubSection] = useState<AISubSection>("provider");
   const [expandedPrompt, setExpandedPrompt] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   useEffect(() => {
     loadAll();
@@ -1673,6 +1717,25 @@ function AIConfigSettings() {
       await api.resetAIUsage();
       setUsageData({});
     } catch { /* silent */ }
+  };
+
+  const handleResetDefaults = async () => {
+    if (!showResetConfirm) {
+      setShowResetConfirm(true);
+      setTimeout(() => setShowResetConfirm(false), 5000);
+      return;
+    }
+    setResetting(true);
+    setShowResetConfirm(false);
+    setError(null);
+    try {
+      const result = await api.resetAIDefaults();
+      setCfg(result);
+      setSaved(false);
+    } catch (err: unknown) {
+      setError((err as Error)?.message || "Reset failed");
+    }
+    setResetting(false);
   };
 
   const addFallback = () => {
@@ -1746,6 +1809,18 @@ function AIConfigSettings() {
                 <AlertCircle className="h-3 w-3" /> {error}
               </span>
             )}
+            <button
+              onClick={handleResetDefaults}
+              disabled={resetting}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50 ${
+                showResetConfirm
+                  ? "bg-red-500/15 text-red-400 hover:bg-red-500/25 border border-red-500/30"
+                  : "bg-muted hover:bg-muted/80 text-muted-foreground"
+              }`}
+            >
+              {resetting ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+              {resetting ? "Resetting..." : showResetConfirm ? "Confirm Reset?" : "Reset to Defaults"}
+            </button>
             <button
               onClick={handleSave}
               disabled={saving}
@@ -1945,11 +2020,11 @@ function AIConfigSettings() {
         <Card>
           <CardHeader className="pb-2 pt-4 px-5">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Zap className="h-3.5 w-3.5" /> Feature Toggles
-              <Tooltip text="Enable or disable individual AI features. Disabled features return gracefully without calling any AI provider, saving quota and cost." />
+              <Zap className="h-3.5 w-3.5" /> Feature Toggles &amp; Model Overrides
+              <Tooltip text="Enable or disable individual AI features. Disabled features return gracefully without calling any AI provider, saving quota and cost. Optionally assign a different model per feature." />
             </CardTitle>
             <p className="text-[10px] text-muted-foreground mt-0.5">
-              The master AI toggle must be ON for any feature to work. Individual toggles provide granular control.
+              The master AI toggle must be ON for any feature to work. Leave model blank to use the primary model ({cfg.primary_model}).
             </p>
           </CardHeader>
           <CardContent className="px-5 pb-4">
@@ -1960,16 +2035,31 @@ function AIConfigSettings() {
             )}
             {AI_FEATURES.map((f) => {
               const featureKey = `feature_${f.key}` as keyof AISettings;
+              const modelKey = `model_${f.key}` as keyof AISettings;
               return (
-                <SettingField key={f.key} label={f.label} description="">
-                  <div className="flex items-center gap-2">
-                    <Tooltip text={f.tip} />
+                <div key={f.key} className="py-3 border-b border-border/30 last:border-0">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium">{f.label}</span>
+                      <Tooltip text={f.tip} />
+                    </div>
                     <ToggleSwitch
                       checked={cfg[featureKey] as boolean}
                       onChange={(v) => update(featureKey, v)}
                     />
                   </div>
-                </SettingField>
+                  <p className="text-[9px] text-muted-foreground mt-1">Effects: {f.effects}</p>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={(cfg[modelKey] as string) || ""}
+                      onChange={(e) => update(modelKey, e.target.value)}
+                      placeholder={cfg.primary_model || "Primary model"}
+                      className="flex-1 max-w-[280px] px-2 py-1 rounded bg-muted/30 border border-border text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50"
+                    />
+                    <Tooltip text={f.modelTip} />
+                  </div>
+                </div>
               );
             })}
           </CardContent>
@@ -2085,12 +2175,41 @@ function AIConfigSettings() {
                           onClick={() => update(promptKey, "")}
                           className="text-[10px] text-red-400 hover:text-red-300 flex items-center gap-1"
                         >
-                          <Trash2 className="h-2.5 w-2.5" /> Clear custom prompt
-                        </button>
-                      )}
+          {/* Model Guidance Card */}
+          {(() => {
+            const guidance = getModelGuidance(cfg.primary_model);
+            return (
+              <Card>
+                <CardContent className="px-5 py-3">
+                  <div className="flex items-start gap-3">
+                    <Brain className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold">
+                        Model Guidance: <span className="text-primary font-mono">{cfg.primary_model}</span>{" "}
+                        <Badge variant="outline" className="text-[9px] ml-1" style={{ borderColor: "#8b5cf6", color: "#8b5cf6" }}>{guidance.size}</Badge>
+                      </p>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[10px] text-muted-foreground">
+                        <span>Recommended Temperature: <span className="text-foreground font-medium">{guidance.tempRange}</span></span>
+                        <span>Recommended Max Tokens: <span className="text-foreground font-medium">{guidance.tokensRange}</span></span>
+                        <span>Best For: <span className="text-foreground font-medium">{guidance.bestFor}</span></span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground/80">{guidance.note}</p>
                     </div>
-                  )}
-                </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-5">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <FlaskConical className="h-3.5 w-3.5" /> Generation Parameters
+                <Tooltip text="Control how the AI generates responses. Temperature affects creativity (0 = deterministic, 1 = creative). Max tokens limits response length." />
+              </CardTitle>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                These parameters apply to all AI features globally. Changes take effect within 60 seconds.
+              </p
               );
             })}
           </CardContent>

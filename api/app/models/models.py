@@ -612,6 +612,14 @@ class AISetting(Base):
     cache_ttl_enrichment: Mapped[int] = mapped_column(Integer, nullable=False, default=21600)
     cache_ttl_lookup: Mapped[int] = mapped_column(Integer, nullable=False, default=300)
 
+    # Per-feature model overrides (empty = use primary model)
+    model_intel_summary: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    model_intel_enrichment: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    model_news_enrichment: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    model_live_lookup: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    model_report_gen: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    model_briefing_gen: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+
     # Audit
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

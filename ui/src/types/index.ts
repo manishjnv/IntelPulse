@@ -1186,6 +1186,12 @@ export interface AISettings {
   cache_ttl_summary: number;
   cache_ttl_enrichment: number;
   cache_ttl_lookup: number;
+  model_intel_summary: string;
+  model_intel_enrichment: string;
+  model_news_enrichment: string;
+  model_live_lookup: string;
+  model_report_gen: string;
+  model_briefing_gen: string;
   updated_at: string | null;
   daily_usage?: Record<string, number>;
 }

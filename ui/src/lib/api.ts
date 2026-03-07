@@ -953,6 +953,14 @@ export async function resetAIUsage(): Promise<{ status: string }> {
   return fetcher<{ status: string }>("/ai-settings/reset-usage", { method: "POST" });
 }
 
+export async function getAIDefaults(): Promise<Record<string, unknown>> {
+  return fetcher<Record<string, unknown>>("/ai-settings/defaults");
+}
+
+export async function resetAIDefaults(): Promise<import("@/types").AISettings> {
+  return fetcher<import("@/types").AISettings>("/ai-settings/reset-defaults", { method: "POST" });
+}
+
 export async function getAIHealth(): Promise<import("@/types").AIHealthStatus> {
   return fetcher<import("@/types").AIHealthStatus>("/ai-settings/health");
 }

@@ -39,6 +39,49 @@ _UPDATABLE_FIELDS = {
     "default_temperature", "default_max_tokens",
     "requests_per_minute", "batch_delay_ms",
     "cache_ttl_summary", "cache_ttl_enrichment", "cache_ttl_lookup",
+    "model_intel_summary", "model_intel_enrichment", "model_news_enrichment",
+    "model_live_lookup", "model_report_gen", "model_briefing_gen",
+}
+
+# Optimal defaults — hardcoded in backend code (secure, not user-editable).
+# Used by the reset-to-defaults endpoint to prevent misconfiguration.
+AI_OPTIMAL_DEFAULTS: dict = {
+    "ai_enabled": True,
+    "primary_provider": "groq",
+    "primary_api_url": "https://api.groq.com/openai/v1/chat/completions",
+    "primary_model": "llama-3.3-70b-versatile",
+    "primary_timeout": 30,
+    "feature_intel_summary": True,
+    "feature_intel_enrichment": True,
+    "feature_news_enrichment": True,
+    "feature_live_lookup": True,
+    "feature_report_gen": True,
+    "feature_briefing_gen": True,
+    "daily_limit_intel_summary": 500,
+    "daily_limit_intel_enrichment": 200,
+    "daily_limit_news_enrichment": 300,
+    "daily_limit_live_lookup": 100,
+    "daily_limit_report_gen": 50,
+    "daily_limit_briefing_gen": 20,
+    "default_temperature": 0.3,
+    "default_max_tokens": 800,
+    "requests_per_minute": 30,
+    "batch_delay_ms": 1000,
+    "cache_ttl_summary": 3600,
+    "cache_ttl_enrichment": 21600,
+    "cache_ttl_lookup": 300,
+    "model_intel_summary": "",
+    "model_intel_enrichment": "",
+    "model_news_enrichment": "",
+    "model_live_lookup": "",
+    "model_report_gen": "",
+    "model_briefing_gen": "",
+    "prompt_intel_summary": "",
+    "prompt_intel_enrichment": "",
+    "prompt_news_enrichment": "",
+    "prompt_live_lookup": "",
+    "prompt_report_gen": "",
+    "prompt_briefing_gen": "",
 }
 
 
@@ -114,6 +157,12 @@ def _serialize(row: AISetting) -> dict:
         "cache_ttl_summary": row.cache_ttl_summary,
         "cache_ttl_enrichment": row.cache_ttl_enrichment,
         "cache_ttl_lookup": row.cache_ttl_lookup,
+        "model_intel_summary": row.model_intel_summary,
+        "model_intel_enrichment": row.model_intel_enrichment,
+        "model_news_enrichment": row.model_news_enrichment,
+        "model_live_lookup": row.model_live_lookup,
+        "model_report_gen": row.model_report_gen,
+        "model_briefing_gen": row.model_briefing_gen,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
 
@@ -274,6 +323,46 @@ async def reset_ai_usage(
     for f in features:
         await r.delete(f"{_DAILY_KEY_PREFIX}:{f}:{today}")
     return {"reset": True}
+
+
+@router.get("/defaults")
+async def get_ai_defaults(
+    user: Annotated[User, Depends(require_admin)],
+):
+    """Return the optimal default settings (read-only, hardcoded in backend)."""
+    return AI_OPTIMAL_DEFAULTS
+
+
+@router.post("/reset-defaults")
+async def reset_ai_defaults(
+    user: Annotated[User, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Reset AI settings to optimal defaults. Preserves API keys and fallback providers."""
+    row = await _get_or_create_settings(db)
+
+    for field, value in AI_OPTIMAL_DEFAULTS.items():
+        if field not in _UPDATABLE_FIELDS:
+            continue
+        # Never reset secrets
+        if field in ("primary_api_key", "fallback_providers"):
+            continue
+        setattr(row, field, value)
+
+    # Clear custom prompts
+    for f in ("intel_summary", "intel_enrichment", "news_enrichment",
+              "live_lookup", "report_gen", "briefing_gen"):
+        setattr(row, f"prompt_{f}", None)
+
+    row.updated_by = user.id
+    row.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await _invalidate_ai_cache()
+
+    data = _serialize(row)
+    data["daily_usage"] = await _get_daily_usage()
+    logger.info("ai_settings_reset_to_defaults", user=user.email)
+    return data
 
 
 @router.get("/health")
