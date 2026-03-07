@@ -1943,12 +1943,14 @@ function AIConfigSettings() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-[10px] text-muted-foreground mb-1 block">Model</label>
+                  <label className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
+                    Model(s) <Tooltip text="Primary model name. You can enter comma-separated model names; the first is used as default, others as in-provider fallbacks." />
+                  </label>
                   <input
                     type="text"
                     value={cfg.primary_model}
                     onChange={(e) => update("primary_model", e.target.value)}
-                    placeholder="e.g. llama-3.3-70b-versatile"
+                    placeholder={PROVIDER_INFO[cfg.primary_provider]?.models[0] || "e.g. llama-3.3-70b-versatile"}
                     className="w-full px-2 py-1.5 rounded-md bg-muted/30 border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
@@ -2030,33 +2032,58 @@ function AIConfigSettings() {
                   <Plus className="h-3 w-3" /> Add Provider
                 </button>
               </div>
-            </CardHeader>
-            <CardContent className="px-5 pb-4 space-y-3">
-              {(!cfg.fallback_providers || cfg.fallback_providers.length === 0) && (
-                <p className="text-[10px] text-muted-foreground text-center py-4">No fallback providers configured. The primary provider will be the only option.</p>
-              )}
-              {(cfg.fallback_providers || []).map((fb, idx) => (
-                <div key={idx} className="p-3 rounded-md border border-border/50 bg-muted/10 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-muted-foreground font-medium">Fallback #{idx + 1}</span>
-                    <div className="flex items-center gap-2">
-                      <ToggleSwitch checked={fb.enabled} onChange={(v) => updateFallback(idx, "enabled", v)} />
-                      <button onClick={() => removeFallback(idx)} className="text-red-400 hover:text-red-300">
-                        <X className="h-3 w-3" />
-                      </button>
+            </CardHeader>flex items-center gap-1">
+                        Model(s) <Tooltip text="Enter one model name, or comma-separated for multiple models. First model is used for testing." />
+                      </label>
+                      <input
+                        type="text"
+                        value={fb.model}
+                        onChange={(e) => updateFallback(idx, "model", e.target.value)}
+                        placeholder={PROVIDER_INFO[fb.name]?.models[0] || "model-name"}
+                        className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-0.5 block">API URL</label>
+                      <input
+                        type="text"
+                        value={fb.url}
+                        onChange={(e) => updateFallback(idx, "url", e.target.value)}
+                        className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-0.5 block">API Key</label>
+                      <input
+                        type="password"
+                        value={fb.key}
+                        onChange={(e) => updateFallback(idx, "key", e.target.value)}
+                        className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[10px] text-muted-foreground mb-0.5 block">Provider</label>
-                      <select
-                        value={fb.name}
-                        onChange={(e) => updateFallback(idx, "name", e.target.value)}
-                        className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] focus:outline-none focus:ring-1 focus:ring-primary"
-                      >
-                        {PROVIDER_OPTIONS.map((p) => (
-                          <option key={p.value} value={p.value}>{p.label}</option>
-                        ))}
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      onClick={() => handleTestFallback(idx)}
+                      disabled={fbTesting[idx] || !fb.url || !fb.key || !fb.model}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded bg-muted hover:bg-muted/80 text-[10px] transition-colors disabled:opacity-50"
+                    >
+                      {fbTesting[idx] ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Zap className="h-2.5 w-2.5" />}
+                      Test
+                    </button>
+                    {fbTestResults[idx] && (
+                      <span className={`text-[10px] flex items-center gap-1 ${fbTestResults[idx]!.success ? "text-green-400" : "text-red-400"}`}>
+                        {fbTestResults[idx]!.success ? <CheckCircle2 className="h-2.5 w-2.5" /> : <XCircle className="h-2.5 w-2.5" />}
+                        {fbTestResults[idx]!.success ? fbTestResults[idx]!.response || "OK" : fbTestResults[idx]!.error || `HTTP ${fbTestResults[idx]!.status}`}
+                      </span>
+                    )}
+                  </div>
+                  {PROVIDER_INFO[fb.name] && (
+                    <div className="p-1.5 rounded bg-primary/5 border border-primary/10">
+                      <p className="text-[9px] text-primary font-medium">{PROVIDER_INFO[fb.name].freeLimit}</p>
+                      <p className="text-[9px] text-muted-foreground">{PROVIDER_INFO[fb.name].note}</p>
+                    </div>
+                  )}))}
                       </select>
                     </div>
                     <div>
