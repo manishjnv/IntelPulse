@@ -1378,10 +1378,16 @@ function VulnerableProductsTable() {
           </div>
           {cveLookupResult && (
             <div className="space-y-2">
-              <div className="flex gap-3 text-[10px]">
+              <div className="flex gap-3 text-[10px] items-center">
                 <span className="text-muted-foreground">Requested: <span className="text-foreground font-medium">{cveLookupResult.requested}</span></span>
                 <span className="text-green-400">Found: {cveLookupResult.found}</span>
                 {cveLookupResult.missing.length > 0 && <span className="text-amber-400">Missing: {cveLookupResult.missing.length}</span>}
+                {Object.keys(cveLookupResult.results).length > 0 && (
+                  <div className="flex gap-1 ml-auto">
+                    <button onClick={() => { const results = cveLookupResult.results; const header = "CVE,Product,Vendor,Severity,CVSS,EPSS,KEV,Exploit,Patch,Linked Actors,Sources,Published"; const rows = Object.entries(results).map(([cve, p]: [string, any]) => [cve, `"${(p.product_name||'').replace(/"/g,"'")}"`, `"${(p.vendor||'').replace(/"/g,"'")}"`, p.severity||'', p.cvss_score!=null?Number(p.cvss_score).toFixed(1):'', p.epss_score!=null?Number(p.epss_score).toFixed(1)+'%':'', String(!!p.is_kev), String(!!p.exploit_available), String(!!p.patch_available), `"${(p.related_campaigns||[]).map((c:any)=>c.actor_name).join('; ')}"`, `"${(p.source_articles||[]).map((a:any)=>a.source).join('; ')}"`, p.last_seen||''].join(',')); const blob = new Blob([header+'\n'+rows.join('\n')], {type:'text/csv'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'cve_lookup.csv'; a.click(); URL.revokeObjectURL(a.href); }} className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground border border-border/50 rounded-md hover:bg-accent/20 transition-colors" title="Export CVE Lookup CSV"><FileDown className="h-3 w-3" />CSV</button>
+                    <button onClick={() => { const blob = new Blob([JSON.stringify(Object.entries(cveLookupResult.results).map(([cve, p]: [string, any]) => ({cve, product: p.product_name, vendor: p.vendor, severity: p.severity, cvss: p.cvss_score, epss: p.epss_score, is_kev: p.is_kev, exploit_available: p.exploit_available, patch_available: p.patch_available, linked_actors: (p.related_campaigns||[]).map((c:any)=>c.actor_name), sources: (p.source_articles||[]).map((a:any)=>({name: a.source, url: a.source_url})), published: p.last_seen})), null, 2)], {type:'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'cve_lookup.json'; a.click(); URL.revokeObjectURL(a.href); }} className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground border border-border/50 rounded-md hover:bg-accent/20 transition-colors" title="Export CVE Lookup JSON"><FileCode className="h-3 w-3" />JSON</button>
+                  </div>
+                )}
               </div>
               {cveLookupResult.missing.length > 0 && (
                 <div className="text-[10px] text-muted-foreground/60">Not tracked: {cveLookupResult.missing.join(", ")}</div>

@@ -421,6 +421,15 @@ async def export_vulnerable_products(
     window_hours = 24 if window == "24h" else None
     items, _ = await get_vulnerable_products(db, limit=5000, window_hours=window_hours)
 
+    # Resolve source article names
+    all_ids: set = set()
+    for i in items:
+        all_ids.update(i.source_news_ids or [])
+    source_map = await _resolve_source_articles(db, all_ids)
+
+    def _source_names(item) -> list[str]:
+        return [source_map[sid].source for sid in (item.source_news_ids or []) if sid in source_map and source_map[sid].source]
+
     if format == "json":
         import json
         rows = [
@@ -431,7 +440,7 @@ async def export_vulnerable_products(
                 "severity": i.severity,
                 "is_kev": i.is_kev, "exploit_available": i.exploit_available,
                 "patch_available": i.patch_available, "affected_versions": i.affected_versions,
-                "confidence": i.confidence, "source_count": i.source_count,
+                "confidence": i.confidence, "sources": _source_names(i),
                 "targeted_sectors": i.targeted_sectors, "targeted_regions": i.targeted_regions,
                 "first_seen": i.first_seen.isoformat() if i.first_seen else None,
                 "last_seen": i.last_seen.isoformat() if i.last_seen else None,
@@ -455,7 +464,7 @@ async def export_vulnerable_products(
             f"{i.epss_score:.2f}" if i.epss_score is not None else "",
             i.severity,
             str(i.is_kev), str(i.exploit_available), str(i.patch_available),
-            i.confidence, str(i.source_count),
+            i.confidence, f'"{"; ".join(_source_names(i)) or str(i.source_count)}"',
             i.first_seen.isoformat() if i.first_seen else "",
             i.last_seen.isoformat() if i.last_seen else "",
         ]))
@@ -479,6 +488,15 @@ async def export_threat_campaigns(
     window_days = 7 if window == "7d" else None
     items, _ = await get_threat_campaigns(db, limit=5000, window_days=window_days)
 
+    # Resolve source article names
+    all_ids: set = set()
+    for i in items:
+        all_ids.update(i.source_news_ids or [])
+    source_map = await _resolve_source_articles(db, all_ids)
+
+    def _source_names(item) -> list[str]:
+        return [source_map[sid].source for sid in (item.source_news_ids or []) if sid in source_map and source_map[sid].source]
+
     if format == "json":
         import json
         rows = [
@@ -487,7 +505,7 @@ async def export_threat_campaigns(
                 "severity": i.severity, "confidence": i.confidence,
                 "malware_used": i.malware_used, "techniques_used": i.techniques_used,
                 "cves_exploited": i.cves_exploited, "targeted_sectors": i.targeted_sectors,
-                "targeted_regions": i.targeted_regions, "source_count": i.source_count,
+                "targeted_regions": i.targeted_regions, "sources": _source_names(i),
                 "first_seen": i.first_seen.isoformat() if i.first_seen else None,
                 "last_seen": i.last_seen.isoformat() if i.last_seen else None,
             }
@@ -511,7 +529,7 @@ async def export_threat_campaigns(
             f'"{";".join(i.cves_exploited)}"',
             f'"{";".join(i.targeted_sectors)}"',
             f'"{";".join(i.targeted_regions)}"',
-            str(i.source_count),
+            f'"{"; ".join(_source_names(i)) or str(i.source_count)}"',
             i.first_seen.isoformat() if i.first_seen else "",
             i.last_seen.isoformat() if i.last_seen else "",
         ]))
