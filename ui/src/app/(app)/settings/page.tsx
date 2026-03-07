@@ -1728,6 +1728,14 @@ function AIConfigSettings() {
     setError(null);
     try {
       const result = await api.updateAISettings(cfg);
+      // Preserve real keys — server returns masked values
+      result.primary_api_key = cfg.primary_api_key;
+      if (result.fallback_providers && cfg.fallback_providers) {
+        result.fallback_providers = result.fallback_providers.map((fb, i) => ({
+          ...fb,
+          key: cfg.fallback_providers[i]?.key || fb.key,
+        }));
+      }
       setCfg(result);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
