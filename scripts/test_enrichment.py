@@ -38,6 +38,9 @@ cookies = {"iw_session": token}
 
 print("=== 1. Vulnerable Products (all) ===")
 r = httpx.get(f"{BASE}/news/vulnerable-products", params={"window": "all", "limit": "5"}, cookies=cookies)
+if r.status_code != 200:
+    print(f"FAILED: {r.status_code} {r.text[:300]}")
+    sys.exit(1)
 d = r.json()
 print(f"Status: {r.status_code}, Total: {d['total']}")
 for i in d["items"][:5]:
