@@ -687,10 +687,9 @@ export async function getExtractionStats(): Promise<import("@/types").Extraction
 }
 
 export function getExtractionExportUrl(type: "vulnerable-products" | "threat-campaigns", format: "csv" | "json", window?: string): string {
-  const base = process.env.NEXT_PUBLIC_API_URL || "/api";
   const params = new URLSearchParams({ format });
   if (window) params.set("window", window);
-  return `${base}/news/${type}/export?${params}`;
+  return `${API_PREFIX}/news/${type}/export?${params}`;
 }
 
 export async function bulkCveLookup(cves: string[]): Promise<{
