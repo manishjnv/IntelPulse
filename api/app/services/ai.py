@@ -299,23 +299,39 @@ async def _get_chain_async() -> list[_Provider]:
         return u
 
     if db_cfg and db_cfg.get("primary_api_key"):
-        # Build chain from DB settings
-        chain.append(_Provider(
-            name=db_cfg.get("primary_provider", "groq") + "-primary",
-            url=_ensure_chat_url(db_cfg["primary_api_url"]),
-            key=db_cfg["primary_api_key"],
-            model=db_cfg["primary_model"],
-            timeout=db_cfg.get("primary_timeout", 30),
-        ))
+        # Build chain from DB settings — split comma-separated models
+        # into separate chain entries (same provider, different model buckets)
+        provider_name = db_cfg.get("primary_provider", "groq")
+        primary_url = _ensure_chat_url(db_cfg["primary_api_url"])
+        primary_key = db_cfg["primary_api_key"]
+        primary_timeout = db_cfg.get("primary_timeout", 30)
+        primary_models = [m.strip() for m in db_cfg["primary_model"].split(",") if m.strip()]
+        if not primary_models:
+            primary_models = [db_cfg["primary_model"]]
+        for i, model in enumerate(primary_models):
+            suffix = "-primary" if i == 0 else f"-alt{i}"
+            chain.append(_Provider(
+                name=provider_name + suffix,
+                url=primary_url,
+                key=primary_key,
+                model=model,
+                timeout=primary_timeout,
+            ))
         for fb in db_cfg.get("fallback_providers", []):
             if fb.get("enabled") and fb.get("key"):
-                chain.append(_Provider(
-                    name=fb.get("name", "fallback"),
-                    url=_ensure_chat_url(fb.get("url", "")),
-                    key=fb["key"],
-                    model=fb.get("model", ""),
-                    timeout=int(fb.get("timeout", 30)),
-                ))
+                fb_models = [m.strip() for m in fb.get("model", "").split(",") if m.strip()]
+                if not fb_models:
+                    fb_models = [fb.get("model", "")]
+                fb_name = fb.get("name", "fallback")
+                for j, model in enumerate(fb_models):
+                    suffix = "" if j == 0 else f"-alt{j}"
+                    chain.append(_Provider(
+                        name=fb_name + suffix,
+                        url=_ensure_chat_url(fb.get("url", "")),
+                        key=fb["key"],
+                        model=model,
+                        timeout=int(fb.get("timeout", 30)),
+                    ))
     else:
         # Fall back to env-based chain
         chain = _build_fallback_chain()
