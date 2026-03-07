@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loading } from "@/components/Loading";
+import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import {
   getCase,
@@ -127,8 +128,6 @@ function AddItemModal({
   const [itemTitle, setItemTitle] = useState("");
   const [notes, setNotes] = useState("");
 
-  if (!open) return null;
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!itemId.trim()) return;
@@ -145,8 +144,7 @@ function AddItemModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Link item to case">
-      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4">
+    <Modal open={open} onClose={onClose} ariaLabel="Link item to case" className="w-full max-w-md">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-sm font-semibold flex items-center gap-2">
             <Link2 className="h-4 w-4 text-primary" />
@@ -203,8 +201,7 @@ function AddItemModal({
             <Button size="sm" type="submit" disabled={!itemId.trim()}>Link Item</Button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -245,6 +242,7 @@ export default function CaseDetailPage() {
     const handler = (e: BeforeUnloadEvent) => {
       if (editing && isDirtyRef.current) {
         e.preventDefault();
+        e.returnValue = "";
       }
     };
     window.addEventListener("beforeunload", handler);
@@ -629,7 +627,7 @@ export default function CaseDetailPage() {
                           {new Date(item.created_at).toLocaleDateString()}
                         </span>
                         <button
-                          onClick={() => handleRemoveItem(item.id)}
+                          onClick={(e) => { e.stopPropagation(); handleRemoveItem(item.id); }}
                           className="p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                         >
                           <Trash2 className="h-3 w-3" />

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loading } from "@/components/Loading";
+import { Modal } from "@/components/Modal";
 import { Pagination } from "@/components/Pagination";
 import { StatCard } from "@/components/StatCard";
 import { useToast } from "@/components/Toast";
@@ -14,6 +15,7 @@ import {
   getCaseStats,
   createCase,
   deleteCase,
+  updateCase,
   cloneCase,
   getCaseAssignees,
   bulkUpdateCaseStatus,
@@ -32,6 +34,7 @@ import type {
   Severity,
   Assignee,
 } from "@/types";
+import { ALLOWED_TRANSITIONS } from "@/types";
 import {
   Briefcase,
   Plus,
@@ -57,6 +60,9 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Calendar,
+  Bookmark,
+  Eye,
 } from "lucide-react";
 
 /* ── Config Maps (module-level, not re-created each render) ── */
@@ -107,6 +113,15 @@ const SORTABLE_COLUMNS: { key: string; label: string }[] = [
   { key: "severity", label: "Severity" },
 ];
 
+const SAVED_VIEWS: { key: string; label: string; icon: React.ElementType; filters: Record<string, string> }[] = [
+  { key: "open", label: "Open Cases", icon: Briefcase, filters: {} },
+  { key: "critical_high", label: "Critical/High", icon: AlertTriangle, filters: { priority: "critical,high" } },
+  { key: "active", label: "Active", icon: RefreshCw, filters: { status: "in_progress" } },
+  { key: "pending", label: "Pending", icon: Pause, filters: { status: "pending" } },
+  { key: "incidents", label: "Incidents", icon: Shield, filters: { case_type: "incident_response" } },
+  { key: "hunts", label: "Hunts", icon: Crosshair, filters: { case_type: "hunt" } },
+];
+
 /* ── Create Modal ─────────────────────────────────────── */
 
 function CreateCaseModal({
@@ -131,8 +146,6 @@ function CreateCaseModal({
   const [tags, setTags] = useState<string[]>([]);
   const [assigneeId, setAssigneeId] = useState("");
   const [saving, setSaving] = useState(false);
-
-  if (!open) return null;
 
   const addTag = () => {
     const t = tagInput.trim().toLowerCase();
@@ -175,8 +188,7 @@ function CreateCaseModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Create new case">
-      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4">
+    <Modal open={open} onClose={onClose} ariaLabel="Create new case" className="w-full max-w-lg">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Briefcase className="h-5 w-5 text-primary" />
@@ -306,8 +318,7 @@ function CreateCaseModal({
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -339,6 +350,10 @@ function CasesPageInner() {
   const [sortBy, setSortBy] = useState(searchParams.get("sort_by") || "updated_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">((searchParams.get("sort_order") as "asc" | "desc") || "desc");
   const [showCreate, setShowCreate] = useState(false);
+  const [dateFrom, setDateFrom] = useState(searchParams.get("date_from") || "");
+  const [dateTo, setDateTo] = useState(searchParams.get("date_to") || "");
+  const [assigneeFilter, setAssigneeFilter] = useState(searchParams.get("assignee_id") || "");
+  const [activeView, setActiveView] = useState(searchParams.get("view") || "");
 
   // Bulk selection
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -356,6 +371,10 @@ function CasesPageInner() {
       tlp: tlpFilter,
       tag: tagFilter,
       search: searchTerm,
+      date_from: dateFrom,
+      date_to: dateTo,
+      assignee_id: assigneeFilter,
+      view: activeView,
       sort_by: sortBy,
       sort_order: sortOrder,
       ...Object.fromEntries(Object.entries(overrides).map(([k, v]) => [k, String(v)])),
@@ -370,7 +389,7 @@ function CasesPageInner() {
     }
     const qs = params.toString();
     router.replace(`/cases${qs ? `?${qs}` : ""}`, { scroll: false });
-  }, [statusFilter, priorityFilter, typeFilter, severityFilter, tlpFilter, tagFilter, searchTerm, sortBy, sortOrder, page, router]);
+  }, [statusFilter, priorityFilter, typeFilter, severityFilter, tlpFilter, tagFilter, searchTerm, dateFrom, dateTo, assigneeFilter, activeView, sortBy, sortOrder, page, router]);
 
   const fetchData = useCallback(
     async (p = 1) => {
@@ -387,6 +406,9 @@ function CasesPageInner() {
             severity: severityFilter || undefined,
             tlp: tlpFilter || undefined,
             tag: tagFilter || undefined,
+            date_from: dateFrom || undefined,
+            date_to: dateTo || undefined,
+            assignee_id: assigneeFilter || undefined,
             sort_by: sortBy,
             sort_order: sortOrder,
           }),
@@ -404,7 +426,7 @@ function CasesPageInner() {
         setLoading(false);
       }
     },
-    [statusFilter, priorityFilter, typeFilter, searchTerm, severityFilter, tlpFilter, tagFilter, sortBy, sortOrder, toast]
+    [statusFilter, priorityFilter, typeFilter, searchTerm, severityFilter, tlpFilter, tagFilter, dateFrom, dateTo, assigneeFilter, sortBy, sortOrder, toast]
   );
 
   useEffect(() => {
@@ -435,6 +457,10 @@ function CasesPageInner() {
     setTlpFilter("");
     setTagFilter("");
     setSearchTerm("");
+    setDateFrom("");
+    setDateTo("");
+    setAssigneeFilter("");
+    setActiveView("");
     setSortBy("updated_at");
     setSortOrder("desc");
     router.replace("/cases", { scroll: false });
@@ -460,6 +486,9 @@ function CasesPageInner() {
       severity: severityFilter || undefined,
       tlp: tlpFilter || undefined,
       tag: tagFilter || undefined,
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
+      assignee_id: assigneeFilter || undefined,
       sort_by: col,
       sort_order: newOrder,
     }).then((res) => {
@@ -467,7 +496,10 @@ function CasesPageInner() {
       setTotal(res.total);
       setPage(res.page);
       setPages(res.pages);
-    }).catch(() => {}).finally(() => setLoading(false));
+    }).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Sort failed";
+      toast(msg, "error");
+    }).finally(() => setLoading(false));
   };
 
   const toggleSelect = (id: string, e: React.MouseEvent) => {
@@ -544,6 +576,61 @@ function CasesPageInner() {
     }
   };
 
+
+  const handleViewSelect = (viewKey: string) => {
+    const view = SAVED_VIEWS.find((v) => v.key === viewKey);
+    if (!view) return;
+    setActiveView(viewKey);
+    setStatusFilter(view.filters.status || "");
+    setPriorityFilter(view.filters.priority || "");
+    setTypeFilter(view.filters.case_type || "");
+    setSeverityFilter(view.filters.severity || "");
+    setTlpFilter(view.filters.tlp || "");
+    setTagFilter(view.filters.tag || "");
+    setSearchTerm(view.filters.search || "");
+    setDateFrom(view.filters.date_from || "");
+    setDateTo(view.filters.date_to || "");
+    setAssigneeFilter(view.filters.assignee_id || "");
+    setLoading(true);
+    getCases({
+      page: 1,
+      page_size: 20,
+      status: view.filters.status || undefined,
+      priority: view.filters.priority || undefined,
+      case_type: view.filters.case_type || undefined,
+      search: view.filters.search || undefined,
+      severity: view.filters.severity || undefined,
+      tlp: view.filters.tlp || undefined,
+      tag: view.filters.tag || undefined,
+      date_from: view.filters.date_from || undefined,
+      date_to: view.filters.date_to || undefined,
+      assignee_id: view.filters.assignee_id || undefined,
+      sort_by: sortBy,
+      sort_order: sortOrder,
+    }).then((res) => {
+      setCases(res.cases);
+      setTotal(res.total);
+      setPage(res.page);
+      setPages(res.pages);
+    }).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : "View load failed";
+      toast(msg, "error");
+    }).finally(() => setLoading(false));
+    syncUrl({ view: viewKey, page: 1 });
+  };
+
+  const handleInlineEdit = async (caseId: string, field: string, value: string, e: React.ChangeEvent<HTMLSelectElement>) => {
+    e.stopPropagation();
+    try {
+      await updateCase(caseId, { [field]: value });
+      setCases((prev) => prev.map((c) => c.id === caseId ? { ...c, [field]: value } : c));
+      toast(`Updated ${field}`, "success");
+      getCaseStats().then(setStats).catch(() => {});
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : `Failed to update ${field}`;
+      toast(msg, "error");
+    }
+  };
   if (loading && cases.length === 0) return <Loading />;
 
   return (
@@ -604,6 +691,31 @@ function CasesPageInner() {
         </div>
       )}
 
+
+      {/* Saved Views */}
+      <div className="flex items-center gap-2 px-1 flex-wrap">
+        <span className="text-[10px] text-muted-foreground uppercase font-medium flex items-center gap-1">
+          <Bookmark className="h-3 w-3" /> Views:
+        </span>
+        {SAVED_VIEWS.map((view) => {
+          const isActive = activeView === view.key;
+          const ViewIcon = view.icon;
+          return (
+            <button
+              key={view.key}
+              onClick={() => { if (isActive) { clearFilters(); } else { handleViewSelect(view.key); } }}
+              className={`text-[10px] px-2 py-0.5 rounded-md border transition-colors flex items-center gap-1 ${
+                isActive
+                  ? "bg-primary/10 border-primary/30 text-primary font-medium"
+                  : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border"
+              }`}
+            >
+              <ViewIcon className="h-3 w-3" />
+              {view.label}
+            </button>
+          );
+        })}
+      </div>
       {/* Filters */}
       {showFilters && (
         <Card>
@@ -699,7 +811,40 @@ function CasesPageInner() {
                   className="mt-1 block w-full px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
                 />
               </div>
-              <div className="flex gap-2">
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground uppercase">Date From</label>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="mt-1 block w-full px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground uppercase">Date To</label>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="mt-1 block w-full px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
+                />
+              </div>
+              {assignees.length > 0 && (
+                <div>
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase">Assignee</label>
+                  <select
+                    value={assigneeFilter}
+                    onChange={(e) => setAssigneeFilter(e.target.value)}
+                    className="mt-1 block w-full px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
+                  >
+                    <option value="">All</option>
+                    {assignees.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name || a.email}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="flex gap-2 items-end">
                 <Button size="sm" className="text-xs" onClick={() => applyFilters(1)}>Apply</Button>
                 <Button variant="ghost" size="sm" className="text-xs" onClick={clearFilters}>Clear</Button>
               </div>
@@ -831,15 +976,32 @@ function CasesPageInner() {
                       <h3 className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
                         {c.title}
                       </h3>
-                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${statusCfg.color}`}>
-                        <StatusIcon className="h-3 w-3 mr-0.5" />
-                        <span aria-hidden="true" className="mr-0.5">{statusCfg.shape}</span>
-                        {statusCfg.label}
-                      </Badge>
-                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${priorityCfg.color}`}>
-                        <span aria-hidden="true" className="mr-0.5">{priorityCfg.shape}</span>
-                        {priorityCfg.label}
-                      </Badge>
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <select
+                          value={c.status}
+                          onChange={(e) => handleInlineEdit(c.id, "status", e.target.value, e)}
+                          className={`text-[10px] px-1.5 py-0.5 rounded-md border appearance-none cursor-pointer ${statusCfg.color}`}
+                          title="Change status"
+                        >
+                          <option value={c.status}>{statusCfg.shape} {statusCfg.label}</option>
+                          {(ALLOWED_TRANSITIONS[c.status] || []).filter((s: CaseStatus) => s !== c.status).map((s: CaseStatus) => {
+                            const cfg = STATUS_CONFIG[s];
+                            return <option key={s} value={s}>{cfg.shape} {cfg.label}</option>;
+                          })}
+                        </select>
+                      </div>
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <select
+                          value={c.priority}
+                          onChange={(e) => handleInlineEdit(c.id, "priority", e.target.value, e)}
+                          className={`text-[10px] px-1.5 py-0.5 rounded-md border appearance-none cursor-pointer ${priorityCfg.color}`}
+                          title="Change priority"
+                        >
+                          {Object.entries(PRIORITY_CONFIG).map(([k, v]) => (
+                            <option key={k} value={k}>{v.shape} {v.label}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
 
                     {c.description && (

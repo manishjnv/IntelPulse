@@ -116,7 +116,11 @@ async def list_cases(
     if tag:
         query = query.where(literal(tag) == func.any(Case.tags))
     if search:
-        query = query.where(Case.title.ilike(f"%{search}%"))
+        escaped = search.replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        query = query.where(
+            Case.title.ilike(pattern) | Case.description.ilike(pattern)
+        )
 
     count_q = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_q)).scalar() or 0
@@ -217,15 +221,10 @@ async def add_case_item(
         return "duplicate"
     await db.refresh(item)
 
-    # Update counter after successful insert (no race condition)
-    if data["item_type"] == "intel":
-        c.linked_intel_count += 1
-    elif data["item_type"] == "ioc":
-        c.linked_ioc_count += 1
-    else:
-        c.linked_observable_count += 1
+    # Counter is updated by DB trigger (trg_case_item_counters)
     c.updated_at = datetime.now(timezone.utc)
     await db.flush()
+    await db.refresh(c)
 
     await _add_activity(
         db, case_id, user_id, "item_added",
@@ -250,18 +249,12 @@ async def remove_case_item(
 
     item_label = f"{item.item_type}: {item.item_title or item.item_id}"
 
-    # Update counter
+    await db.execute(delete(CaseItem).where(CaseItem.id == item_id))
+
+    # Counter is updated by DB trigger; just update timestamp
     c = await get_case(db, case_id)
     if c:
-        if item.item_type == "intel":
-            c.linked_intel_count = max(0, c.linked_intel_count - 1)
-        elif item.item_type == "ioc":
-            c.linked_ioc_count = max(0, c.linked_ioc_count - 1)
-        else:
-            c.linked_observable_count = max(0, c.linked_observable_count - 1)
         c.updated_at = datetime.now(timezone.utc)
-
-    await db.execute(delete(CaseItem).where(CaseItem.id == item_id))
 
     if user_id:
         await _add_activity(db, case_id, user_id, "item_removed", f"Removed {item_label}")
@@ -570,11 +563,7 @@ async def clone_case(
         )
         db.add(new_item)
 
-    # Set counters from source
-    new_case.linked_intel_count = source.linked_intel_count
-    new_case.linked_ioc_count = source.linked_ioc_count
-    new_case.linked_observable_count = source.linked_observable_count
-
+    # Counters are set by DB trigger after item inserts
     await db.flush()
     await db.refresh(new_case)
 
