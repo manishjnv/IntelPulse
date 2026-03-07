@@ -1,20 +1,44 @@
-"""Test script for NVD enrichment, junk filtering, and cross-links."""
+"""Test script for NVD enrichment, junk filtering, and cross-links.
+Run inside the API container: docker exec ti-platform-api-1 python3 /tmp/test_enrichment.py
+"""
 import httpx
 import json
 import sys
+import uuid
+import asyncio
 
 BASE = "http://localhost:8000/api/v1"
 
-# Login
-r = httpx.post(f"{BASE}/auth/login", json={"email": "admin@intelwatch.in", "password": "admin"})
-if r.status_code != 200:
-    print(f"Login failed: {r.status_code} {r.text[:200]}")
-    sys.exit(1)
-token = r.json()["access_token"]
-h = {"Authorization": f"Bearer {token}"}
+sys.path.insert(0, "/app")
+
+
+def get_session_cookie():
+    """Create a valid session cookie using the app's JWT + Redis session."""
+    from app.services.auth import create_access_token
+    from app.core.redis import redis_client
+    from app.core.config import settings
+
+    session_id = str(uuid.uuid4())
+    token = create_access_token({
+        "sub": "test-admin",
+        "email": "admin@intelwatch.in",
+        "role": "admin",
+        "name": "Admin",
+        "sid": session_id,
+    })
+
+    async def _store():
+        await redis_client.set(f"session:{session_id}", "test-admin", ex=300)
+
+    asyncio.run(_store())
+    return token
+
+
+token = get_session_cookie()
+cookies = {"iw_session": token}
 
 print("=== 1. Vulnerable Products (all) ===")
-r = httpx.get(f"{BASE}/news/vulnerable-products", params={"window": "all", "limit": "5"}, headers=h)
+r = httpx.get(f"{BASE}/news/vulnerable-products", params={"window": "all", "limit": "5"}, cookies=cookies)
 d = r.json()
 print(f"Status: {r.status_code}, Total: {d['total']}")
 for i in d["items"][:5]:
@@ -31,13 +55,13 @@ for i in d["items"][:5]:
 
 print()
 print("=== 2. Vulnerable Products (24h) ===")
-r = httpx.get(f"{BASE}/news/vulnerable-products", params={"window": "24h", "limit": "3"}, headers=h)
+r = httpx.get(f"{BASE}/news/vulnerable-products", params={"window": "24h", "limit": "3"}, cookies=cookies)
 d = r.json()
 print(f"Status: {r.status_code}, Total: {d['total']}")
 
 print()
 print("=== 3. Threat Campaigns (all) ===")
-r = httpx.get(f"{BASE}/news/threat-campaigns", params={"window": "all", "limit": "5"}, headers=h)
+r = httpx.get(f"{BASE}/news/threat-campaigns", params={"window": "all", "limit": "5"}, cookies=cookies)
 d = r.json()
 print(f"Status: {r.status_code}, Total: {d['total']}")
 for i in d["items"][:5]:
@@ -52,13 +76,13 @@ for i in d["items"][:5]:
 
 print()
 print("=== 4. Threat Campaigns (7d) ===")
-r = httpx.get(f"{BASE}/news/threat-campaigns", params={"window": "7d", "limit": "3"}, headers=h)
+r = httpx.get(f"{BASE}/news/threat-campaigns", params={"window": "7d", "limit": "3"}, cookies=cookies)
 d = r.json()
 print(f"Status: {r.status_code}, Total: {d['total']}")
 
 print()
 print("=== 5. Extraction Stats ===")
-r = httpx.get(f"{BASE}/news/extraction-stats", headers=h)
+r = httpx.get(f"{BASE}/news/extraction-stats", cookies=cookies)
 d = r.json()
 print(f"Status: {r.status_code}")
 print(f"  Products: {d['vulnerable_products_count']}, Campaigns: {d['threat_campaigns_count']}")
@@ -66,7 +90,7 @@ print(f"  Last extraction: {d['last_extraction_at']}")
 
 print()
 print("=== 6. Enrichment Coverage ===")
-r = httpx.get(f"{BASE}/news/vulnerable-products", params={"window": "all", "limit": "200"}, headers=h)
+r = httpx.get(f"{BASE}/news/vulnerable-products", params={"window": "all", "limit": "200"}, cookies=cookies)
 d = r.json()
 items = d["items"]
 with_cvss = sum(1 for i in items if i["cvss_score"] is not None)
@@ -84,7 +108,7 @@ print(f"  Patch avail:     {with_patch}/{len(items)}")
 print(f"  Linked actors:   {with_linked}/{len(items)}")
 
 print()
-r = httpx.get(f"{BASE}/news/threat-campaigns", params={"window": "all", "limit": "200"}, headers=h)
+r = httpx.get(f"{BASE}/news/threat-campaigns", params={"window": "all", "limit": "200"}, cookies=cookies)
 d = r.json()
 items = d["items"]
 with_linked = sum(1 for i in items if len(i.get("related_products", [])) > 0)
@@ -111,7 +135,7 @@ campaign_fields = [
     "source_articles", "related_products", "confidence",
 ]
 
-r = httpx.get(f"{BASE}/news/vulnerable-products", params={"window": "all", "limit": "1"}, headers=h)
+r = httpx.get(f"{BASE}/news/vulnerable-products", params={"window": "all", "limit": "1"}, cookies=cookies)
 item = r.json()["items"][0]
 missing_p = [f for f in product_fields if f not in item]
 extra_p = [f for f in item if f not in product_fields]
@@ -127,7 +151,7 @@ if item.get("related_campaigns"):
 else:
     print("  (no related_campaigns to validate shape)")
 
-r = httpx.get(f"{BASE}/news/threat-campaigns", params={"window": "all", "limit": "1"}, headers=h)
+r = httpx.get(f"{BASE}/news/threat-campaigns", params={"window": "all", "limit": "1"}, cookies=cookies)
 item = r.json()["items"][0]
 missing_c = [f for f in campaign_fields if f not in item]
 extra_c = [f for f in item if f not in campaign_fields]
