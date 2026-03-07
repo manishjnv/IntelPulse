@@ -1135,6 +1135,12 @@ function severityBadge(sev: string) {
   }
 }
 
+// ── Parse MITRE technique codes ───────────────────────────
+function parseTechnique(t: string) {
+  const m = t.match(/(T\d{4}(?:\.\d{3})?)/);
+  return m ? { code: m[1], label: t } : { code: null, label: t };
+}
+
 // ── Clickable entity helper ───────────────────────────────
 function EntityBadge({ label, searchPrefix, className }: { label: string; searchPrefix?: string; className?: string }) {
   const router = useRouter();
@@ -1261,7 +1267,7 @@ function VulnerableProductsTable() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleCveLookup = async () => {
-    const cves = cveInput.split(/[\n,]+/).map(s => s.trim()).filter(s => /^CVE-/i.test(s));
+    const cves = cveInput.split(/[\n,]+/).map(s => s.trim().toUpperCase()).filter(s => /^CVE-/.test(s));
     if (!cves.length) return;
     setCveLookupLoading(true);
     try {
@@ -1643,7 +1649,7 @@ function VulnerableProductsTable() {
                                 const newVal = !item.is_false_positive;
                                 api.toggleFalsePositive("vulnerable-products", item.id, newVal).then(() => {
                                   setData(prev => prev ? { ...prev, items: prev.items.map(i => i.id === item.id ? { ...i, is_false_positive: newVal } : i) } : prev);
-                                });
+                                }).catch(() => { /* toggle failed — UI unchanged */ });
                               }}
                               className={cn(
                                 "text-[10px] px-2 py-1 rounded-md border transition-colors",
@@ -1829,11 +1835,6 @@ function ThreatCampaignsTable() {
                   const isNew = isNewEntry(item.first_seen);
                   const stale = isStaleEntry(item.last_seen, 14);
                   const expanded = expandedId === item.id;
-                  // Extract MITRE T-codes from techniques_used
-                  const parseTechnique = (t: string) => {
-                    const m = t.match(/(T\d{4}(?:\.\d{3})?)/);
-                    return m ? { code: m[1], label: t } : { code: null, label: t };
-                  };
                   return (
                     <React.Fragment key={item.id}>
                     <tr
@@ -2065,7 +2066,7 @@ function ThreatCampaignsTable() {
                                 const newVal = !item.is_false_positive;
                                 api.toggleFalsePositive("threat-campaigns", item.id, newVal).then(() => {
                                   setData(prev => prev ? { ...prev, items: prev.items.map(i => i.id === item.id ? { ...i, is_false_positive: newVal } : i) } : prev);
-                                });
+                                }).catch(() => { /* toggle failed — UI unchanged */ });
                               }}
                               className={cn(
                                 "text-[10px] px-2 py-1 rounded-md border transition-colors",

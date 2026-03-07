@@ -173,25 +173,23 @@ def _recalculate_confidence(session: Session) -> None:
     """
     try:
         session.execute(text("""
-            UPDATE intel_vulnerable_products SET confidence = CASE
-                WHEN (
+            WITH scores AS (
+                SELECT id,
                     (CASE WHEN source_count >= 3 THEN 2 WHEN source_count >= 2 THEN 1 ELSE 0 END) +
                     (CASE WHEN cvss_score IS NOT NULL THEN 2 ELSE 0 END) +
                     (CASE WHEN is_kev THEN 2 ELSE 0 END) +
                     (CASE WHEN epss_score >= 50 THEN 2 WHEN epss_score >= 10 THEN 1 ELSE 0 END) +
-                    (CASE WHEN exploit_available THEN 1 ELSE 0 END)
-                ) >= 6 THEN 'high'
-                WHEN (
-                    (CASE WHEN source_count >= 3 THEN 2 WHEN source_count >= 2 THEN 1 ELSE 0 END) +
-                    (CASE WHEN cvss_score IS NOT NULL THEN 2 ELSE 0 END) +
-                    (CASE WHEN is_kev THEN 2 ELSE 0 END) +
-                    (CASE WHEN epss_score >= 50 THEN 2 WHEN epss_score >= 10 THEN 1 ELSE 0 END) +
-                    (CASE WHEN exploit_available THEN 1 ELSE 0 END)
-                ) >= 3 THEN 'medium'
+                    (CASE WHEN exploit_available THEN 1 ELSE 0 END) AS pts
+                FROM intel_vulnerable_products
+                WHERE cvss_score IS NOT NULL
+                  AND updated_at >= NOW() - INTERVAL '1 day'
+            )
+            UPDATE intel_vulnerable_products p SET confidence = CASE
+                WHEN s.pts >= 6 THEN 'high'
+                WHEN s.pts >= 3 THEN 'medium'
                 ELSE 'low'
             END
-            WHERE cvss_score IS NOT NULL
-              AND updated_at >= NOW() - INTERVAL '1 day'
+            FROM scores s WHERE p.id = s.id
         """))
         session.commit()
     except Exception as e:

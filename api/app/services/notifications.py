@@ -778,29 +778,33 @@ def _eval_extraction_rule(
     # --- High EPSS score alert ---
     epss_threshold = conditions.get("epss_threshold")
     if epss_threshold is not None:
-        threshold_val = float(epss_threshold)  # both rule condition and DB store 0-100
-        high_epss = session.execute(
-            select(VulnerableProduct).where(
-                VulnerableProduct.epss_score >= threshold_val,
-                VulnerableProduct.last_seen >= lookback,
-            )
-        ).scalars().all()
-        for p in high_epss:
-            _create_notification(
-                session,
-                user_id=rule.user_id,
-                rule_id=rule.id,
-                title=f"High EPSS: {p.product_name} ({p.cve_id or 'N/A'}) — {(p.epss_score or 0):.0f}%",
-                message=f"{p.cve_id or p.product_name} has EPSS score of "
-                        f"{(p.epss_score or 0):.1f}%, indicating high exploitation probability.",
-                severity="high",
-                category="extraction",
-                entity_type="product",
-                entity_id=str(p.id),
-                metadata={"cve_id": p.cve_id, "epss_score": p.epss_score, "vendor": p.vendor},
-                rule=rule,
-            )
-            created += 1
+        try:
+            threshold_val = float(epss_threshold)  # both rule condition and DB store 0-100
+        except (ValueError, TypeError):
+            threshold_val = None
+        if threshold_val is not None:
+            high_epss = session.execute(
+                select(VulnerableProduct).where(
+                    VulnerableProduct.epss_score >= threshold_val,
+                    VulnerableProduct.last_seen >= lookback,
+                )
+            ).scalars().all()
+            for p in high_epss:
+                _create_notification(
+                    session,
+                    user_id=rule.user_id,
+                    rule_id=rule.id,
+                    title=f"High EPSS: {p.product_name} ({p.cve_id or 'N/A'}) — {(p.epss_score or 0):.0f}%",
+                    message=f"{p.cve_id or p.product_name} has EPSS score of "
+                            f"{(p.epss_score or 0):.1f}%, indicating high exploitation probability.",
+                    severity="high",
+                    category="extraction",
+                    entity_type="product",
+                    entity_id=str(p.id),
+                    metadata={"cve_id": p.cve_id, "epss_score": p.epss_score, "vendor": p.vendor},
+                    rule=rule,
+                )
+                created += 1
 
     return created
 
