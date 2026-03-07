@@ -323,6 +323,9 @@ async def test_ai_provider(
 
     # Ensure we hit the chat completions endpoint
     test_url = url.rstrip("/")
+    # Gemini requires /openai/ in the path for OpenAI-compatible mode
+    if "generativelanguage.googleapis.com" in test_url and "/openai" not in test_url:
+        test_url = test_url.rstrip("/") + "/openai"
     if not test_url.endswith("/chat/completions"):
         test_url += "/chat/completions"
 

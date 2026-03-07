@@ -294,6 +294,9 @@ async def _get_chain_async() -> list[_Provider]:
 
     def _ensure_chat_url(u: str) -> str:
         u = u.rstrip("/")
+        # Gemini requires /openai/ in the path for OpenAI-compatible mode
+        if "generativelanguage.googleapis.com" in u and "/openai" not in u:
+            u = u.rstrip("/") + "/openai"
         if not u.endswith("/chat/completions"):
             u += "/chat/completions"
         return u
