@@ -738,6 +738,22 @@ class SourceArticle(BaseModel):
     published_at: datetime | None = None
 
 
+class RelatedCampaignBrief(BaseModel):
+    id: uuid.UUID
+    actor_name: str
+    campaign_name: str | None = None
+    severity: str = "unknown"
+
+
+class RelatedProductBrief(BaseModel):
+    id: uuid.UUID
+    product_name: str
+    vendor: str | None = None
+    cve_id: str | None = None
+    cvss_score: float | None = None
+    severity: str = "unknown"
+
+
 class VulnerableProductResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -757,6 +773,7 @@ class VulnerableProductResponse(BaseModel):
     source_count: int = 1
     source_news_ids: list[uuid.UUID] = Field(default_factory=list)
     source_articles: list[SourceArticle] = Field(default_factory=list)
+    related_campaigns: list[RelatedCampaignBrief] = Field(default_factory=list)
     first_seen: datetime
     last_seen: datetime
     confidence: str = "medium"
@@ -785,6 +802,7 @@ class ThreatCampaignResponse(BaseModel):
     source_count: int = 1
     source_news_ids: list[uuid.UUID] = Field(default_factory=list)
     source_articles: list[SourceArticle] = Field(default_factory=list)
+    related_products: list[RelatedProductBrief] = Field(default_factory=list)
     confidence: str = "medium"
 
 

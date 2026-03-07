@@ -773,6 +773,22 @@ export interface SourceArticle {
   published_at: string | null;
 }
 
+export interface RelatedCampaignBrief {
+  id: string;
+  actor_name: string;
+  campaign_name: string | null;
+  severity: string;
+}
+
+export interface RelatedProductBrief {
+  id: string;
+  product_name: string;
+  vendor: string | null;
+  cve_id: string | null;
+  cvss_score: number | null;
+  severity: string;
+}
+
 export interface VulnerableProduct {
   id: string;
   product_name: string;
@@ -790,6 +806,7 @@ export interface VulnerableProduct {
   source_count: number;
   source_news_ids: string[];
   source_articles: SourceArticle[];
+  related_campaigns: RelatedCampaignBrief[];
   first_seen: string;
   last_seen: string;
   confidence: string;
@@ -816,6 +833,7 @@ export interface ThreatCampaign {
   source_count: number;
   source_news_ids: string[];
   source_articles: SourceArticle[];
+  related_products: RelatedProductBrief[];
   confidence: string;
 }
 

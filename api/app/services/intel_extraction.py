@@ -29,6 +29,24 @@ _CVE_RE = re.compile(r"(CVE-\d{4}-\d{4,})", re.IGNORECASE)
 # Severity priority for merging (higher wins)
 _SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0, "unknown": -1}
 
+# Blocklist: generic terms the AI hallucinates as "products" — not actual software
+_PRODUCT_BLOCKLIST = {
+    "nim", "zig", "crystal", "ip cameras", "wikipedia", "python executables",
+    "all mfa-enabled applications", "atm software and hardware",
+    "desktop oss", "mobile platforms", "web browsers", "email and cloud-based services",
+    "enterprise software and appliances", "tpms systems in modern cars",
+    "ring doorbell cameras", "unknown product",
+}
+
+# Terms that signal a product name is actually a category/summary
+_PRODUCT_JUNK_PATTERNS = re.compile(
+    r"\(\d+ zero-day|\(multiple |all .+ applications|generic|various",
+    re.IGNORECASE,
+)
+
+# Campaign names to normalise to NULL
+_NULL_CAMPAIGN_NAMES = {"unknown", "null", "n/a", "none", "", "unattributed"}
+
 
 # ──────────────────────────────────────────────────────────
 # Sync extraction (called from RQ worker)
@@ -114,15 +132,22 @@ def _extract_products_sync(session: Session, item: NewsItem) -> int:
             cve = m.group(1).upper()
 
             product_name = products[0] if products else "Unknown Product"
+            if _is_junk_product(product_name) and not cve:
+                continue
             vendor = _guess_vendor(product_name)
 
             count += _upsert_product_sync(
                 session, item, product_name, vendor, cve, severity
             )
     elif products:
-        # No CVEs — just record the products
+        # No CVEs — skip products that don't meet quality bar
         for prod in products:
+            if _is_junk_product(prod):
+                continue
             vendor = _guess_vendor(prod)
+            # Without a CVE, require a recognised vendor
+            if vendor is None:
+                continue
             count += _upsert_product_sync(
                 session, item, prod, vendor, None, severity
             )
@@ -200,7 +225,7 @@ def _extract_campaigns_sync(session: Session, item: NewsItem) -> int:
         return 0
 
     severity = _priority_to_severity(item.recommended_priority)
-    campaign = item.campaign_name
+    campaign = _normalise_campaign_name(item.campaign_name)
 
     for actor in actors:
         actor = actor.strip()
@@ -437,6 +462,118 @@ async def get_threat_campaigns(
     return items, total
 
 
+async def resolve_product_campaign_links(
+    db: AsyncSession,
+    products: list[VulnerableProduct],
+) -> dict[str, list[dict]]:
+    """For each product with a CVE, find ThreatCampaigns that exploit the same CVE.
+
+    Returns a dict keyed by product.id → list of brief campaign dicts.
+    """
+    cve_to_product_ids: dict[str, list] = {}
+    for p in products:
+        if p.cve_id:
+            cve_to_product_ids.setdefault(p.cve_id, []).append(p.id)
+
+    if not cve_to_product_ids:
+        return {}
+
+    # Find campaigns that have ANY of these CVEs in cves_exploited
+    all_cves = list(cve_to_product_ids.keys())
+    result = await db.execute(
+        select(
+            ThreatCampaign.id,
+            ThreatCampaign.actor_name,
+            ThreatCampaign.campaign_name,
+            ThreatCampaign.severity,
+            ThreatCampaign.cves_exploited,
+        ).where(ThreatCampaign.cves_exploited.overlap(all_cves))
+    )
+    campaigns = result.all()
+
+    # Build product_id → [campaign briefs]
+    links: dict[str, list[dict]] = {}
+    for c in campaigns:
+        brief = {
+            "id": str(c.id),
+            "actor_name": c.actor_name,
+            "campaign_name": c.campaign_name,
+            "severity": c.severity,
+        }
+        for cve in (c.cves_exploited or []):
+            for pid in cve_to_product_ids.get(cve, []):
+                links.setdefault(str(pid), []).append(brief)
+
+    # Deduplicate by campaign id
+    for pid in links:
+        seen = set()
+        deduped = []
+        for b in links[pid]:
+            if b["id"] not in seen:
+                seen.add(b["id"])
+                deduped.append(b)
+        links[pid] = deduped
+
+    return links
+
+
+async def resolve_campaign_product_links(
+    db: AsyncSession,
+    campaigns: list[ThreatCampaign],
+) -> dict[str, list[dict]]:
+    """For each campaign, find VulnerableProducts whose CVE appears in cves_exploited.
+
+    Returns a dict keyed by campaign.id → list of brief product dicts.
+    """
+    all_cves: set[str] = set()
+    campaign_cves: dict[str, list[str]] = {}
+    for c in campaigns:
+        cves = c.cves_exploited or []
+        if cves:
+            campaign_cves[str(c.id)] = cves
+            all_cves.update(cves)
+
+    if not all_cves:
+        return {}
+
+    result = await db.execute(
+        select(
+            VulnerableProduct.id,
+            VulnerableProduct.product_name,
+            VulnerableProduct.vendor,
+            VulnerableProduct.cve_id,
+            VulnerableProduct.cvss_score,
+            VulnerableProduct.severity,
+        ).where(VulnerableProduct.cve_id.in_(all_cves))
+    )
+    products = result.all()
+
+    # Index products by CVE
+    cve_to_products: dict[str, list[dict]] = {}
+    for p in products:
+        brief = {
+            "id": str(p.id),
+            "product_name": p.product_name,
+            "vendor": p.vendor,
+            "cve_id": p.cve_id,
+            "cvss_score": p.cvss_score,
+            "severity": p.severity,
+        }
+        cve_to_products.setdefault(p.cve_id, []).append(brief)
+
+    # Build campaign_id → [product briefs]
+    links: dict[str, list[dict]] = {}
+    for cid, cves in campaign_cves.items():
+        seen = set()
+        for cve in cves:
+            for brief in cve_to_products.get(cve, []):
+                if brief["id"] not in seen:
+                    seen.add(brief["id"])
+                    links.setdefault(cid, []).append(brief)
+
+    return links
+
+
 async def get_extraction_stats(db: AsyncSession) -> dict:
     """Get quick stats for the extraction pipeline."""
     now = datetime.now(timezone.utc)
@@ -479,6 +616,28 @@ def _priority_to_severity(priority: str | None) -> str:
     """Map news recommended_priority to severity string."""
     mapping = {"critical": "critical", "high": "high", "medium": "medium", "low": "low"}
     return mapping.get((priority or "").lower(), "unknown")
+
+
+def _is_junk_product(name: str) -> bool:
+    """Return True if the product name is a known junk / generic entry."""
+    n = name.strip().lower()
+    if n in _PRODUCT_BLOCKLIST:
+        return True
+    if _PRODUCT_JUNK_PATTERNS.search(n):
+        return True
+    # Single-word names that are too generic (programming langs, etc.)
+    if len(n.split()) == 1 and len(n) < 12 and n.isalpha():
+        return True
+    return False
+
+
+def _normalise_campaign_name(name: str | None) -> str | None:
+    """Normalise 'null', 'Unknown', etc. to None."""
+    if name is None:
+        return None
+    if name.strip().lower() in _NULL_CAMPAIGN_NAMES:
+        return None
+    return name.strip()
 
 
 def _guess_vendor(product_name: str) -> str | None:

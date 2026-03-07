@@ -62,6 +62,7 @@ import {
   ChevronsRight,
   ShieldAlert,
   ArrowUpDown,
+  Link2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -1283,9 +1284,10 @@ function VulnerableProductsTable() {
                   <th className="text-left px-3 py-2 hidden md:table-cell">Vendor</th>
                   <th className="text-left px-3 py-2">CVE</th>
                   <th className="text-center px-3 py-2 hidden lg:table-cell"><SortHeader col="cvss_score">CVSS</SortHeader></th>
+                  <th className="text-center px-3 py-2 hidden lg:table-cell"><SortHeader col="epss_score">EPSS</SortHeader></th>
                   <th className="text-center px-3 py-2"><SortHeader col="severity">Severity</SortHeader></th>
-                  <th className="text-center px-3 py-2 hidden lg:table-cell">KEV</th>
-                  <th className="text-center px-3 py-2 hidden lg:table-cell">Exploit</th>
+                  <th className="text-center px-3 py-2 hidden lg:table-cell">Flags</th>
+                  <th className="text-left px-3 py-2 hidden xl:table-cell">Linked Actors</th>
                   <th className="text-left px-3 py-2 hidden xl:table-cell">Sources</th>
                   <th className="text-right px-3 py-2"><SortHeader col="last_seen">Published</SortHeader></th>
                 </tr>
@@ -1325,16 +1327,42 @@ function VulnerableProductsTable() {
                           </span>
                         ) : <span className="text-muted-foreground/40">—</span>}
                       </td>
+                      <td className="px-3 py-2 text-center hidden lg:table-cell">
+                        {item.epss_score != null ? (
+                          <span className={cn(
+                            "font-mono text-[10px] font-bold",
+                            item.epss_score >= 50 ? "text-red-400" :
+                            item.epss_score >= 20 ? "text-orange-400" :
+                            item.epss_score >= 5 ? "text-yellow-400" : "text-green-400"
+                          )}>
+                            {item.epss_score.toFixed(1)}%
+                          </span>
+                        ) : <span className="text-muted-foreground/40">—</span>}
+                      </td>
                       <td className="px-3 py-2 text-center">
                         <Badge variant="outline" className={cn("text-[9px] h-4 px-1.5 border", sev.color)}>
                           {sev.label}
                         </Badge>
                       </td>
                       <td className="px-3 py-2 text-center hidden lg:table-cell">
-                        {item.is_kev && <span title="CISA KEV"><ShieldAlert className="h-3.5 w-3.5 text-red-400 mx-auto" /></span>}
+                        <div className="flex items-center justify-center gap-1">
+                          {item.is_kev && <span title="CISA KEV"><ShieldAlert className="h-3.5 w-3.5 text-red-400" /></span>}
+                          {item.exploit_available && <span title="Exploit available"><Zap className="h-3.5 w-3.5 text-amber-400" /></span>}
+                          {item.patch_available && <span title="Patch available"><ShieldCheck className="h-3.5 w-3.5 text-green-400" /></span>}
+                        </div>
                       </td>
-                      <td className="px-3 py-2 text-center hidden lg:table-cell">
-                        {item.exploit_available && <span title="Exploit available"><Zap className="h-3.5 w-3.5 text-amber-400 mx-auto" /></span>}
+                      <td className="px-3 py-2 hidden xl:table-cell">
+                        <div className="flex gap-1 flex-wrap max-w-[140px]">
+                          {(item.related_campaigns || []).slice(0, 2).map((c) => (
+                            <span key={c.id} className="inline-flex items-center gap-0.5 text-[8px] px-1 py-0 rounded border border-red-500/30 text-red-300" title={c.campaign_name || c.actor_name}>
+                              <Users className="h-2 w-2" />
+                              {c.actor_name}
+                            </span>
+                          ))}
+                          {(item.related_campaigns || []).length > 2 && (
+                            <span className="text-[8px] text-muted-foreground/50">+{item.related_campaigns.length - 2}</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-2 hidden xl:table-cell">
                         <div className="flex flex-col gap-0.5 max-w-[180px]">
@@ -1514,6 +1542,7 @@ function ThreatCampaignsTable() {
                   <th className="text-left px-3 py-2 hidden lg:table-cell">Malware</th>
                   <th className="text-left px-3 py-2 hidden lg:table-cell">Techniques</th>
                   <th className="text-left px-3 py-2 hidden xl:table-cell">CVEs</th>
+                  <th className="text-left px-3 py-2 hidden xl:table-cell">Linked Products</th>
                   <th className="text-left px-3 py-2 hidden xl:table-cell">Targets</th>
                   <th className="text-left px-3 py-2 hidden md:table-cell">Sources</th>
                   <th className="text-right px-3 py-2"><SortHeader col="last_seen">Published</SortHeader></th>
@@ -1573,6 +1602,19 @@ function ThreatCampaignsTable() {
                           ))}
                           {item.cves_exploited.length > 2 && (
                             <span className="text-[8px] text-muted-foreground/50">+{item.cves_exploited.length - 2}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 hidden xl:table-cell">
+                        <div className="flex gap-1 flex-wrap max-w-[130px]">
+                          {(item.related_products || []).slice(0, 2).map((p) => (
+                            <span key={p.id} className="inline-flex items-center gap-0.5 text-[8px] px-1 py-0 rounded border border-orange-500/30 text-orange-300" title={`${p.product_name}${p.cve_id ? ` (${p.cve_id})` : ''}`}>
+                              <Bug className="h-2 w-2" />
+                              {p.product_name.length > 16 ? p.product_name.slice(0, 14) + "…" : p.product_name}
+                            </span>
+                          ))}
+                          {(item.related_products || []).length > 2 && (
+                            <span className="text-[8px] text-muted-foreground/50">+{item.related_products.length - 2}</span>
                           )}
                         </div>
                       </td>

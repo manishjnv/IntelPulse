@@ -1810,3 +1810,28 @@ def extract_intel_from_news(lookback_hours: int = 2) -> dict:
         return {"error": str(e)}
     finally:
         session.close()
+
+
+def enrich_products_nvd() -> dict:
+    """Enrich vulnerable products with NVD CVSS, EPSS scores, and CISA KEV status.
+
+    Runs every 30 minutes. Picks up to 30 products that have a CVE but lack
+    authoritative CVSS data (or haven't been re-checked in 7 days) and
+    populates cvss_score, epss_score, is_kev, severity, affected_versions,
+    patch_available, and exploit_available from public APIs.
+    """
+    from app.services.nvd_enrichment import enrich_products_from_nvd_sync
+
+    logger.info("nvd_enrichment_start")
+    session = SyncSession()
+
+    try:
+        result = enrich_products_from_nvd_sync(session)
+        logger.info("nvd_enrichment_done", **result)
+        return result
+    except Exception as e:
+        logger.error("nvd_enrichment_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()

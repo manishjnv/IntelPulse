@@ -35,7 +35,7 @@ redis_conn = Redis.from_url(settings.redis_url)
 scheduler = Scheduler(queue_name="default", connection=redis_conn)
 
 # ── Constants ────────────────────────────────────────────
-EXPECTED_JOB_COUNT = 26          # total scheduled jobs we register
+EXPECTED_JOB_COUNT = 27          # total scheduled jobs we register
 WATCHDOG_INTERVAL = 120          # seconds between health checks
 HEARTBEAT_KEY = "scheduler:heartbeat"
 HEARTBEAT_TTL = 300              # seconds — expires if scheduler dies
@@ -381,6 +381,17 @@ def setup_schedules():
         interval=timedelta(minutes=10).total_seconds(),
         queue_name="low",
         meta={"task": "intel_extraction"},
+    )
+
+    # ─── NVD/EPSS/KEV Product Enrichment — every 30 min ──
+    # Enriches vulnerable products with real CVSS scores, EPSS exploit
+    # probability, CISA KEV status, and patch/exploit availability.
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=9),
+        func="worker.tasks.enrich_products_nvd",
+        interval=timedelta(minutes=30).total_seconds(),
+        queue_name="low",
+        meta={"task": "nvd_enrichment"},
     )
 
     print(f"Scheduled {len(list(scheduler.get_jobs()))} jobs")

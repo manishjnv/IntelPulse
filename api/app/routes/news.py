@@ -277,7 +277,7 @@ async def list_vulnerable_products(
     window: str = Query("24h", pattern="^(24h|all)$"),
 ):
     """Get vulnerable products extracted from news."""
-    from app.services.intel_extraction import get_vulnerable_products, PRODUCTS_WINDOW_DAYS
+    from app.services.intel_extraction import get_vulnerable_products, PRODUCTS_WINDOW_DAYS, resolve_product_campaign_links
 
     window_hours = 24 if window == "24h" else None
 
@@ -297,10 +297,14 @@ async def list_vulnerable_products(
         all_ids.update(i.source_news_ids or [])
     source_map = await _resolve_source_articles(db, all_ids)
 
+    # Resolve cross-links (products → campaigns via shared CVEs)
+    campaign_links = await resolve_product_campaign_links(db, items)
+
     resp_items = []
     for i in items:
         obj = VulnerableProductResponse.model_validate(i)
         obj.source_articles = [source_map[sid] for sid in (i.source_news_ids or []) if sid in source_map]
+        obj.related_campaigns = campaign_links.get(str(i.id), [])
         resp_items.append(obj)
 
     response = VulnerableProductsListResponse(
@@ -324,7 +328,7 @@ async def list_threat_campaigns(
     window: str = Query("7d", pattern="^(7d|all)$"),
 ):
     """Get active threat actors & campaigns from news."""
-    from app.services.intel_extraction import get_threat_campaigns, CAMPAIGNS_WINDOW_DAYS
+    from app.services.intel_extraction import get_threat_campaigns, CAMPAIGNS_WINDOW_DAYS, resolve_campaign_product_links
 
     window_days = 7 if window == "7d" else None
 
@@ -344,10 +348,14 @@ async def list_threat_campaigns(
         all_ids.update(i.source_news_ids or [])
     source_map = await _resolve_source_articles(db, all_ids)
 
+    # Resolve cross-links (campaigns → products via shared CVEs)
+    product_links = await resolve_campaign_product_links(db, items)
+
     resp_items = []
     for i in items:
         obj = ThreatCampaignResponse.model_validate(i)
         obj.source_articles = [source_map[sid] for sid in (i.source_news_ids or []) if sid in source_map]
+        obj.related_products = product_links.get(str(i.id), [])
         resp_items.append(obj)
 
     response = ThreatCampaignsListResponse(
