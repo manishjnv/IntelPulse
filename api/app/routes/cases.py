@@ -12,9 +12,11 @@ Provides:
 - GET    /cases/{id}         — get case with items & timeline
 - PUT    /cases/{id}         — update a case
 - DELETE /cases/{id}         — delete a case
+- POST   /cases/{id}/clone   — clone a case with linked items
 - POST   /cases/{id}/items   — link intel/IOC/technique to case
 - DELETE /cases/{id}/items/{item_id} — remove linked item
 - POST   /cases/{id}/comments — add a comment to case timeline
+- POST   /cases/{id}/reconcile — reconcile denormalized counters
 """
 
 from __future__ import annotations
@@ -357,6 +359,40 @@ async def delete_case(
         raise HTTPException(404, "Case not found")
     await db.commit()
     return {"deleted": True}
+
+
+# ─── Clone & Reconcile ───────────────────────────────────
+
+
+@router.post("/{case_id}/clone", response_model=CaseResponse, status_code=201)
+async def clone_case(
+    case_id: uuid.UUID,
+    user: Annotated[User, Depends(require_analyst)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    body: dict | None = None,
+):
+    """Clone a case with all linked items. Optionally override title/description."""
+    overrides = body or {}
+    new_case = await case_service.clone_case(db, case_id, user.id, overrides)
+    if not new_case:
+        raise HTTPException(404, "Source case not found")
+    await db.commit()
+    return await _enrich_case(db, new_case, include_items=True)
+
+
+@router.post("/{case_id}/reconcile")
+async def reconcile_counters(
+    case_id: uuid.UUID,
+    user: Annotated[User, Depends(require_analyst)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Reconcile denormalized item counters from actual case_items rows."""
+    c = await case_service.get_case(db, case_id)
+    if not c:
+        raise HTTPException(404, "Case not found")
+    await case_service.reconcile_case_counters(db, case_id)
+    await db.commit()
+    return {"reconciled": True}
 
 
 # ─── Linked Items ─────────────────────────────────────────

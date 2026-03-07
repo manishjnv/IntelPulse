@@ -168,7 +168,7 @@ Scheduler ──► Redis (enqueues jobs only)
 | `iocs` | Regular table | Deduplicated indicators of compromise |
 | `intel_ioc_links` | Junction | Many-to-many intel↔IOC relationships |
 | `feed_sync_state` | Regular table | Per-feed ingestion state and cursor tracking |
-| `users` | Regular table | User accounts (synced from Cloudflare Zero Trust) |
+| `users` | Regular table | User accounts (Google OAuth + Email OTP, role-based) |
 | `audit_log` | Hypertable (partitioned by `created_at`) | Security audit trail |
 | `scoring_config` | Regular table | Configurable risk scoring weights |
 | `attack_techniques` | Regular table | MITRE ATT&CK techniques (synced from STIX) |
@@ -178,6 +178,16 @@ Scheduler ──► Redis (enqueues jobs only)
 | `notifications` | Regular table | In-app notifications with severity, category, entity linking, and metadata |
 | `reports` | Regular table | Analyst reports with JSONB content sections, status workflow, severity/TLP, template-based |
 | `report_items` | Junction | Links reports to intel items, IOCs, techniques with metadata |
+| `user_settings` | Regular table | Per-user JSONB preferences (theme, thresholds, refresh, org profile) |
+| `news_items` | Regular table | Cyber news articles with 28-field AI enrichment (9 categories, executive_brief, risk_assessment, attack_narrative, detection rules, YARA/KQL) |
+| `news_feed_status` | Regular table | RSS feed health tracking (status, articles_last_fetch, consecutive_failures) |
+| `cases` | Regular table | Investigation cases with status workflow (new→in_progress→pending→resolved→closed), priority, type, severity, TLP, tags, assignee |
+| `case_items` | Junction | Links cases to intel, IOCs, techniques, observables |
+| `case_activities` | Regular table | Case activity timeline (comments, status changes, item additions) |
+| `intel_vulnerable_products` | Regular table | Extracted vulnerable products from news (NVD/EPSS/KEV enriched, vendor, CVSS, exploit/patch flags) |
+| `intel_threat_campaigns` | Regular table | Extracted threat campaigns from news (actor, malware, techniques, sectors, regions, confidence) |
+| `threat_briefings` | Regular table | AI-generated periodic threat intelligence summaries (daily/weekly, campaigns, vulns, actors, recommendations) |
+| `detection_rules` | Regular table | Aggregated YARA/KQL/Sigma rule library (from news extraction, quality scored) |
 | `mv_severity_distribution` | Materialized view | Pre-computed 30-day severity stats |
 | `mv_top_risks` | Materialized view | Pre-computed top-100 high-risk items |
 
@@ -260,29 +270,36 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | **Models** | `api/app/models/` | SQLAlchemy ORM model definitions |
 | **Schemas** | `api/app/schemas/` | Pydantic v2 request/response schemas |
 | **Routes** | `api/app/routes/` | Thin route handlers — validate, delegate to service, return response |
-| **Services** | `api/app/services/` | All business logic: auth, database access, scoring, search, AI, export, MITRE ATT&CK, graph, notifications, reports, domain config, live internet lookup, feed connectors |
+| **Services** | `api/app/services/` | All business logic: auth, database access, scoring, search, AI, export, MITRE ATT&CK, graph, notifications, reports, cases, news, intel extraction, NVD enrichment, cross-enrichment, domain config, live internet lookup, webhook delivery, feed connectors |
 | **Feeds** | `api/app/services/feeds/` | Plugin-based feed connectors (inherit from `BaseFeedConnector`) |
 
-### Endpoint Map (63 endpoints across 11 route files)
+### Endpoint Map (117 endpoints across 15 route files)
 
 | Method | Endpoint | Auth | Handler | Service |
 | ------ | -------- | ---- | ------- | ------- |
 | `GET` | `/api/v1/health` | None | `routes/health.py` | — |
 | `GET` | `/api/v1/status/bar` | None | `routes/health.py` | Cached health + quick intel stats for header |
 | `GET` | `/api/v1/auth/config` | None | `routes/auth.py` | `services/auth.py` |
-| `POST` | `/api/v1/auth/login` | None | `routes/auth.py` | `services/auth.py` |
+| `GET` | `/api/v1/auth/google/url` | None | `routes/auth.py` | `services/auth.py` |
+| `GET` | `/api/v1/auth/google/callback` | None | `routes/auth.py` | `services/auth.py` |
+| `POST` | `/api/v1/auth/otp/send` | None | `routes/auth.py` | `services/auth.py` |
+| `POST` | `/api/v1/auth/otp/verify` | None | `routes/auth.py` | `services/auth.py` |
 | `POST` | `/api/v1/auth/logout` | Cookie | `routes/auth.py` | `services/auth.py` |
 | `GET` | `/api/v1/auth/session` | Cookie | `routes/auth.py` | `services/auth.py` |
-| `POST` | `/api/v1/auth/google` | None | `routes/auth.py` | `services/auth.py` |
 | `GET` | `/api/v1/me` | Any | `routes/admin.py` | — |
 | `GET` | `/api/v1/users` | Admin | `routes/admin.py` | — |
 | `PATCH` | `/api/v1/users/{user_id}` | Admin | `routes/admin.py` | — |
 | `GET` | `/api/v1/dashboard` | Viewer | `routes/dashboard.py` | `services/database.py` |
+| `GET` | `/api/v1/dashboard/insights` | Viewer | `routes/dashboard.py` | `services/database.py` |
+| `GET` | `/api/v1/dashboard/insights/detail` | Viewer | `routes/dashboard.py` | `services/database.py` |
+| `GET` | `/api/v1/dashboard/insights/all` | Viewer | `routes/dashboard.py` | `services/database.py` |
 | `GET` | `/api/v1/intel` | Viewer | `routes/intel.py` | `services/database.py` |
 | `GET` | `/api/v1/intel/export` | Viewer | `routes/intel.py` | `services/export.py` |
 | `GET` | `/api/v1/intel/{id}` | Viewer | `routes/intel.py` | `services/database.py` |
 | `GET` | `/api/v1/intel/{id}/enrichment` | Viewer | `routes/intel.py` | `services/ai.py` |
 | `GET` | `/api/v1/intel/{id}/related` | Viewer | `routes/intel.py` | `services/database.py` |
+| `GET` | `/api/v1/intel/{id}/iocs` | Viewer | `routes/intel.py` | `services/database.py` |
+| `GET` | `/api/v1/intel/stats` | Viewer | `routes/intel.py` | `services/database.py` |
 | `POST` | `/api/v1/search` | Viewer | `routes/search.py` | `services/search.py` |
 | `GET` | `/api/v1/search/stats` | Viewer | `routes/search.py` | `services/search.py` |
 | `POST` | `/api/v1/search/live-lookup` | Viewer | `routes/search.py` | `services/live_lookup.py` |
@@ -336,6 +353,30 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 | `POST` | `/api/v1/cases/bulk/status` | Analyst | `routes/cases.py` | `services/cases.py` |
 | `POST` | `/api/v1/cases/bulk/assign` | Analyst | `routes/cases.py` | `services/cases.py` |
 | `POST` | `/api/v1/cases/bulk/delete` | Analyst | `routes/cases.py` | `services/cases.py` |
+| `GET` | `/api/v1/iocs` | Viewer | `routes/iocs.py` | `services/database.py` |
+| `GET` | `/api/v1/iocs/stats` | Viewer | `routes/iocs.py` | `services/database.py` |
+| `GET` | `/api/v1/iocs/enrich` | Viewer | `routes/iocs.py` | `services/enrichment.py` |
+| `GET` | `/api/v1/news` | Viewer | `routes/news.py` | `services/news.py` |
+| `GET` | `/api/v1/news/stats` | Viewer | `routes/news.py` | `services/news.py` |
+| `GET` | `/api/v1/news/categories` | Viewer | `routes/news.py` | `services/news.py` |
+| `GET` | `/api/v1/news/feed-status` | Viewer | `routes/news.py` | `services/news.py` |
+| `GET` | `/api/v1/news/pipeline-status` | Viewer | `routes/news.py` | `services/news.py` |
+| `GET` | `/api/v1/news/vulnerable-products` | Viewer | `routes/news.py` | `services/intel_extraction.py` |
+| `GET` | `/api/v1/news/threat-campaigns` | Viewer | `routes/news.py` | `services/intel_extraction.py` |
+| `GET` | `/api/v1/news/extraction-stats` | Viewer | `routes/news.py` | `services/intel_extraction.py` |
+| `GET` | `/api/v1/news/vulnerable-products/export` | Viewer | `routes/news.py` | `services/intel_extraction.py` |
+| `GET` | `/api/v1/news/threat-campaigns/export` | Viewer | `routes/news.py` | `services/intel_extraction.py` |
+| `POST` | `/api/v1/news/cve-lookup` | Viewer | `routes/news.py` | `services/nvd_enrichment.py` |
+| `GET` | `/api/v1/news/vendor-stats` | Viewer | `routes/news.py` | `services/intel_extraction.py` |
+| `PATCH` | `/api/v1/news/vulnerable-products/{id}/false-positive` | Viewer | `routes/news.py` | `services/intel_extraction.py` |
+| `PATCH` | `/api/v1/news/threat-campaigns/{id}/false-positive` | Viewer | `routes/news.py` | `services/intel_extraction.py` |
+| `GET` | `/api/v1/news/{id}` | Viewer | `routes/news.py` | `services/news.py` |
+| `GET` | `/api/v1/news/{id}/report` | Viewer | `routes/news.py` | `services/news.py` |
+| `POST` | `/api/v1/news/refresh` | Admin | `routes/news.py` | `services/news.py` |
+| `GET` | `/api/v1/settings` | Viewer | `routes/settings.py` | `services/database.py` |
+| `PUT` | `/api/v1/settings` | Viewer | `routes/settings.py` | `services/database.py` |
+| `GET` | `/api/v1/settings/api-keys` | Admin | `routes/settings.py` | `services/domain.py` |
+| `GET` | `/api/v1/settings/platform-info` | Admin | `routes/settings.py` | `services/domain.py` |
 
 ---
 
@@ -381,11 +422,11 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 └──────────────────────────────────────────────────┘
 ```
 
-### Component Hierarchy (24 components, 16 pages)
+### Component Hierarchy (29 components, 25 pages)
 
 ```text
 app/layout.tsx (root HTML, dark class)
-├── login/page.tsx (IntelWatch branded login — SSO or dev bypass)
+├── login/page.tsx (IntelWatch branded login — Google OAuth + Email OTP)
 └── (app)/layout.tsx (AuthGuard + Sidebar + Header + HeaderStatusBar + NotificationBell + ErrorBoundary + main area)
     ├── dashboard/page.tsx
     │   ├── StatCard ×6 (with optional tooltip)
@@ -408,8 +449,13 @@ app/layout.tsx (root HTML, dark class)
     ├── analytics/page.tsx
     ├── reports/page.tsx → reports/new/page.tsx, reports/[id]/page.tsx
     ├── geo/page.tsx (5-tab layout: Countries, Continents, Networks, Industries, Intel Geo)
-    ├── feeds/page.tsx
-    └── settings/page.tsx
+    ├── feeds/page.tsx (2-tab: Intel Feeds, News Feeds + pipeline status)
+    ├── news/page.tsx → news/[id]/page.tsx (9-category cyber news, AI enrichment, keyword highlighting, IOC search popup, report export)
+    ├── cases/page.tsx → cases/[id]/page.tsx (case management: CRUD, bulk ops, status workflow, linked items, activity timeline)
+    ├── notifications/page.tsx (notification list, mark read, delete, category filter)
+    ├── detections/page.tsx (YARA/Sigma/KQL/Snort rule library, syntax validation, copy, sync from news)
+    ├── briefings/page.tsx (AI-generated weekly threat briefings, HTML/PDF export)
+    └── settings/page.tsx (7 sections: General, Security, Notifications, Appearance, Data, API Keys, Org Profile)
 
 Shared Components (14 root + 4 charts + 6 ui primitives):
 ├── AuthGuard (route protection wrapper)
@@ -490,7 +536,7 @@ class BaseFeedConnector(ABC):
         await self.store(items)  # bulk upsert + index
 ```
 
-### Schedule (19 jobs)
+### Schedule (28 jobs)
 
 | Job | Interval | Queue | Priority |
 | --- | -------- | ----- | -------- |
@@ -513,10 +559,18 @@ class BaseFeedConnector(ABC):
 | IPinfo Enrichment | 10 min | low | Low (enrich IP IOCs with ASN/geo data) |
 | Shodan InternetDB | 10 min | low | Low (enrich IPs with ports/vulns/hostnames) |
 | FIRST EPSS Scoring | 24 hrs | low | Low (CVE exploit probability scoring) |
+| Exploit-DB | 6 hrs | default | Medium (exploit PoC tracking) |
+| CISA Advisories | 6 hrs | default | Medium (ICS advisories via RSS) |
+| Cyber News Ingestion | 15 min | default | Medium (RSS cyber news from 20+ sources) |
+| News AI Enrichment | 5 min | low | Low (AI-enrich unenriched news articles, batch 10) |
+| News Re-Enrichment | 15 min | low | Low (upgrade headline-only fallback enrichments) |
+| Stale News Cleanup | 6 hrs | low | Low (remove outdated news articles) |
+| Intel Extraction from News | 10 min | low | Low (extract vulnerable products + threat campaigns) |
+| NVD/EPSS/KEV Product Enrichment | 30 min | low | Low (enrich extracted products with NVD/EPSS/KEV data) |
 
 ### Scheduler Lifecycle
 
-The scheduler registers `SIGTERM` + `atexit` handlers that **cancel all scheduled jobs and remove stale Redis instance keys** on shutdown. This prevents ghost jobs after `docker compose restart` or `redis-cli FLUSHALL`. On next startup, `setup_schedules()` re-registers all 19 jobs cleanly.
+The scheduler registers `SIGTERM` + `atexit` handlers that **cancel all scheduled jobs and remove stale Redis instance keys** on shutdown. This prevents ghost jobs after `docker compose restart` or `redis-cli FLUSHALL`. On next startup, `setup_schedules()` re-registers all 28 jobs cleanly.
 
 ---
 
@@ -525,29 +579,38 @@ The scheduler registers `SIGTERM` + `atexit` handlers that **cancel all schedule
 ### Authentication Flow
 
 ```text
-┌─ Production (Cloudflare Zero Trust SSO) ─────────────────────────┐
+┌─ Production (Google OAuth) ───────────────────────────────────────┐
 │                                                                    │
-│  Browser ──► Cloudflare Access ──► SSO Provider (Google)          │
+│  Browser ──► /login page ──► "Sign in with Google" button          │
 │                    │                                               │
 │                    ▼                                               │
-│  CF headers (Cf-Access-Jwt-Assertion + email)                     │
+│  GET /api/v1/auth/google/url ──► redirect to Google OAuth          │
 │                    │                                               │
 │                    ▼                                               │
-│  POST /api/v1/auth/login ──► verify CF JWT ──► create session     │
+│  Google consent ──► GET /api/v1/auth/google/callback               │
+│                    │                                               │
+│                    ▼                                               │
+│  Exchange code ──► create/find user ──► create Redis session       │
 │                    │                                               │
 │                    ▼                                               │
 │  Set HttpOnly cookie (iw_session) ──► JWT with user + role        │
 └────────────────────────────────────────────────────────────────────┘
 
-┌─ Development (Bypass Mode) ──────────────────────────────────────┐
+┌─ Production (Email OTP) ─────────────────────────────────────────┐
 │                                                                    │
-│  Browser ──► /login page ──► "Sign in (Dev Mode)" button          │
+│  Browser ──► /login page ──► enter email ──► "Send OTP" button    │
 │                    │                                               │
 │                    ▼                                               │
-│  POST /api/v1/auth/login ──► auto-create dev admin user           │
+│  POST /api/v1/auth/otp/send ──► generate OTP ──► send via SMTP    │
 │                    │                                               │
 │                    ▼                                               │
-│  Set HttpOnly cookie (iw_session) ──► JWT with dev user           │
+│  Enter 6-digit code ──► POST /api/v1/auth/otp/verify              │
+│                    │                                               │
+│                    ▼                                               │
+│  Verify OTP (Redis) ──► create/find user ──► create session       │
+│                    │                                               │
+│                    ▼                                               │
+│  Set HttpOnly cookie (iw_session) ──► JWT with user + role        │
 └────────────────────────────────────────────────────────────────────┘
 
 Session Management:
@@ -570,7 +633,7 @@ Session Management:
 | Layer | Implementation |
 | ----- | -------------- |
 | Network | Cloudflare Tunnel (no exposed ports to internet) |
-| Auth | JWT session cookies + Cloudflare Zero Trust SSO fallback |
+| Auth | JWT session cookies + Google OAuth + Email OTP dual-flow |
 | Sessions | Redis-backed, revocable, HttpOnly cookies |
 | RBAC | Role-based decorators on route handlers |
 | Input | Pydantic v2 strict validation on all endpoints |
@@ -610,31 +673,46 @@ GitHub Actions
 
 ## Codebase Metrics
 
-> Last updated: **2026-03-03** (Structured AI Analysis + Unified StructuredIntelCards)
+> Last updated: **2026-03-07** (Cross-Enrichment Engine, Intel Extraction Pipeline, 23 extraction/enrichment improvements)
 
 ### Lines of Code by Category
 
 | Category | Lines | Files | Description |
 | -------- | -----: | -----: | ----------- |
-| Python (API + Worker) | 11,350 | 51 | FastAPI routes, services, models, schemas, feeds, worker tasks, live lookup |
-| TypeScript/TSX (UI) | 14,300 | 50 | Next.js pages, components, store, types, API client |
-| Markdown (Docs) | 2,747 | 7 | Architecture, roadmap, instructions, integration, technology |
-| Config (JSON/YAML/CSS/TOML) | 517 | 8 | package.json, tailwind, tsconfig, docker-compose, OpenSearch mapping |
-| SQL (Schema + Migrations) | 468 | 3 | PostgreSQL + TimescaleDB DDL, indexes, materialized views |
-| Docker | 262 | 5 | Multi-stage Dockerfiles (API, UI, Worker), compose files |
-| **TOTAL** | **~20,600** | **~124** | |
+| Python (API + Worker) | 15,200 | 55 | FastAPI routes (15), services (18), models, schemas, feeds (12), worker tasks, enrichment pipelines |
+| TypeScript/TSX (UI) | 18,500 | 60 | Next.js pages (25), components (29), store, types, API client (65+ functions) |
+| Markdown (Docs) | 8,500 | 21 | Architecture, roadmap, instructions, integration, technology, 15 module docs |
+| Config (JSON/YAML/CSS/TOML) | 550 | 8 | package.json, tailwind, tsconfig, docker-compose, OpenSearch mapping |
+| SQL (Schema + Migrations) | 650 | 7 | PostgreSQL + TimescaleDB DDL (24 tables), indexes, materialized views, 4 migration files |
+| Docker | 280 | 5 | Multi-stage Dockerfiles (API, UI, Worker), compose files |
+| **TOTAL** | **~43,700** | **~156** | |
 
 ### Documentation Breakdown
 
 | File | Lines | Content |
 | ---- | -----: | ------- |
-| docs/ROADMAP.md | 784 | 7-phase feature roadmap with implementation details |
-| docs/Instruction.md | 514 | Development rules, UI guidelines, mandatory checklists |
-| docs/ARCHITECTURE.md | ~647 | System architecture, DB schema (41 indexes), API endpoints (47) |
-| docs/INTEGRATION.md | 382 | Feed connector specs, API integration patterns |
-| docs/TECHNOLOGY.md | 218 | Tech stack decisions and rationale |
-| README.md | 157 | Project overview, quick start, deployment |
-| docs/WORKFLOW.md | 134 | Git workflow, CI/CD, deployment procedures |
+| docs/ROADMAP.md | ~1,000 | 7-phase feature roadmap with implementation details |
+| docs/Instruction.md | ~514 | Development rules, UI guidelines, mandatory checklists |
+| docs/ARCHITECTURE.md | ~950 | System architecture, DB schema (24 tables), API endpoints (117) |
+| docs/INTEGRATION.md | ~700 | Feed connector specs, API integration patterns |
+| docs/TECHNOLOGY.md | ~350 | Tech stack decisions and rationale |
+| docs/CYBER-NEWS.md | ~900 | Cyber news module — RSS ingestion, AI enrichment, 9 categories |
+| docs/DASHBOARD.md | ~500 | Dashboard analytics, insights engine, 47 threat actor patterns |
+| docs/CASES.md | ~500 | Case management — CRUD, bulk ops, status workflow, activity timeline |
+| docs/REPORTS.md | ~500 | Report generation — templates, AI, STIX/PDF/HTML/CSV/MD export |
+| docs/NOTIFICATIONS.md | ~510 | Notification system — 4 rule types, webhook HMAC delivery |
+| docs/INTEL-ITEMS.md | ~500 | Intel items — 6-tab detail, AI enrichment, IOC linking |
+| docs/IOC-DATABASE.md | ~500 | IOC database — 4 enrichment pipelines, risk scoring |
+| docs/IOC-SEARCH.md | ~400 | IOC search — auto-detection, live lookup, AI analysis |
+| docs/INVESTIGATE.md | ~400 | Graph explorer — D3 force-directed, depth 1-3, 7 relationship types |
+| docs/ATTACK-MAP.md | ~400 | MITRE ATT&CK — matrix heatmap, detection gaps, Navigator export |
+| docs/ANALYTICS.md | ~260 | Analytics dashboard — severity, exploits, ingestion trends |
+| docs/GEO-VIEW.md | ~260 | Geographic threat intelligence — 5-tab layout, IPinfo data |
+| docs/FEED-STATUS.md | ~400 | Feed health monitoring — 12 feeds, pipeline status |
+| docs/SETTINGS.md | ~400 | Settings — 7 sections, notification rules, org profile |
+| docs/THREAT-FEED.md | ~400 | Threat feed page — 12 connectors, risk scoring, filters |
+| docs/WORKFLOW.md | ~160 | Git workflow, CI/CD, deployment procedures |
+| README.md | ~160 | Project overview, quick start, deployment |
 
 ### Growth Milestones
 
@@ -649,7 +727,12 @@ GitHub Actions
 | 2026-03-01 | Phase 1.6 — AI Web Research & Enhanced Report Sections | ~19,800 |
 | 2026-03-02 | Live Internet Lookup (12+ external API sources, AI summary) | ~20,500 |
 | 2026-03-03 | Structured AI Analysis + Unified StructuredIntelCards | ~20,600 |
-| 2026-03-07 | Cross-Enrichment Engine — 8 features, 14 API endpoints, 2 new pages | ~22,800 |
+| 2026-03-04 | Cyber News Intelligence — 20 RSS feeds, AI enrichment, 9 categories, 18 API endpoints | ~25,000 |
+| 2026-03-05 | Case Management — full CRUD, bulk ops, status workflow, assignee, linked items, export | ~28,000 |
+| 2026-03-06 | Intel Extraction Pipeline — extract vulnerable products + threat campaigns from news | ~30,000 |
+| 2026-03-07 | Cross-Enrichment Engine — 8 features, 14 API endpoints, 2 new pages | ~32,000 |
+| 2026-03-07 | 23 extraction/enrichment improvements — NVD/EPSS/KEV enrichment, CVE lookup, time-window filtering, dashboard widget data, bug fixes | ~34,000 |
+| 2026-03-07 | 15 module-specific documentation files + architecture updates | ~43,700 |
 
 ---
 
@@ -775,8 +858,11 @@ Real-time monitoring and correlation for large-scale global events (natural disa
 
 | Date | Change |
 | ---- | ------ |
+| 2026-03-07 | **Architecture doc major update** — Updated endpoint count (63→117 across 15 route files), schedule (19→28 jobs), core tables (16→24 including news, cases, extraction, briefings, detection_rules), auth flow (Cloudflare SSO→Google OAuth + Email OTP), codebase metrics (20.6K→43.7K LOC), documentation breakdown (7→21 files), component hierarchy (24→29, 16→25 pages). Added missing endpoint maps for IOCs (3), News (18), Settings (4). Added 9 missing scheduled jobs (Exploit-DB, CISA Advisories, News ingestion/enrichment/cleanup, Intel Extraction, NVD/EPSS/KEV Product Enrichment). |
+| 2026-03-07 | **23 extraction/enrichment improvements** (other session) — 14 extraction improvements (`03c1552`), NVD/EPSS/KEV enrichment + junk filtering + cross-links (`d2f57f4`), time-window filtering + clickable sources + interactive entity badges (`14effb4`), CVE lookup enrichment with flags/actors/vendor/published date (`2ccbb9b`, `ba78133`), CVSS float precision + EPSS double-multiplication fix (`04bc56e`), OpenSearch bool_op fix for array overlap (`fc13b07`), export URL /v1 prefix fix (`e65e97b`), JSON export float rounding (`40c106b`), export source names + CVE lookup buttons (`921e109`), dashboard widget real data + clickable items (`69989ac`), code review fixes for CVE normalization/parseTechnique/EPSS guard/confidence SQL (`28720f1`), widen cve_id column + clean CVE regex + extend 30d/90d windows (`43422ad`). |
+| 2026-03-07 | **Intel Extraction Pipeline** — `intel_extraction.py` (502 lines): extract vulnerable products + threat campaigns from AI-enriched news. DB tables: `intel_vulnerable_products`, `intel_threat_campaigns`. NVD/EPSS/KEV enrichment via `nvd_enrichment.py`. 4 new API endpoints in news routes. Worker task + scheduler job (10 min + 30 min cycles). False-positive toggle support. |
 | 2026-03-07 | **Cross-Enrichment Engine (v1.8)** — 8-feature cross-enrichment engine linking news intelligence across all platform entities. Backend: `cross_enrichment.py` (684 lines, 8 function groups), `enrichment.py` (290 lines, 14 API endpoints), 2 new DB tables (`threat_briefings`, `detection_rules`), 2 ORM models. Frontend: 15 TypeScript types, 15 API client functions, enrichment widgets on 5 existing pages (Dashboard, Intel, IOCs, Techniques, Settings), 2 new pages (`/detections` — YARA/Sigma/KQL rule library with sync/filter/copy; `/briefings` — AI-powered weekly briefing generation). Features: active campaign tracking, threat velocity monitoring, sector threat mapping, intel campaign/actor badges, IOC campaign membership, MITRE usage heatmap, org profile exposure scoring (0-100), detection rule auto-extraction from news, AI threat briefing generation via `chat_completion()`. Bug fixes: list_briefings missing period fields, severity filter on detection-rules, quality_score display × 100 bug, briefing stats key mismatch, dead code in sector_threat_map SQL. |
-| 2026-03-05 | Phase 2.1 Case Management — P2 Improvements: **Status transition validation** — enforced allowed state machine transitions (new→in_progress/pending/closed, etc.), 422 error on invalid transitions, `ALLOWED_TRANSITIONS` constant in frontend for smart status dropdown. **Expanded filters** — severity, TLP, date range (date_from/date_to), and tag filtering on cases list; PostgreSQL `func.any()` for ARRAY tag filter. **Bulk operations** — bulk status update, bulk assign, bulk delete endpoints (`POST /cases/bulk/status`, `/bulk/assign`, `/bulk/delete`); UI bulk action bar with select-all, per-row checkboxes. **Export** — JSON and CSV export (`GET /cases/export?format=json|csv&ids=...`), download button in UI header. **Assignee selector** — `GET /cases/assignees` endpoint (admin+analyst users), assignee dropdown in create modal and edit mode. **Edit severity/TLP/tags** — full editing of severity, TLP, tags, and assignee in case detail page edit mode. **Linked items clickable** — intel items link to `/intel/{id}`, IOCs link to `/search?q={value}`. |
+| 2026-03-05 | Phase 2.1 Case Management — P2 Improvements: **Status transition validation** — enforced allowed state machine transitions (new→in_progress/pending/closed, etc.), 422 error on invalid transitions, `ALLOWED_TRANSITIONS` constant in frontend for smart status dropdown. **Expanded filters** — severity, TLP, date range (date_from/date_to), and tag filtering on cases list; PostgreSQL `func.any()` for ARRAY tag filter. **Bulk operations** — bulk status update, bulk assign, bulk delete endpoints (`POST /cases/bulk/status`, `/bulk/assign`, `/bulk/delete`); UI bulk action bar with select-all, per-row checkboxes. **Export** — JSON and CSV export (`GET /cases/export?format=json\|csv&ids=...`), download button in UI header. **Assignee selector** — `GET /cases/assignees` endpoint (admin+analyst users), assignee dropdown in create modal and edit mode. **Edit severity/TLP/tags** — full editing of severity, TLP, tags, and assignee in case detail page edit mode. **Linked items clickable** — intel items link to `/intel/{id}`, IOCs link to `/search?q={value}`. |
 | 2026-03-05 | Phase 2.1 Case Management — P1 Improvements: severity/TLP/tags in create modal, duplicate item detection (409), activity logging on item removal, owner/assignee email on list view (batch loaded), activity user emails (batch loaded), error handling on delete and add item. |
 | 2026-03-04 | UI Improvements Phase 7: **Intel Detail Page** — new IOCs tab showing linked indicators with InternetDB enrichment (ports, vulns, CPEs, hostnames, tags), EPSS scores, IPinfo geolocation; enhanced Timeline tab with event type legend, color-coded cards, relative dates, source badges; improved Threat Actor section with motivation emoji icons, confidence coloring, "Hunt" search link, technique counts; improved Notable Campaigns section with visual timeline, severity-based dots, Impact Assessment box. New API endpoint `GET /intel/{id}/iocs` (joins IOC+IntelIOCLink with enrichment data). **IOC Database Page** — enrichment side panel now shows stored IPinfo (country, ASN, network), InternetDB (ports, vulns, CVE links to NVD, technologies/CPEs, hostnames, tags), and EPSS scores with probability bar before VT/Shodan on-demand results. **Geo View Page** — complete overhaul from single-source to 5-tab layout: Countries (flag grid + donut + AI threat geography), Continents (emoji progress bars), Networks (ASN bar chart), Industries (AI-enriched targeting), Intel Geo (original region data with severity pills + detail drill-down); uses `getDashboardInsights()` + `getIOCStats()` for comprehensive data. |
 | 2026-03-03 | ATT&CK Page Improvements: **Status bar** — ATT&CK coverage pill now shows 7-day trend arrow (↑/↓/—) via new `attack_coverage_prev_pct` field (SQL lookback on `intel_attack_links.created_at`); cache key bumped to v3. **ATT&CK page** — new `CoverageRing` SVG donut chart (animated, color-coded by %), new `DetectionGapsCard` showing top 20 unmapped high-priority techniques (initial-access, execution, persistence, priv-esc, defense-evasion, lateral-movement, impact). **ATT&CK matrix** — per-tactic mini coverage bars (mapped/total, 3-tier color), rich hover tooltips with `SeverityMicroBar` stacked severity breakdown, ATT&CK Navigator v4.5 JSON layer export (download button). API: severity counts via `literal_column()` ENUM casts in `case()`, `DetectionGap` schema, `mapped`/`total` per tactic. |

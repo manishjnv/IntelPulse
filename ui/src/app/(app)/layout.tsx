@@ -8,6 +8,7 @@ import { Sidebar, MobileMenuButton } from "@/components/Sidebar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NotificationBell } from "@/components/NotificationBell";
 import { HeaderStatusBar } from "@/components/HeaderStatusBar";
+import { ToastProvider } from "@/components/Toast";
 import {
   Search,
   ChevronDown,
@@ -191,7 +192,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Main content */}
         <main className="flex-1 overflow-auto">
-          <ErrorBoundary>{children}</ErrorBoundary>
+          <ToastProvider>
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </ToastProvider>
         </main>
       </div>
     </div>

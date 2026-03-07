@@ -27,6 +27,12 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "closed": {"in_progress"},
 }
 
+# Columns allowed for sort_by parameter (prevents arbitrary column access)
+ALLOWED_SORT_COLUMNS: set[str] = {
+    "created_at", "updated_at", "title", "status", "priority",
+    "severity", "case_type", "closed_at",
+}
+
 
 def validate_status_transition(current: str, target: str) -> bool:
     """Check whether a status transition is allowed."""
@@ -115,6 +121,8 @@ async def list_cases(
     count_q = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_q)).scalar() or 0
 
+    if sort_by not in ALLOWED_SORT_COLUMNS:
+        sort_by = "updated_at"
     col = getattr(Case, sort_by, Case.updated_at)
     query = query.order_by(col.desc() if sort_order == "desc" else col.asc())
     query = query.offset((page - 1) * page_size).limit(page_size)
@@ -202,7 +210,14 @@ async def add_case_item(
     )
     db.add(item)
 
-    # Update counter
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        return "duplicate"
+    await db.refresh(item)
+
+    # Update counter after successful insert (no race condition)
     if data["item_type"] == "intel":
         c.linked_intel_count += 1
     elif data["item_type"] == "ioc":
@@ -210,13 +225,7 @@ async def add_case_item(
     else:
         c.linked_observable_count += 1
     c.updated_at = datetime.now(timezone.utc)
-
-    try:
-        await db.flush()
-    except IntegrityError:
-        await db.rollback()
-        return "duplicate"
-    await db.refresh(item)
+    await db.flush()
 
     await _add_activity(
         db, case_id, user_id, "item_added",
@@ -492,3 +501,87 @@ async def get_assignable_users(db: AsyncSession) -> list[dict]:
         .order_by(User.email)
     )
     return [{"id": str(r[0]), "email": r[1], "name": r[2]} for r in result.all()]
+
+
+# ─── Counter Reconciliation ───────────────────────────────
+
+
+async def reconcile_case_counters(db: AsyncSession, case_id: uuid.UUID) -> None:
+    """Recalculate denormalized linked-item counters from actual case_items rows."""
+    c = await get_case(db, case_id)
+    if not c:
+        return
+
+    rows = (await db.execute(
+        select(CaseItem.item_type, func.count())
+        .where(CaseItem.case_id == case_id)
+        .group_by(CaseItem.item_type)
+    )).all()
+
+    counts = {r[0]: r[1] for r in rows}
+    c.linked_intel_count = counts.get("intel", 0)
+    c.linked_ioc_count = counts.get("ioc", 0)
+    c.linked_observable_count = counts.get("technique", 0) + counts.get("observable", 0)
+    await db.flush()
+
+
+# ─── Clone Case ──────────────────────────────────────────
+
+
+async def clone_case(
+    db: AsyncSession,
+    source_id: uuid.UUID,
+    owner_id: uuid.UUID,
+    data: dict | None = None,
+) -> Case | None:
+    """Clone a case with its linked items. Returns new Case or None if source not found."""
+    source = await get_case(db, source_id)
+    if not source:
+        return None
+
+    overrides = data or {}
+    new_case = Case(
+        title=overrides.get("title", f"{source.title} (Copy)"),
+        description=overrides.get("description", source.description),
+        case_type=source.case_type,
+        status="new",
+        priority=source.priority,
+        severity=source.severity,
+        tlp=source.tlp,
+        owner_id=owner_id,
+        assignee_id=overrides.get("assignee_id", source.assignee_id),
+        tags=list(source.tags),
+    )
+    db.add(new_case)
+    await db.flush()
+    await db.refresh(new_case)
+
+    # Clone linked items
+    items = await get_case_items(db, source_id)
+    for item in items:
+        new_item = CaseItem(
+            case_id=new_case.id,
+            item_type=item.item_type,
+            item_id=item.item_id,
+            item_title=item.item_title,
+            item_metadata=dict(item.item_metadata) if item.item_metadata else {},
+            added_by=owner_id,
+            notes=item.notes,
+        )
+        db.add(new_item)
+
+    # Set counters from source
+    new_case.linked_intel_count = source.linked_intel_count
+    new_case.linked_ioc_count = source.linked_ioc_count
+    new_case.linked_observable_count = source.linked_observable_count
+
+    await db.flush()
+    await db.refresh(new_case)
+
+    await _add_activity(
+        db, new_case.id, owner_id, "created",
+        f"Case cloned from: {source.title} ({source_id})",
+    )
+
+    logger.info("case_cloned", source_id=str(source_id), new_id=str(new_case.id))
+    return new_case

@@ -1,18 +1,20 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import React, { useEffect, useState, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loading } from "@/components/Loading";
 import { Pagination } from "@/components/Pagination";
 import { StatCard } from "@/components/StatCard";
+import { useToast } from "@/components/Toast";
 import {
   getCases,
   getCaseStats,
   createCase,
   deleteCase,
+  cloneCase,
   getCaseAssignees,
   bulkUpdateCaseStatus,
   bulkDeleteCases,
@@ -51,23 +53,27 @@ import {
   CheckSquare,
   Square,
   Users,
+  Copy,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 
-/* ── Config Maps ──────────────────────────────────────── */
+/* ── Config Maps (module-level, not re-created each render) ── */
 
-const STATUS_CONFIG: Record<CaseStatus, { label: string; color: string; icon: React.ElementType }> = {
-  new: { label: "New", color: "bg-blue-500/10 text-blue-400 border-blue-500/20", icon: Clock },
-  in_progress: { label: "In Progress", color: "bg-amber-500/10 text-amber-400 border-amber-500/20", icon: RefreshCw },
-  pending: { label: "Pending", color: "bg-purple-500/10 text-purple-400 border-purple-500/20", icon: Pause },
-  resolved: { label: "Resolved", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", icon: CheckCircle },
-  closed: { label: "Closed", color: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20", icon: XCircle },
+const STATUS_CONFIG: Record<CaseStatus, { label: string; color: string; icon: React.ElementType; shape: string }> = {
+  new: { label: "New", color: "bg-blue-500/10 text-blue-400 border-blue-500/20", icon: Clock, shape: "●" },
+  in_progress: { label: "In Progress", color: "bg-amber-500/10 text-amber-400 border-amber-500/20", icon: RefreshCw, shape: "◆" },
+  pending: { label: "Pending", color: "bg-purple-500/10 text-purple-400 border-purple-500/20", icon: Pause, shape: "■" },
+  resolved: { label: "Resolved", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", icon: CheckCircle, shape: "▲" },
+  closed: { label: "Closed", color: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20", icon: XCircle, shape: "▬" },
 };
 
-const PRIORITY_CONFIG: Record<CasePriority, { label: string; color: string }> = {
-  critical: { label: "Critical", color: "text-red-400 bg-red-500/10 border-red-500/20" },
-  high: { label: "High", color: "text-orange-400 bg-orange-500/10 border-orange-500/20" },
-  medium: { label: "Medium", color: "text-yellow-400 bg-yellow-500/10 border-yellow-500/20" },
-  low: { label: "Low", color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
+const PRIORITY_CONFIG: Record<CasePriority, { label: string; color: string; shape: string }> = {
+  critical: { label: "Critical", color: "text-red-400 bg-red-500/10 border-red-500/20", shape: "▲▲" },
+  high: { label: "High", color: "text-orange-400 bg-orange-500/10 border-orange-500/20", shape: "▲" },
+  medium: { label: "Medium", color: "text-yellow-400 bg-yellow-500/10 border-yellow-500/20", shape: "◆" },
+  low: { label: "Low", color: "text-blue-400 bg-blue-500/10 border-blue-500/20", shape: "▽" },
 };
 
 const TYPE_CONFIG: Record<CaseType, { label: string; icon: React.ElementType }> = {
@@ -77,13 +83,29 @@ const TYPE_CONFIG: Record<CaseType, { label: string; icon: React.ElementType }> 
   rfi: { label: "Request for Info", icon: HelpCircle },
 };
 
-const SEVERITY_COLORS: Record<string, string> = {
-  critical: "text-red-400",
-  high: "text-orange-400",
-  medium: "text-yellow-400",
-  low: "text-blue-400",
-  info: "text-cyan-400",
+const SEVERITY_STYLES: Record<string, { color: string; shape: string }> = {
+  critical: { color: "text-red-400", shape: "⬤" },
+  high: { color: "text-orange-400", shape: "◆" },
+  medium: { color: "text-yellow-400", shape: "■" },
+  low: { color: "text-blue-400", shape: "▽" },
+  info: { color: "text-cyan-400", shape: "○" },
 };
+
+const PRIORITY_BAR_COLORS: Record<string, string> = {
+  critical: "bg-red-500",
+  high: "bg-orange-500",
+  medium: "bg-yellow-500",
+  low: "bg-blue-500",
+};
+
+const SORTABLE_COLUMNS: { key: string; label: string }[] = [
+  { key: "updated_at", label: "Updated" },
+  { key: "created_at", label: "Created" },
+  { key: "title", label: "Title" },
+  { key: "priority", label: "Priority" },
+  { key: "status", label: "Status" },
+  { key: "severity", label: "Severity" },
+];
 
 /* ── Create Modal ─────────────────────────────────────── */
 
@@ -98,6 +120,7 @@ function CreateCaseModal({
   onCreated: () => void;
   assignees: Assignee[];
 }) {
+  const { toast } = useToast();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [caseType, setCaseType] = useState<CaseType>("investigation");
@@ -140,24 +163,26 @@ function CreateCaseModal({
       setTlp("TLP:GREEN");
       setTags([]);
       setAssigneeId("");
+      toast("Case created successfully", "success");
       onCreated();
       onClose();
-    } catch {
-      // Error handled by fetcher
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to create case";
+      toast(msg, "error");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Create new case">
       <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Briefcase className="h-5 w-5 text-primary" />
             New Case
           </h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close dialog">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -202,7 +227,7 @@ function CreateCaseModal({
                 className="w-full mt-1 px-3 py-2 rounded-lg bg-muted/50 border border-border text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 {Object.entries(PRIORITY_CONFIG).map(([k, v]) => (
-                  <option key={k} value={k}>{v.label}</option>
+                  <option key={k} value={k}>{v.shape} {v.label}</option>
                 ))}
               </select>
             </div>
@@ -215,11 +240,9 @@ function CreateCaseModal({
                 onChange={(e) => setSeverity(e.target.value as Severity)}
                 className="w-full mt-1 px-3 py-2 rounded-lg bg-muted/50 border border-border text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               >
-                <option value="critical">Critical</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-                <option value="info">Info</option>
+                {Object.entries(SEVERITY_STYLES).map(([k, v]) => (
+                  <option key={k} value={k}>{v.shape} {k.charAt(0).toUpperCase() + k.slice(1)}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -288,32 +311,66 @@ function CreateCaseModal({
   );
 }
 
-/* ── Main Page ────────────────────────────────────────── */
+/* ── Inner Page (uses useSearchParams) ────────────────── */
 
-export default function CasesPage() {
+function CasesPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { toast } = useToast();
+
   const [cases, setCases] = useState<Case[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => parseInt(searchParams.get("page") || "1", 10));
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<CaseStats | null>(null);
   const [assignees, setAssignees] = useState<Assignee[]>([]);
 
-  const [showFilters, setShowFilters] = useState(false);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [severityFilter, setSeverityFilter] = useState("");
-  const [tlpFilter, setTlpFilter] = useState("");
-  const [tagFilter, setTagFilter] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [showFilters, setShowFilters] = useState(() => {
+    return !!(searchParams.get("status") || searchParams.get("priority") || searchParams.get("case_type") || searchParams.get("severity") || searchParams.get("tlp") || searchParams.get("tag") || searchParams.get("search"));
+  });
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "");
+  const [priorityFilter, setPriorityFilter] = useState(searchParams.get("priority") || "");
+  const [typeFilter, setTypeFilter] = useState(searchParams.get("case_type") || "");
+  const [severityFilter, setSeverityFilter] = useState(searchParams.get("severity") || "");
+  const [tlpFilter, setTlpFilter] = useState(searchParams.get("tlp") || "");
+  const [tagFilter, setTagFilter] = useState(searchParams.get("tag") || "");
+  const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
+  const [sortBy, setSortBy] = useState(searchParams.get("sort_by") || "updated_at");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">((searchParams.get("sort_order") as "asc" | "desc") || "desc");
   const [showCreate, setShowCreate] = useState(false);
 
   // Bulk selection
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkAction, setBulkAction] = useState("");
   const [bulkAssignee, setBulkAssignee] = useState("");
+
+  // Sync filters → URL query params
+  const syncUrl = useCallback((overrides: Record<string, string | number> = {}) => {
+    const params = new URLSearchParams();
+    const vals: Record<string, string> = {
+      status: statusFilter,
+      priority: priorityFilter,
+      case_type: typeFilter,
+      severity: severityFilter,
+      tlp: tlpFilter,
+      tag: tagFilter,
+      search: searchTerm,
+      sort_by: sortBy,
+      sort_order: sortOrder,
+      ...Object.fromEntries(Object.entries(overrides).map(([k, v]) => [k, String(v)])),
+    };
+    const pg = overrides.page ?? page;
+    if (Number(pg) > 1) vals.page = String(pg);
+    if (vals.sort_by === "updated_at") delete vals.sort_by;
+    if (vals.sort_order === "desc") delete vals.sort_order;
+
+    for (const [k, v] of Object.entries(vals)) {
+      if (v) params.set(k, v);
+    }
+    const qs = params.toString();
+    router.replace(`/cases${qs ? `?${qs}` : ""}`, { scroll: false });
+  }, [statusFilter, priorityFilter, typeFilter, severityFilter, tlpFilter, tagFilter, searchTerm, sortBy, sortOrder, page, router]);
 
   const fetchData = useCallback(
     async (p = 1) => {
@@ -330,6 +387,8 @@ export default function CasesPage() {
             severity: severityFilter || undefined,
             tlp: tlpFilter || undefined,
             tag: tagFilter || undefined,
+            sort_by: sortBy,
+            sort_order: sortOrder,
           }),
           getCaseStats(),
         ]);
@@ -338,24 +397,32 @@ export default function CasesPage() {
         setPage(res.page);
         setPages(res.pages);
         setStats(st);
-      } catch {
-        // Handled by fetcher
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Failed to load cases";
+        toast(msg, "error");
       } finally {
         setLoading(false);
       }
     },
-    [statusFilter, priorityFilter, typeFilter, searchTerm, severityFilter, tlpFilter, tagFilter]
+    [statusFilter, priorityFilter, typeFilter, searchTerm, severityFilter, tlpFilter, tagFilter, sortBy, sortOrder, toast]
   );
 
   useEffect(() => {
-    fetchData(1);
-  }, [fetchData]);
+    fetchData(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const applyFilters = (p = 1) => {
+    syncUrl({ page: p });
+    fetchData(p);
+  };
 
   useEffect(() => {
     getCaseAssignees().then(setAssignees).catch(() => {});
   }, []);
 
   const handlePageChange = (p: number) => {
+    syncUrl({ page: p });
     fetchData(p);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -368,6 +435,39 @@ export default function CasesPage() {
     setTlpFilter("");
     setTagFilter("");
     setSearchTerm("");
+    setSortBy("updated_at");
+    setSortOrder("desc");
+    router.replace("/cases", { scroll: false });
+    setTimeout(() => fetchData(1), 0);
+  };
+
+  const handleSort = (col: string) => {
+    let newOrder: "asc" | "desc" = "desc";
+    if (sortBy === col) {
+      newOrder = sortOrder === "desc" ? "asc" : "desc";
+    }
+    setSortBy(col);
+    setSortOrder(newOrder);
+    syncUrl({ sort_by: col, sort_order: newOrder, page: 1 });
+    setLoading(true);
+    getCases({
+      page: 1,
+      page_size: 20,
+      status: statusFilter || undefined,
+      priority: priorityFilter || undefined,
+      case_type: typeFilter || undefined,
+      search: searchTerm || undefined,
+      severity: severityFilter || undefined,
+      tlp: tlpFilter || undefined,
+      tag: tagFilter || undefined,
+      sort_by: col,
+      sort_order: newOrder,
+    }).then((res) => {
+      setCases(res.cases);
+      setTotal(res.total);
+      setPage(res.page);
+      setPages(res.pages);
+    }).catch(() => {}).finally(() => setLoading(false));
   };
 
   const toggleSelect = (id: string, e: React.MouseEvent) => {
@@ -393,18 +493,22 @@ export default function CasesPage() {
     try {
       if (bulkAction === "delete") {
         if (!confirm(`Delete ${ids.length} case(s)?`)) return;
-        await bulkDeleteCases(ids);
+        const res = await bulkDeleteCases(ids);
+        toast(`Deleted ${res.deleted} case(s)`, "success");
       } else if (bulkAction === "assign" && bulkAssignee) {
-        await bulkAssignCases(ids, bulkAssignee);
+        const res = await bulkAssignCases(ids, bulkAssignee);
+        toast(`Assigned ${res.updated} case(s)`, "success");
       } else if (["new", "in_progress", "pending", "resolved", "closed"].includes(bulkAction)) {
-        await bulkUpdateCaseStatus(ids, bulkAction as CaseStatus);
+        const res = await bulkUpdateCaseStatus(ids, bulkAction as CaseStatus);
+        toast(`Updated status on ${res.updated} case(s)`, "success");
       }
       setSelected(new Set());
       setBulkAction("");
       setBulkAssignee("");
       fetchData(page);
-    } catch {
-      alert("Some bulk operations failed");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Bulk operation failed";
+      toast(msg, "error");
       fetchData(page);
     }
   };
@@ -412,6 +516,7 @@ export default function CasesPage() {
   const handleExport = (format: "json" | "csv") => {
     const ids = selected.size > 0 ? Array.from(selected) : undefined;
     window.open(getCaseExportUrl(format, ids), "_blank");
+    toast(`Export started (${format.toUpperCase()})`, "info");
   };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
@@ -419,9 +524,23 @@ export default function CasesPage() {
     if (!confirm("Delete this case?")) return;
     try {
       await deleteCase(id);
+      toast("Case deleted", "success");
       fetchData(page);
-    } catch {
-      alert("Failed to delete case");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to delete case";
+      toast(msg, "error");
+    }
+  };
+
+  const handleClone = async (id: string, title: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const cloned = await cloneCase(id);
+      toast(`Cloned: ${cloned.title}`, "success");
+      fetchData(page);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to clone case";
+      toast(msg, "error");
     }
   };
 
@@ -455,6 +574,7 @@ export default function CasesPage() {
             size="sm"
             onClick={() => fetchData(page)}
             className="text-xs"
+            title="Refresh"
           >
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
@@ -477,26 +597,10 @@ export default function CasesPage() {
       {/* Stats */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard
-            title="Total Cases"
-            value={stats.total_cases}
-            icon={<Briefcase className="h-4 w-4" />}
-          />
-          <StatCard
-            title="Open Cases"
-            value={stats.open_cases}
-            icon={<Clock className="h-4 w-4" />}
-          />
-          <StatCard
-            title="Critical Priority"
-            value={stats.by_priority?.critical || 0}
-            icon={<AlertTriangle className="h-4 w-4" />}
-          />
-          <StatCard
-            title="Closed (7d)"
-            value={stats.recent_closed}
-            icon={<CheckCircle className="h-4 w-4" />}
-          />
+          <StatCard title="Total Cases" value={stats.total_cases} icon={<Briefcase className="h-4 w-4" />} />
+          <StatCard title="Open Cases" value={stats.open_cases} icon={<Clock className="h-4 w-4" />} />
+          <StatCard title="Critical Priority" value={stats.by_priority?.critical || 0} icon={<AlertTriangle className="h-4 w-4" />} />
+          <StatCard title="Closed (7d)" value={stats.recent_closed} icon={<CheckCircle className="h-4 w-4" />} />
         </div>
       )}
 
@@ -512,7 +616,7 @@ export default function CasesPage() {
                   <input
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && fetchData(1)}
+                    onKeyDown={(e) => e.key === "Enter" && applyFilters(1)}
                     placeholder="Search cases..."
                     className="w-full pl-7 pr-3 py-1.5 rounded-md bg-muted/50 border border-border text-xs focus:outline-none focus:ring-1 focus:ring-primary"
                   />
@@ -527,7 +631,7 @@ export default function CasesPage() {
                 >
                   <option value="">All</option>
                   {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-                    <option key={k} value={k}>{v.label}</option>
+                    <option key={k} value={k}>{v.shape} {v.label}</option>
                   ))}
                 </select>
               </div>
@@ -540,7 +644,7 @@ export default function CasesPage() {
                 >
                   <option value="">All</option>
                   {Object.entries(PRIORITY_CONFIG).map(([k, v]) => (
-                    <option key={k} value={k}>{v.label}</option>
+                    <option key={k} value={k}>{v.shape} {v.label}</option>
                   ))}
                 </select>
               </div>
@@ -565,11 +669,9 @@ export default function CasesPage() {
                   className="mt-1 block w-full px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
                 >
                   <option value="">All</option>
-                  <option value="critical">Critical</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                  <option value="info">Info</option>
+                  {Object.entries(SEVERITY_STYLES).map(([k, v]) => (
+                    <option key={k} value={k}>{v.shape} {k.charAt(0).toUpperCase() + k.slice(1)}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -592,23 +694,47 @@ export default function CasesPage() {
                 <input
                   value={tagFilter}
                   onChange={(e) => setTagFilter(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && fetchData(1)}
+                  onKeyDown={(e) => e.key === "Enter" && applyFilters(1)}
                   placeholder="e.g. ransomware"
                   className="mt-1 block w-full px-2 py-1.5 rounded-md bg-muted/50 border border-border text-xs"
                 />
               </div>
               <div className="flex gap-2">
-                <Button size="sm" className="text-xs" onClick={() => fetchData(1)}>
-                  Apply
-                </Button>
-                <Button variant="ghost" size="sm" className="text-xs" onClick={clearFilters}>
-                  Clear
-                </Button>
+                <Button size="sm" className="text-xs" onClick={() => applyFilters(1)}>Apply</Button>
+                <Button variant="ghost" size="sm" className="text-xs" onClick={clearFilters}>Clear</Button>
               </div>
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Sort Bar */}
+      <div className="flex items-center gap-2 px-1 flex-wrap">
+        <span className="text-[10px] text-muted-foreground uppercase font-medium flex items-center gap-1">
+          <ArrowUpDown className="h-3 w-3" /> Sort:
+        </span>
+        {SORTABLE_COLUMNS.map((col) => {
+          const isActive = sortBy === col.key;
+          return (
+            <button
+              key={col.key}
+              onClick={() => handleSort(col.key)}
+              className={`text-[10px] px-2 py-0.5 rounded-md border transition-colors ${
+                isActive
+                  ? "bg-primary/10 border-primary/30 text-primary font-medium"
+                  : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border"
+              }`}
+            >
+              {col.label}
+              {isActive && (
+                sortOrder === "desc"
+                  ? <ArrowDown className="h-2.5 w-2.5 ml-0.5 inline" />
+                  : <ArrowUp className="h-2.5 w-2.5 ml-0.5 inline" />
+              )}
+            </button>
+          );
+        })}
+      </div>
 
       {/* Bulk Action Bar */}
       {selected.size > 0 && (
@@ -664,7 +790,7 @@ export default function CasesPage() {
       <div className="space-y-2">
         {cases.length > 0 && (
           <div className="flex items-center gap-2 px-1">
-            <button onClick={toggleSelectAll} className="text-muted-foreground hover:text-foreground">
+            <button onClick={toggleSelectAll} className="text-muted-foreground hover:text-foreground" aria-label="Select all cases">
               {selected.size === cases.length ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
             </button>
             <span className="text-[10px] text-muted-foreground">Select all</span>
@@ -674,6 +800,7 @@ export default function CasesPage() {
           const statusCfg = STATUS_CONFIG[c.status] || STATUS_CONFIG.new;
           const priorityCfg = PRIORITY_CONFIG[c.priority] || PRIORITY_CONFIG.medium;
           const typeCfg = TYPE_CONFIG[c.case_type] || TYPE_CONFIG.investigation;
+          const sevStyle = SEVERITY_STYLES[c.severity] || SEVERITY_STYLES.medium;
           const StatusIcon = statusCfg.icon;
           const TypeIcon = typeCfg.icon;
 
@@ -685,22 +812,20 @@ export default function CasesPage() {
             >
               <CardContent className="p-3">
                 <div className="flex items-start gap-3">
-                  {/* Select checkbox */}
                   <button
                     onClick={(e) => toggleSelect(c.id, e)}
                     className="mt-0.5 text-muted-foreground hover:text-foreground shrink-0"
+                    aria-label={`Select case ${c.title}`}
                   >
                     {selected.has(c.id) ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4" />}
                   </button>
 
-                  {/* Priority indicator */}
-                  <div className={`mt-0.5 w-1.5 h-10 rounded-full ${
-                    c.priority === "critical" ? "bg-red-500" :
-                    c.priority === "high" ? "bg-orange-500" :
-                    c.priority === "medium" ? "bg-yellow-500" : "bg-blue-500"
-                  }`} />
+                  {/* Priority indicator — shape + color for colorblind safety */}
+                  <div className="mt-0.5 flex flex-col items-center gap-0.5 shrink-0" title={`Priority: ${priorityCfg.label}`}>
+                    <div className={`w-1.5 h-10 rounded-full ${PRIORITY_BAR_COLORS[c.priority] || "bg-blue-500"}`} />
+                    <span className="text-[8px] font-bold leading-none select-none" aria-hidden="true">{priorityCfg.shape}</span>
+                  </div>
 
-                  {/* Main content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
@@ -708,9 +833,11 @@ export default function CasesPage() {
                       </h3>
                       <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${statusCfg.color}`}>
                         <StatusIcon className="h-3 w-3 mr-0.5" />
+                        <span aria-hidden="true" className="mr-0.5">{statusCfg.shape}</span>
                         {statusCfg.label}
                       </Badge>
                       <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${priorityCfg.color}`}>
+                        <span aria-hidden="true" className="mr-0.5">{priorityCfg.shape}</span>
                         {priorityCfg.label}
                       </Badge>
                     </div>
@@ -724,36 +851,21 @@ export default function CasesPage() {
                         <TypeIcon className="h-3 w-3" />
                         {typeCfg.label}
                       </span>
-                      <span className={SEVERITY_COLORS[c.severity] || ""}>
+                      <span className={`flex items-center gap-0.5 ${sevStyle.color}`}>
+                        <span aria-hidden="true">{sevStyle.shape}</span>
                         {c.severity}
                       </span>
-                      {c.linked_intel_count > 0 && (
-                        <span>{c.linked_intel_count} intel</span>
-                      )}
-                      {c.linked_ioc_count > 0 && (
-                        <span>{c.linked_ioc_count} IOC{c.linked_ioc_count > 1 ? "s" : ""}</span>
-                      )}
-                      <span>
-                        {new Date(c.updated_at).toLocaleDateString()}
-                      </span>
-                      {c.owner_email && (
-                        <span className="truncate max-w-[100px]" title={c.owner_email}>{c.owner_email.split('@')[0]}</span>
-                      )}
-                      {c.assignee_email && (
-                        <span className="truncate max-w-[120px]">→ {c.assignee_email}</span>
-                      )}
+                      {c.linked_intel_count > 0 && <span>{c.linked_intel_count} intel</span>}
+                      {c.linked_ioc_count > 0 && <span>{c.linked_ioc_count} IOC{c.linked_ioc_count > 1 ? "s" : ""}</span>}
+                      <span>{new Date(c.updated_at).toLocaleDateString()}</span>
+                      {c.owner_email && <span className="truncate max-w-[100px]" title={c.owner_email}>{c.owner_email.split('@')[0]}</span>}
+                      {c.assignee_email && <span className="truncate max-w-[120px]">→ {c.assignee_email}</span>}
                     </div>
 
                     {c.tags.length > 0 && (
                       <div className="flex gap-1 mt-1.5 flex-wrap">
                         {c.tags.slice(0, 5).map((t) => (
-                          <Badge
-                            key={t}
-                            variant="outline"
-                            className="text-[9px] px-1 py-0 bg-muted/50"
-                          >
-                            {t}
-                          </Badge>
+                          <Badge key={t} variant="outline" className="text-[9px] px-1 py-0 bg-muted/50">{t}</Badge>
                         ))}
                       </div>
                     )}
@@ -761,6 +873,13 @@ export default function CasesPage() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={(e) => handleClone(c.id, c.title, e)}
+                      className="p-1 rounded hover:bg-blue-500/10 text-muted-foreground hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Clone case"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
                     <button
                       onClick={(e) => handleDelete(c.id, e)}
                       className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
@@ -781,28 +900,17 @@ export default function CasesPage() {
             <CardContent className="p-8 text-center">
               <Briefcase className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
               <p className="text-sm text-muted-foreground">No cases yet</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">
-                Create your first case to start tracking incidents
-              </p>
+              <p className="text-xs text-muted-foreground/60 mt-1">Create your first case to start tracking incidents</p>
               <Button size="sm" className="mt-3 text-xs" onClick={() => setShowCreate(true)}>
-                <Plus className="h-3.5 w-3.5 mr-1" />
-                New Case
+                <Plus className="h-3.5 w-3.5 mr-1" /> New Case
               </Button>
             </CardContent>
           </Card>
         )}
       </div>
 
-      {/* Pagination */}
-      {pages > 1 && (
-        <Pagination
-          page={page}
-          pages={pages}
-          onPageChange={handlePageChange}
-        />
-      )}
+      {pages > 1 && <Pagination page={page} pages={pages} onPageChange={handlePageChange} />}
 
-      {/* Create Modal */}
       <CreateCaseModal
         open={showCreate}
         onClose={() => setShowCreate(false)}
@@ -810,5 +918,15 @@ export default function CasesPage() {
         assignees={assignees}
       />
     </div>
+  );
+}
+
+/* ── Exported Page (Suspense boundary for useSearchParams) */
+
+export default function CasesPage() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <CasesPageInner />
+    </Suspense>
   );
 }

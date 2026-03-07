@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loading } from "@/components/Loading";
+import { useToast } from "@/components/Toast";
 import {
   getCase,
   updateCase,
@@ -13,6 +14,7 @@ import {
   addCaseItem,
   removeCaseItem,
   getCaseAssignees,
+  cloneCase,
 } from "@/lib/api";
 import type {
   Case,
@@ -51,23 +53,24 @@ import {
   Edit3,
   Save,
   X,
+  Copy,
 } from "lucide-react";
 
 /* ── Config ───────────────────────────────────────────── */
 
-const STATUS_CONFIG: Record<CaseStatus, { label: string; color: string; icon: React.ElementType }> = {
-  new: { label: "New", color: "bg-blue-500/10 text-blue-400 border-blue-500/20", icon: Clock },
-  in_progress: { label: "In Progress", color: "bg-amber-500/10 text-amber-400 border-amber-500/20", icon: RefreshCw },
-  pending: { label: "Pending", color: "bg-purple-500/10 text-purple-400 border-purple-500/20", icon: Pause },
-  resolved: { label: "Resolved", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", icon: CheckCircle },
-  closed: { label: "Closed", color: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20", icon: XCircle },
+const STATUS_CONFIG: Record<CaseStatus, { label: string; color: string; icon: React.ElementType; shape: string }> = {
+  new: { label: "New", color: "bg-blue-500/10 text-blue-400 border-blue-500/20", icon: Clock, shape: "●" },
+  in_progress: { label: "In Progress", color: "bg-amber-500/10 text-amber-400 border-amber-500/20", icon: RefreshCw, shape: "◆" },
+  pending: { label: "Pending", color: "bg-purple-500/10 text-purple-400 border-purple-500/20", icon: Pause, shape: "■" },
+  resolved: { label: "Resolved", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", icon: CheckCircle, shape: "▲" },
+  closed: { label: "Closed", color: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20", icon: XCircle, shape: "▬" },
 };
 
-const PRIORITY_CONFIG: Record<CasePriority, { label: string; color: string }> = {
-  critical: { label: "Critical", color: "text-red-400 bg-red-500/10 border-red-500/20" },
-  high: { label: "High", color: "text-orange-400 bg-orange-500/10 border-orange-500/20" },
-  medium: { label: "Medium", color: "text-yellow-400 bg-yellow-500/10 border-yellow-500/20" },
-  low: { label: "Low", color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
+const PRIORITY_CONFIG: Record<CasePriority, { label: string; color: string; shape: string }> = {
+  critical: { label: "Critical", color: "text-red-400 bg-red-500/10 border-red-500/20", shape: "▲▲" },
+  high: { label: "High", color: "text-orange-400 bg-orange-500/10 border-orange-500/20", shape: "▲" },
+  medium: { label: "Medium", color: "text-yellow-400 bg-yellow-500/10 border-yellow-500/20", shape: "◆" },
+  low: { label: "Low", color: "text-blue-400 bg-blue-500/10 border-blue-500/20", shape: "▽" },
 };
 
 const TYPE_CONFIG: Record<CaseType, { label: string; icon: React.ElementType }> = {
@@ -77,13 +80,13 @@ const TYPE_CONFIG: Record<CaseType, { label: string; icon: React.ElementType }> 
   rfi: { label: "Request for Info", icon: HelpCircle },
 };
 
-const SEVERITY_COLORS: Record<string, string> = {
-  critical: "text-red-400",
-  high: "text-orange-400",
-  medium: "text-yellow-400",
-  low: "text-blue-400",
-  info: "text-cyan-400",
-  unknown: "text-muted-foreground",
+const SEVERITY_STYLES: Record<string, { color: string; shape: string }> = {
+  critical: { color: "text-red-400", shape: "⬤" },
+  high: { color: "text-orange-400", shape: "◆" },
+  medium: { color: "text-yellow-400", shape: "■" },
+  low: { color: "text-blue-400", shape: "▽" },
+  info: { color: "text-cyan-400", shape: "○" },
+  unknown: { color: "text-muted-foreground", shape: "—" },
 };
 
 const ITEM_TYPE_ICONS: Record<string, React.ElementType> = {
@@ -142,7 +145,7 @@ function AddItemModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Link item to case">
       <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-sm font-semibold flex items-center gap-2">
@@ -211,6 +214,7 @@ export default function CaseDetailPage() {
   const params = useParams();
   const router = useRouter();
   const caseId = params?.id as string;
+  const { toast } = useToast();
 
   const [caseData, setCaseData] = useState<Case | null>(null);
   const [loading, setLoading] = useState(true);
@@ -219,6 +223,7 @@ export default function CaseDetailPage() {
   const [showAddItem, setShowAddItem] = useState(false);
   const [editing, setEditing] = useState(false);
   const [assignees, setAssignees] = useState<Assignee[]>([]);
+  const isDirtyRef = useRef(false);
 
   // Edit state
   const [editTitle, setEditTitle] = useState("");
@@ -231,6 +236,20 @@ export default function CaseDetailPage() {
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editTagInput, setEditTagInput] = useState("");
   const [editAssigneeId, setEditAssigneeId] = useState("");
+
+  // Track dirty state during editing
+  const markDirty = useCallback(() => { isDirtyRef.current = true; }, []);
+
+  // Unsaved changes warning
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (editing && isDirtyRef.current) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [editing]);
 
   const fetchCase = useCallback(async () => {
     setLoading(true);
@@ -246,12 +265,13 @@ export default function CaseDetailPage() {
       setEditTlp(data.tlp);
       setEditTags([...data.tags]);
       setEditAssigneeId(data.assignee_id || "");
+      isDirtyRef.current = false;
     } catch {
-      // Not found
+      toast("Case not found or failed to load", "error");
     } finally {
       setLoading(false);
     }
-  }, [caseId]);
+  }, [caseId, toast]);
 
   useEffect(() => {
     fetchCase();
@@ -269,19 +289,26 @@ export default function CaseDetailPage() {
 
   const handleSave = async () => {
     if (!caseData) return;
-    await updateCase(caseData.id, {
-      title: editTitle,
-      description: editDesc || undefined,
-      status: editStatus,
-      priority: editPriority,
-      case_type: editType,
-      severity: editSeverity,
-      tlp: editTlp,
-      tags: editTags,
-      assignee_id: editAssigneeId || undefined,
-    });
-    setEditing(false);
-    fetchCase();
+    try {
+      await updateCase(caseData.id, {
+        title: editTitle,
+        description: editDesc || undefined,
+        status: editStatus,
+        priority: editPriority,
+        case_type: editType,
+        severity: editSeverity,
+        tlp: editTlp,
+        tags: editTags,
+        assignee_id: editAssigneeId || undefined,
+      });
+      isDirtyRef.current = false;
+      setEditing(false);
+      toast("Case updated", "success");
+      fetchCase();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to update case";
+      toast(msg, "error");
+    }
   };
 
   const handleComment = async () => {
@@ -290,9 +317,11 @@ export default function CaseDetailPage() {
     try {
       await addCaseComment(caseData.id, comment.trim());
       setComment("");
+      toast("Comment added", "success");
       fetchCase();
-    } catch {
-      // handled
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to add comment";
+      toast(msg, "error");
     } finally {
       setCommenting(false);
     }
@@ -302,17 +331,36 @@ export default function CaseDetailPage() {
     if (!caseData) return;
     try {
       await addCaseItem(caseData.id, data);
+      toast("Item linked to case", "success");
       fetchCase();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to link item";
-      alert(msg.includes("409") ? "Item already linked to this case" : msg);
+      toast(msg.includes("409") ? "Item already linked to this case" : msg, "warning");
     }
   };
 
   const handleRemoveItem = async (itemId: string) => {
     if (!caseData || !confirm("Remove this linked item?")) return;
-    await removeCaseItem(caseData.id, itemId);
-    fetchCase();
+    try {
+      await removeCaseItem(caseData.id, itemId);
+      toast("Item removed", "success");
+      fetchCase();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to remove item";
+      toast(msg, "error");
+    }
+  };
+
+  const handleClone = async () => {
+    if (!caseData) return;
+    try {
+      const cloned = await cloneCase(caseData.id);
+      toast(`Cloned: ${cloned.title}`, "success");
+      router.push(`/cases/${cloned.id}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to clone case";
+      toast(msg, "error");
+    }
   };
 
   if (loading) return <Loading />;
@@ -353,16 +401,19 @@ export default function CaseDetailPage() {
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${statusCfg.color}`}>
               <StatusIcon className="h-3 w-3 mr-0.5" />
+              <span aria-hidden="true" className="mr-0.5">{statusCfg.shape}</span>
               {statusCfg.label}
             </Badge>
             <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${priorityCfg.color}`}>
+              <span aria-hidden="true" className="mr-0.5">{priorityCfg.shape}</span>
               {priorityCfg.label}
             </Badge>
             <span className="text-[10px] text-muted-foreground flex items-center gap-1">
               <TypeIcon className="h-3 w-3" />
               {typeCfg.label}
             </span>
-            <span className={`text-[10px] capitalize ${SEVERITY_COLORS[caseData.severity] || ""}`}>
+            <span className={`text-[10px] capitalize flex items-center gap-0.5 ${(SEVERITY_STYLES[caseData.severity] || SEVERITY_STYLES.medium).color}`}>
+              <span aria-hidden="true">{(SEVERITY_STYLES[caseData.severity] || SEVERITY_STYLES.medium).shape}</span>
               {caseData.severity}
             </span>
             <span className="text-[10px] text-muted-foreground">
@@ -376,14 +427,19 @@ export default function CaseDetailPage() {
               <Button size="sm" className="text-xs" onClick={handleSave}>
                 <Save className="h-3.5 w-3.5 mr-1" /> Save
               </Button>
-              <Button variant="ghost" size="sm" className="text-xs" onClick={() => setEditing(false)}>
+              <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setEditing(false); isDirtyRef.current = false; }}>
                 Cancel
               </Button>
             </>
           ) : (
-            <Button variant="ghost" size="sm" className="text-xs" onClick={() => setEditing(true)}>
-              <Edit3 className="h-3.5 w-3.5 mr-1" /> Edit
-            </Button>
+            <>
+              <Button variant="ghost" size="sm" className="text-xs" onClick={handleClone} title="Clone case">
+                <Copy className="h-3.5 w-3.5 mr-1" /> Clone
+              </Button>
+              <Button variant="ghost" size="sm" className="text-xs" onClick={() => setEditing(true)}>
+                <Edit3 className="h-3.5 w-3.5 mr-1" /> Edit
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -630,19 +686,23 @@ export default function CaseDetailPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold">Details</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2.5 text-xs">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Status</span>
-                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${statusCfg.color}`}>
-                  <StatusIcon className="h-3 w-3 mr-0.5" />
+            <CardC<span aria-hidden="true" className="mr-0.5">{statusCfg.shape}</span>
                   {statusCfg.label}
                 </Badge>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Priority</span>
                 <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${priorityCfg.color}`}>
+                  <span aria-hidden="true" className="mr-0.5">{priorityCfg.shape}</span>
                   {priorityCfg.label}
                 </Badge>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Severity</span>
+                <span className={`capitalize flex items-center gap-0.5 ${(SEVERITY_STYLES[caseData.severity] || SEVERITY_STYLES.medium).color}`}>
+                  <span aria-hidden="true">{(SEVERITY_STYLES[caseData.severity] || SEVERITY_STYLES.medium).shape}</span>
+                  {caseData.severity}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Severity</span>

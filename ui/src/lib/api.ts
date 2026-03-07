@@ -834,6 +834,13 @@ export function getCaseExportUrl(format: "json" | "csv", ids?: string[]): string
   return base;
 }
 
+export async function cloneCase(caseId: string, overrides?: { title?: string; description?: string }): Promise<import("@/types").Case> {
+  return fetcher<import("@/types").Case>(`/cases/${caseId}/clone`, {
+    method: "POST",
+    body: JSON.stringify(overrides || {}),
+  });
+}
+
 // ─── Cross-Enrichment ───────────────────────────────────
 
 export async function getDashboardEnrichment(days?: number): Promise<import("@/types").DashboardEnrichment> {
