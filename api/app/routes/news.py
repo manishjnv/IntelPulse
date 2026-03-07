@@ -426,7 +426,9 @@ async def export_vulnerable_products(
         rows = [
             {
                 "product_name": i.product_name, "vendor": i.vendor, "cve_id": i.cve_id,
-                "cvss_score": i.cvss_score, "epss_score": i.epss_score, "severity": i.severity,
+                "cvss_score": round(i.cvss_score, 2) if i.cvss_score is not None else None,
+                "epss_score": round(i.epss_score, 2) if i.epss_score is not None else None,
+                "severity": i.severity,
                 "is_kev": i.is_kev, "exploit_available": i.exploit_available,
                 "patch_available": i.patch_available, "affected_versions": i.affected_versions,
                 "confidence": i.confidence, "source_count": i.source_count,
