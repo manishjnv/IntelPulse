@@ -16,7 +16,6 @@ def get_session_cookie():
     """Create a valid session cookie using the app's JWT + Redis session."""
     from app.services.auth import create_access_token
     from app.core.redis import redis_client
-    from app.core.config import settings
 
     session_id = str(uuid.uuid4())
     token = create_access_token({
