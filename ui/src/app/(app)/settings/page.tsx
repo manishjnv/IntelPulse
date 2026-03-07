@@ -1754,6 +1754,7 @@ function AIConfigSettings() {
         url: cfg.primary_api_url,
         key: cfg.primary_api_key,
         model: cfg.primary_model,
+        provider_type: "primary",
       });
       setTestResult(result);
     } catch (err: any) {
@@ -1814,6 +1815,7 @@ function AIConfigSettings() {
         url: fb.url,
         key: fb.key,
         model: fb.model.includes(",") ? fb.model.split(",")[0].trim() : fb.model,
+        provider_type: String(idx),
       });
       setFbTestResults((prev) => ({ ...prev, [idx]: result }));
     } catch (err: any) {

@@ -263,6 +263,7 @@ async def update_ai_settings(
 async def test_ai_provider(
     body: dict,
     user: Annotated[User, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Test an AI provider connection with a simple prompt."""
     import httpx
@@ -271,6 +272,31 @@ async def test_ai_provider(
     key = body.get("key", "")
     model = body.get("model", "")
     timeout = int(body.get("timeout", 15))
+    # Which provider to test: "primary" or fallback index (0, 1, ...)
+    provider_type = body.get("provider_type", None)
+
+    # If key is masked, resolve the real key from the database
+    if not key or "****" in key:
+        row = await _get_or_create_settings(db)
+        if provider_type is not None and provider_type != "primary":
+            # Fallback provider — look up by index
+            try:
+                idx = int(provider_type)
+                fb = (row.fallback_providers or [])[idx]
+                key = fb.get("key", "")
+                if not url:
+                    url = fb.get("url", "")
+                if not model:
+                    model = fb.get("model", "")
+            except (ValueError, IndexError):
+                pass
+        else:
+            # Primary provider
+            key = row.primary_api_key or ""
+            if not url:
+                url = row.primary_api_url or ""
+            if not model:
+                model = row.primary_model or ""
 
     if not url or not key or not model:
         raise HTTPException(400, "url, key, and model are required")

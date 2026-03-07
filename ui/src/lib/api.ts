@@ -938,6 +938,7 @@ export async function testAIProvider(params: {
   url: string;
   key: string;
   model: string;
+  provider_type?: string;
 }): Promise<{ success: boolean; status: number; response?: string; error?: string }> {
   return fetcher<{ success: boolean; status: number; response?: string; error?: string }>("/ai-settings/test-provider", {
     method: "POST",
