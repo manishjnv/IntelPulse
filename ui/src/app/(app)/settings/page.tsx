@@ -1961,7 +1961,7 @@ function AIConfigSettings() {
                   type="text"
                   value={cfg.primary_api_url}
                   onChange={(e) => update("primary_api_url", e.target.value)}
-                  placeholder="https://api.groq.com/openai/v1"
+                  placeholder="https://api.groq.com/openai/v1/chat/completions"
                   className="w-full px-2 py-1.5 rounded-md bg-muted/30 border border-border text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>

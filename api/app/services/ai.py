@@ -272,11 +272,17 @@ async def _get_chain_async() -> list[_Provider]:
     db_cfg = await get_ai_db_settings()
     chain: list[_Provider] = []
 
+    def _ensure_chat_url(u: str) -> str:
+        u = u.rstrip("/")
+        if not u.endswith("/chat/completions"):
+            u += "/chat/completions"
+        return u
+
     if db_cfg and db_cfg.get("primary_api_key"):
         # Build chain from DB settings
         chain.append(_Provider(
             name=db_cfg.get("primary_provider", "groq") + "-primary",
-            url=db_cfg["primary_api_url"],
+            url=_ensure_chat_url(db_cfg["primary_api_url"]),
             key=db_cfg["primary_api_key"],
             model=db_cfg["primary_model"],
             timeout=db_cfg.get("primary_timeout", 30),
@@ -285,7 +291,7 @@ async def _get_chain_async() -> list[_Provider]:
             if fb.get("enabled") and fb.get("key"):
                 chain.append(_Provider(
                     name=fb.get("name", "fallback"),
-                    url=fb.get("url", ""),
+                    url=_ensure_chat_url(fb.get("url", "")),
                     key=fb["key"],
                     model=fb.get("model", ""),
                     timeout=int(fb.get("timeout", 30)),
