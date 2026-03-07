@@ -297,6 +297,13 @@ async def test_ai_provider(
             except (ValueError, IndexError):
                 pass
 
+    logger.info("test_provider_request",
+                provider_type=provider_type,
+                url=url,
+                model=model,
+                key_len=len(key) if key else 0,
+                key_masked="****" in key if key else False)
+
     if not url or not key or not model:
         raise HTTPException(400, "url, key, and model are required")
 
@@ -323,7 +330,9 @@ async def test_ai_provider(
             if resp.status_code == 200:
                 data = resp.json()
                 content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                logger.info("test_provider_success", provider_type=provider_type, model=model)
                 return {"success": True, "status": resp.status_code, "response": content.strip()[:100]}
+            logger.warning("test_provider_fail", provider_type=provider_type, status=resp.status_code, error=resp.text[:200])
             return {"success": False, "status": resp.status_code, "error": resp.text[:200]}
     except httpx.TimeoutException:
         return {"success": False, "status": 0, "error": "Connection timed out"}
