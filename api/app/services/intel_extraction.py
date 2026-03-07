@@ -9,10 +9,11 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, func, delete, case, text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import select, func, delete, case, text, cast
+from sqlalchemy.dialects.postgresql import insert as pg_insert, ARRAY as PG_ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+from sqlalchemy.types import Text
 
 from app.core.logging import get_logger
 from app.models.models import NewsItem, VulnerableProduct, ThreatCampaign
@@ -479,6 +480,7 @@ async def resolve_product_campaign_links(
         return {}
 
     # Find campaigns that have ANY of these CVEs in cves_exploited
+    # Use raw SQL && (overlap) operator since ORM .overlap() isn't available for all Mapped ARRAY columns
     all_cves = list(cve_to_product_ids.keys())
     result = await db.execute(
         select(
@@ -487,7 +489,9 @@ async def resolve_product_campaign_links(
             ThreatCampaign.campaign_name,
             ThreatCampaign.severity,
             ThreatCampaign.cves_exploited,
-        ).where(ThreatCampaign.cves_exploited.overlap(all_cves))
+        ).where(
+            ThreatCampaign.cves_exploited.bool_op("&&")(cast(all_cves, PG_ARRAY(Text)))
+        )
     )
     campaigns = result.all()
 
