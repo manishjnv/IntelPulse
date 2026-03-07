@@ -593,7 +593,7 @@ async def check_ai_health() -> dict:
 
     Returns dict with overall status and per-provider details.
     """
-    chain = _get_chain()
+    chain = await _get_chain_async()
     if not chain:
         return {"healthy": False, "providers": [], "reason": "no_providers"}
 

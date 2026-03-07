@@ -1143,11 +1143,13 @@ export interface ThreatBriefingSummary {
 
 export interface FallbackProvider {
   name: string;
-  api_url: string;
-  api_key: string;
+  url: string;
+  key: string;
   model: string;
   timeout: number;
   enabled: boolean;
+  key_set?: boolean;
+  key_masked?: string;
 }
 
 export interface AISettings {
@@ -1155,27 +1157,28 @@ export interface AISettings {
   primary_provider: string;
   primary_api_url: string;
   primary_api_key: string;
+  primary_api_key_set?: boolean;
   primary_model: string;
   primary_timeout: number;
   fallback_providers: FallbackProvider[];
   feature_intel_summary: boolean;
   feature_intel_enrichment: boolean;
-  feature_news_ai: boolean;
+  feature_news_enrichment: boolean;
   feature_live_lookup: boolean;
-  feature_report_generation: boolean;
-  feature_threat_briefing: boolean;
+  feature_report_gen: boolean;
+  feature_briefing_gen: boolean;
   daily_limit_intel_summary: number;
   daily_limit_intel_enrichment: number;
-  daily_limit_news_ai: number;
+  daily_limit_news_enrichment: number;
   daily_limit_live_lookup: number;
-  daily_limit_report_generation: number;
-  daily_limit_threat_briefing: number;
+  daily_limit_report_gen: number;
+  daily_limit_briefing_gen: number;
   prompt_intel_summary: string;
   prompt_intel_enrichment: string;
-  prompt_news_ai: string;
+  prompt_news_enrichment: string;
   prompt_live_lookup: string;
-  prompt_report_generation: string;
-  prompt_threat_briefing: string;
+  prompt_report_gen: string;
+  prompt_briefing_gen: string;
   default_temperature: number;
   default_max_tokens: number;
   requests_per_minute: number;
@@ -1191,8 +1194,14 @@ export interface AIUsage {
   [key: string]: number;
 }
 
+export interface AIHealthProvider {
+  name: string;
+  model: string;
+  healthy: boolean;
+}
+
 export interface AIHealthStatus {
-  status: string;
-  providers: Record<string, string>;
+  healthy: boolean;
+  providers: AIHealthProvider[];
 }
 

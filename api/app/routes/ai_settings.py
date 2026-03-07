@@ -81,12 +81,12 @@ def _serialize(row: AISetting) -> dict:
         "ai_enabled": row.ai_enabled,
         "primary_provider": row.primary_provider,
         "primary_api_url": row.primary_api_url,
+        "primary_api_key": _mask(row.primary_api_key),
         "primary_api_key_set": bool(row.primary_api_key),
-        "primary_api_key_masked": _mask(row.primary_api_key),
         "primary_model": row.primary_model,
         "primary_timeout": row.primary_timeout,
         "fallback_providers": [
-            {**p, "key_set": bool(p.get("key")), "key_masked": _mask(p.get("key", "")), "key": ""}
+            {**p, "key": _mask(p.get("key", "")), "key_set": bool(p.get("key")), "key_masked": _mask(p.get("key", ""))}
             for p in (row.fallback_providers or [])
         ],
         "feature_intel_summary": row.feature_intel_summary,
@@ -173,20 +173,22 @@ async def update_ai_settings(
             for p in value:
                 if not isinstance(p, dict) or not p.get("name"):
                     continue
-                if not p.get("key") and p["name"] in existing:
-                    p["key"] = existing[p["name"]].get("key", "")
+                # Preserve existing key if new entry sends empty or masked key
+                new_key = p.get("key", "")
+                if (not new_key or "****" in new_key) and p["name"] in existing:
+                    new_key = existing[p["name"]].get("key", "")
                 merged.append({
                     "name": p.get("name", ""),
                     "url": p.get("url", ""),
-                    "key": p.get("key", ""),
+                    "key": new_key,
                     "model": p.get("model", ""),
                     "timeout": int(p.get("timeout", 30)),
                     "enabled": bool(p.get("enabled", True)),
                 })
             value = merged
 
-        # Special handling for api key — don't overwrite with empty
-        if field == "primary_api_key" and not value:
+        # Special handling for api key — don't overwrite with empty or masked value
+        if field == "primary_api_key" and (not value or "****" in str(value)):
             continue
 
         setattr(row, field, value)

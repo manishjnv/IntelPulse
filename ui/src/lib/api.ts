@@ -935,12 +935,11 @@ export async function updateAISettings(data: Partial<import("@/types").AISetting
 }
 
 export async function testAIProvider(params: {
-  provider: string;
-  api_url: string;
-  api_key: string;
+  url: string;
+  key: string;
   model: string;
-}): Promise<{ success: boolean; message: string; latency_ms?: number }> {
-  return fetcher<{ success: boolean; message: string; latency_ms?: number }>("/ai-settings/test-provider", {
+}): Promise<{ success: boolean; status: number; response?: string; error?: string }> {
+  return fetcher<{ success: boolean; status: number; response?: string; error?: string }>("/ai-settings/test-provider", {
     method: "POST",
     body: JSON.stringify(params),
   });

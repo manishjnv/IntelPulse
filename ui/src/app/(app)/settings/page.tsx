@@ -1532,7 +1532,7 @@ const AI_FEATURES = [
     limitTip: "Max enrichment requests per day. Enrichment is heavier than summaries (~3000 tokens). Set 0 for unlimited.",
   },
   {
-    key: "news_ai",
+    key: "news_enrichment",
     label: "News AI Extraction",
     tip: "Extracts IOCs, CVEs, threat actors, and structured intelligence from ingested news articles automatically.",
     limitTip: "Max news articles processed by AI per day. Each article uses ~3500 tokens. Set 0 for unlimited.",
@@ -1544,13 +1544,13 @@ const AI_FEATURES = [
     limitTip: "Max live lookup queries per day. Each query triggers a provider call. Set 0 for unlimited.",
   },
   {
-    key: "report_generation",
+    key: "report_gen",
     label: "Report Generation",
     tip: "AI drafts executive threat reports, export summaries, and briefing documents for stakeholder communication.",
     limitTip: "Max AI-generated reports per day. Reports use higher token counts (~4000). Set 0 for unlimited.",
   },
   {
-    key: "threat_briefing",
+    key: "briefing_gen",
     label: "Threat Briefing",
     tip: "Generates periodic threat briefings that synthesize recent intelligence into an executive-ready summary with key findings and recommendations.",
     limitTip: "Max threat briefings generated per day. Each briefing analyzes many items at once. Set 0 for unlimited.",
@@ -1597,9 +1597,9 @@ function AIConfigSettings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string; latency_ms?: number } | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; status: number; response?: string; error?: string } | null>(null);
   const [testing, setTesting] = useState(false);
-  const [healthData, setHealthData] = useState<Record<string, string> | null>(null);
+  const [healthData, setHealthData] = useState<import("@/types").AIHealthProvider[] | null>(null);
   const [usageData, setUsageData] = useState<Record<string, number>>({});
   const [activeSubSection, setActiveSubSection] = useState<AISubSection>("provider");
   const [expandedPrompt, setExpandedPrompt] = useState<string | null>(null);
@@ -1648,14 +1648,13 @@ function AIConfigSettings() {
     setTestResult(null);
     try {
       const result = await api.testAIProvider({
-        provider: cfg.primary_provider,
-        api_url: cfg.primary_api_url,
-        api_key: cfg.primary_api_key,
+        url: cfg.primary_api_url,
+        key: cfg.primary_api_key,
         model: cfg.primary_model,
       });
       setTestResult(result);
     } catch (err: any) {
-      setTestResult({ success: false, message: err?.message || "Connection failed" });
+      setTestResult({ success: false, status: 0, error: err?.message || "Connection failed" });
     }
     setTesting(false);
   };
@@ -1665,7 +1664,7 @@ function AIConfigSettings() {
       const result = await api.getAIHealth();
       setHealthData(result.providers);
     } catch {
-      setHealthData({ error: "Health check failed" });
+      setHealthData([{ name: "error", model: "", healthy: false }]);
     }
   };
 
@@ -1858,8 +1857,7 @@ function AIConfigSettings() {
                 {testResult && (
                   <span className={`text-[10px] flex items-center gap-1 ${testResult.success ? "text-green-400" : "text-red-400"}`}>
                     {testResult.success ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                    {testResult.message}
-                    {testResult.latency_ms && ` (${testResult.latency_ms}ms)`}
+                    {testResult.success ? testResult.response || "OK" : testResult.error || `HTTP ${testResult.status}`}
                   </span>
                 )}
               </div>
@@ -1920,8 +1918,8 @@ function AIConfigSettings() {
                       <label className="text-[10px] text-muted-foreground mb-0.5 block">API URL</label>
                       <input
                         type="text"
-                        value={fb.api_url}
-                        onChange={(e) => updateFallback(idx, "api_url", e.target.value)}
+                        value={fb.url}
+                        onChange={(e) => updateFallback(idx, "url", e.target.value)}
                         className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-primary"
                       />
                     </div>
@@ -1929,8 +1927,8 @@ function AIConfigSettings() {
                       <label className="text-[10px] text-muted-foreground mb-0.5 block">API Key</label>
                       <input
                         type="password"
-                        value={fb.api_key}
-                        onChange={(e) => updateFallback(idx, "api_key", e.target.value)}
+                        value={fb.key}
+                        onChange={(e) => updateFallback(idx, "key", e.target.value)}
                         className="w-full px-2 py-1 rounded bg-muted/30 border border-border text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-primary"
                       />
                     </div>
@@ -2252,19 +2250,22 @@ function AIConfigSettings() {
                 <p className="text-[10px] text-muted-foreground text-center py-4">Click &quot;Check Now&quot; to test provider connectivity.</p>
               ) : (
                 <div className="space-y-2">
-                  {Object.entries(healthData).map(([name, status]) => (
-                    <div key={name} className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0">
-                      <span className="text-xs font-medium capitalize">{name}</span>
+                  {healthData.map((p) => (
+                    <div key={p.name} className="flex items-center justify-between py-1.5 border-b border-border/30 last:border-0">
+                      <div>
+                        <span className="text-xs font-medium capitalize">{p.name}</span>
+                        {p.model && <span className="text-[10px] text-muted-foreground ml-1.5">({p.model})</span>}
+                      </div>
                       <Badge
                         variant="outline"
                         className="text-[10px] gap-1"
                         style={{
-                          borderColor: status === "ok" ? "#22c55e" : "#ef4444",
-                          color: status === "ok" ? "#22c55e" : "#ef4444",
+                          borderColor: p.healthy ? "#22c55e" : "#ef4444",
+                          color: p.healthy ? "#22c55e" : "#ef4444",
                         }}
                       >
-                        {status === "ok" ? <CheckCircle2 className="h-2.5 w-2.5" /> : <XCircle className="h-2.5 w-2.5" />}
-                        {status}
+                        {p.healthy ? <CheckCircle2 className="h-2.5 w-2.5" /> : <XCircle className="h-2.5 w-2.5" />}
+                        {p.healthy ? "Healthy" : "Unreachable"}
                       </Badge>
                     </div>
                   ))}
