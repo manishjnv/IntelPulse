@@ -259,6 +259,69 @@ async def update_ai_settings(
     return data
 
 
+@router.post("/debug-test")
+async def debug_test_provider(
+    body: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Temporary no-auth debug endpoint — REMOVE AFTER DEBUGGING."""
+    import httpx
+    url = body.get("url", "")
+    key = body.get("key", "")
+    model = body.get("model", "")
+    provider_type = body.get("provider_type", None)
+
+    debug_info = {"step": "start", "provider_type": provider_type, "incoming_key_len": len(key), "incoming_key_masked": "****" in key if key else False}
+
+    if provider_type is not None:
+        row = await _get_or_create_settings(db)
+        debug_info["db_row_found"] = row is not None
+        if str(provider_type) == "primary":
+            resolved_key = row.primary_api_key or ""
+            debug_info["resolved_key_len"] = len(resolved_key)
+            debug_info["resolved_key_start"] = resolved_key[:8] if resolved_key else ""
+            key = resolved_key or key
+            url = url or row.primary_api_url or ""
+            model = model or row.primary_model or ""
+        else:
+            try:
+                idx = int(provider_type)
+                fb_list = row.fallback_providers or []
+                debug_info["fb_count"] = len(fb_list)
+                fb = fb_list[idx]
+                resolved_key = fb.get("key", "")
+                debug_info["resolved_key_len"] = len(resolved_key)
+                debug_info["resolved_key_start"] = resolved_key[:8] if resolved_key else ""
+                key = resolved_key or key
+                url = url or fb.get("url", "")
+                model = model or fb.get("model", "")
+            except (ValueError, IndexError) as e:
+                debug_info["error"] = str(e)
+
+    debug_info["final_url"] = url
+    debug_info["final_model"] = model
+    debug_info["final_key_len"] = len(key)
+
+    test_url = url.rstrip("/")
+    if not test_url.endswith("/chat/completions"):
+        test_url += "/chat/completions"
+    debug_info["test_url"] = test_url
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                test_url,
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": model, "messages": [{"role": "user", "content": "Test"}], "max_tokens": 5, "temperature": 0},
+            )
+            debug_info["provider_status"] = resp.status_code
+            debug_info["provider_response"] = resp.text[:300]
+    except Exception as e:
+        debug_info["exception"] = str(e)
+
+    return debug_info
+
+
 @router.post("/test-provider")
 async def test_ai_provider(
     body: dict,
