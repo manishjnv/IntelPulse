@@ -294,7 +294,7 @@ export function ATTACKMatrix({ data }: ATTACKMatrixProps) {
                   {tactic.techniques.map((tech) => (
                     <div
                       key={`${tactic.tactic}-${tech.id}`}
-                      className="relative group"
+                      className="relative group hover:z-50"
                     >
                       <Link
                         href={`/techniques/${tech.id}`}
@@ -321,10 +321,10 @@ export function ATTACKMatrix({ data }: ATTACKMatrixProps) {
 
                       {/* Rich hover tooltip — shown via CSS group-hover */}
                       {tech.count > 0 && (
-                        <div className="absolute z-[100] left-full ml-1 top-0 hidden group-hover:block">
+                        <div className="absolute z-[100] left-full ml-1 top-0 hidden group-hover:block" style={{ isolation: "isolate" }}>
                           {/* Invisible bridge so cursor can travel from cell to tooltip */}
                           <div className="absolute -left-2 top-0 w-2 h-full" />
-                          <div className="bg-zinc-900 border border-zinc-600 rounded-lg shadow-2xl shadow-black/60 px-3 py-2.5 space-y-1.5 min-w-[180px] ring-1 ring-white/10">
+                          <div className="bg-[#18181b] border border-zinc-600 rounded-lg shadow-2xl shadow-black/80 px-3 py-2.5 space-y-1.5 min-w-[180px] ring-1 ring-white/10" style={{ backdropFilter: "none", opacity: 1 }}>
                             <div className="text-[11px] font-semibold text-zinc-100 truncate max-w-[200px]">
                               {tech.id}: {tech.name}
                             </div>

@@ -457,10 +457,10 @@ export default function DashboardPage() {
             <CardContent className="px-5 pb-4">
               <div className="space-y-1.5">
                 {velocity.slice(0, 8).map((v) => (
-                  <Link
+                  <button
                     key={v.entity}
-                    href={v.entity_type === "cve" ? `/search?q=${v.entity}` : `/search?q=${v.entity}`}
-                    className="flex items-center gap-2 text-xs p-1.5 rounded-md hover:bg-muted/30 transition-colors group"
+                    onClick={() => openDetail(v.entity_type === "cve" ? "cve" : "threat_actor", v.entity)}
+                    className="flex items-center gap-2 text-xs p-1.5 rounded-md hover:bg-muted/30 transition-colors group w-full text-left"
                   >
                     <Badge variant="outline" className="text-[9px] shrink-0 w-14 justify-center">
                       {v.entity_type === "cve" ? "CVE" : "Actor"}
@@ -498,7 +498,7 @@ export default function DashboardPage() {
                         +{v.velocity_change}
                       </span>
                     </div>
-                  </Link>
+                  </button>
                 ))}
               </div>
             </CardContent>

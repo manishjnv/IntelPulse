@@ -17,6 +17,7 @@ import {
   Filter,
   FileCode,
   Crosshair,
+  Swords,
   Zap,
   AlertTriangle,
   CheckCircle2,
@@ -106,6 +107,7 @@ export default function DetectionsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [coverageDrill, setCoverageDrill] = useState<"techniques" | "campaigns" | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -176,28 +178,29 @@ export default function DetectionsPage() {
 
       {/* Coverage Stats */}
       {coverage && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <Card>
-            <CardContent className="pt-4 pb-3">
-              <div className="text-2xl font-bold">{coverage.total_rules}</div>
-              <div className="text-xs text-muted-foreground">Total Rules</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-3">
-              <div className="text-2xl font-bold text-primary">{coverage.techniques_covered}</div>
-              <div className="text-xs text-muted-foreground">Techniques Covered</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-3">
-              <div className="text-2xl font-bold">{coverage.campaigns_covered}</div>
-              <div className="text-xs text-muted-foreground">Campaigns Covered</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-4 pb-3">
-              <div className="flex gap-2">
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <div className="text-2xl font-bold">{coverage.total_rules}</div>
+                <div className="text-xs text-muted-foreground">Total Rules</div>
+              </CardContent>
+            </Card>
+            <Card className="cursor-pointer hover:border-primary/40 transition-colors" onClick={() => setCoverageDrill(coverageDrill === "techniques" ? null : "techniques")}>
+              <CardContent className="pt-4 pb-3">
+                <div className="text-2xl font-bold text-primary">{coverage.techniques_covered}</div>
+                <div className="text-xs text-muted-foreground">Techniques Covered <span className="text-primary">▾</span></div>
+              </CardContent>
+            </Card>
+            <Card className="cursor-pointer hover:border-primary/40 transition-colors" onClick={() => setCoverageDrill(coverageDrill === "campaigns" ? null : "campaigns")}>
+              <CardContent className="pt-4 pb-3">
+                <div className="text-2xl font-bold">{coverage.campaigns_covered}</div>
+                <div className="text-xs text-muted-foreground">Campaigns Covered <span className="text-primary">▾</span></div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3">
+                <div className="flex gap-2">
                 {[
                   { type: "yara", count: coverage.yara_count },
                   { type: "kql", count: coverage.kql_count },
@@ -211,6 +214,48 @@ export default function DetectionsPage() {
               <div className="text-xs text-muted-foreground mt-1">By Type</div>
             </CardContent>
           </Card>
+        </div>
+
+          {/* Coverage Description */}
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Detection coverage spans <span className="text-primary font-medium">{coverage.total_rules}</span> auto-generated rules across {coverage.yara_count > 0 ? "YARA" : ""}{coverage.yara_count > 0 && coverage.kql_count > 0 ? ", " : ""}{coverage.kql_count > 0 ? "KQL" : ""}{coverage.sigma_count > 0 ? ", Sigma" : ""} formats, mapping to <span className="text-primary font-medium">{coverage.techniques_covered}</span> ATT&CK techniques and <span className="text-primary font-medium">{coverage.campaigns_covered}</span> active campaigns extracted from cyber news intelligence. Click the technique or campaign count above to browse coverage.
+          </p>
+
+          {/* Drilldown Panel */}
+          {coverageDrill === "techniques" && (
+            <Card>
+              <CardHeader className="pb-2 pt-3 px-4">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-xs font-semibold flex items-center gap-1.5"><Crosshair className="h-3.5 w-3.5 text-primary" /> Techniques with Detection Rules</CardTitle>
+                  <button onClick={() => setCoverageDrill(null)} className="text-[10px] text-muted-foreground hover:text-primary">Close</button>
+                </div>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+                  {Array.from(new Set(rules.flatMap(r => r.technique_ids))).sort().map(tid => (
+                    <Badge key={tid} variant="outline" className="text-[10px] font-mono">{tid}</Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          {coverageDrill === "campaigns" && (
+            <Card>
+              <CardHeader className="pb-2 pt-3 px-4">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-xs font-semibold flex items-center gap-1.5"><Swords className="h-3.5 w-3.5 text-violet-400" /> Campaigns with Detection Rules</CardTitle>
+                  <button onClick={() => setCoverageDrill(null)} className="text-[10px] text-muted-foreground hover:text-primary">Close</button>
+                </div>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+                  {Array.from(new Set(rules.map(r => r.campaign_name).filter((n): n is string => Boolean(n)))).sort().map(name => (
+                    <Badge key={name} variant="outline" className="text-[10px] text-violet-400">{name}</Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 

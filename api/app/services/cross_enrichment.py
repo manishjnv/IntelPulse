@@ -205,7 +205,7 @@ async def get_intel_items_enriched(db: AsyncSession, item_ids: list[str]) -> dic
     q = text("""
         SELECT i.id::text, i.cve_ids, i.affected_products
         FROM intel_items i
-        WHERE i.id = ANY(:ids::uuid[])
+        WHERE i.id::text = ANY(:ids)
     """)
     rows = (await db.execute(q, {"ids": item_ids})).mappings().all()
 

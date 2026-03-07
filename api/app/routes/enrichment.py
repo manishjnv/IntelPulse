@@ -184,13 +184,26 @@ async def generate_briefing(
     payload: dict,
 ):
     """Generate an AI threat briefing from collected data."""
-    from app.services.ai import chat_completion
+    from app.services.ai import chat_completion_json
+    import json, logging
+    from datetime import datetime, timedelta, timezone
+
+    def _jsonify(obj):
+        """Deep-convert datetime objects to ISO strings for JSONB storage."""
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, dict):
+            return {k: _jsonify(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [_jsonify(v) for v in obj]
+        return obj
 
     days = payload.get("days", 7)
     data = await ce.collect_briefing_data(db, days=days)
+    now = datetime.now(timezone.utc)
+    period_start = now - timedelta(days=days)
 
     # Build prompt for AI
-    import json
     prompt = f"""Generate a professional Weekly Threat Intelligence Briefing based on this data from the last {days} days.
 
 DATA:
@@ -203,8 +216,8 @@ DATA:
 
 FORMAT your response as JSON with these fields:
 {{
-  "title": "Weekly Threat Brief - [date range]",
-  "executive_summary": "2-3 paragraph executive overview",
+  "title": "Weekly Threat Brief",
+  "executive_summary": "2-3 paragraph executive overview of the most critical threats, campaigns, and vulnerabilities observed.",
   "key_findings": ["finding1", "finding2", ...],
   "recommendations": ["rec1", "rec2", ...],
   "sections": [
@@ -212,45 +225,67 @@ FORMAT your response as JSON with these fields:
   ]
 }}"""
 
-    result = await chat_completion(
-        system_prompt="You are a senior threat intelligence analyst. Generate comprehensive, actionable threat briefings in JSON format.",
+    briefing = await chat_completion_json(
+        system_prompt="You are a senior threat intelligence analyst. Generate comprehensive, actionable threat briefings in JSON format. Keep the JSON valid.",
         user_prompt=prompt,
-        max_tokens=2000,
+        max_tokens=4000,
+        required_keys=["executive_summary"],
+        caller="briefing_gen",
     )
-    if not result:
-        return {"error": "AI unavailable", "raw_data": data}
 
-    try:
-        # Try to parse JSON from AI response
-        import re
-        json_match = re.search(r'\{.*\}', result, re.DOTALL)
-        if json_match:
-            briefing = json.loads(json_match.group())
-            # Store in DB
-            from app.models.models import ThreatBriefing
-            from datetime import datetime, timedelta, timezone
-            now = datetime.now(timezone.utc)
-            tb = ThreatBriefing(
-                period="weekly" if days >= 7 else "daily",
-                period_start=now - timedelta(days=days),
-                period_end=now,
-                title=briefing.get("title", f"Threat Brief - Last {days} days"),
-                executive_summary=briefing.get("executive_summary", ""),
-                key_campaigns=data["campaigns"][:10],
-                key_vulnerabilities=data["trending_cves"][:10],
-                key_actors=data["actors"][:10],
-                sector_threats={"sectors": data["sector_threats"]},
-                stats=data["stats"],
-                recommendations=briefing.get("recommendations", []),
-                raw_data=briefing,
-            )
-            db.add(tb)
-            await db.commit()
-            return {"briefing": briefing, "id": str(tb.id)}
-    except (json.JSONDecodeError, Exception):
-        pass
+    # Store in DB — use AI JSON if available, fall back to data-only briefing
+    from app.models.models import ThreatBriefing
+    title = (briefing or {}).get("title", "Weekly Threat Brief")
+    exec_summary = (briefing or {}).get("executive_summary", "")
+    recommendations = (briefing or {}).get("recommendations", [])
 
-    return {"briefing_text": result, "raw_data": data}
+    # If AI failed, build a minimal executive summary from the raw data
+    if not exec_summary:
+        logging.warning("briefing_ai_failed: building summary from raw data")
+        parts = []
+        stats = data.get("stats", {})
+        parts.append(f"Over the past {days} days, IntelWatch processed {stats.get('articles_processed', 0)} articles, identified {stats.get('new_cves', 0)} CVEs and tracked {stats.get('new_campaigns', 0)} active campaigns.")
+        if data.get("campaigns"):
+            top = [c.get("campaign_name") or c.get("actor_name", "") for c in data["campaigns"][:5]]
+            parts.append(f"Top active campaigns include: {', '.join(top)}.")
+        if data.get("trending_cves"):
+            top_cves = [c.get("cve_id", "") for c in data["trending_cves"][:5]]
+            parts.append(f"Trending vulnerabilities: {', '.join(top_cves)}.")
+        exec_summary = " ".join(parts)
+
+    tb = ThreatBriefing(
+        period="weekly" if days >= 7 else "daily",
+        period_start=period_start,
+        period_end=now,
+        title=title,
+        executive_summary=exec_summary,
+        key_campaigns=_jsonify(data["campaigns"][:10]),
+        key_vulnerabilities=_jsonify(data["trending_cves"][:10]),
+        key_actors=_jsonify(data["actors"][:10]),
+        sector_threats=_jsonify({"sectors": data["sector_threats"]}),
+        stats=_jsonify(data["stats"]),
+        recommendations=recommendations,
+        raw_data=_jsonify(briefing or {}),
+    )
+    db.add(tb)
+    await db.commit()
+    return {
+        "id": str(tb.id),
+        "briefing": {
+            "title": tb.title,
+            "executive_summary": tb.executive_summary,
+            "period": tb.period,
+            "period_start": tb.period_start.isoformat() if tb.period_start else None,
+            "period_end": tb.period_end.isoformat() if tb.period_end else None,
+            "key_campaigns": tb.key_campaigns,
+            "key_vulnerabilities": tb.key_vulnerabilities,
+            "key_actors": tb.key_actors,
+            "stats": tb.stats,
+            "recommendations": tb.recommendations,
+            "key_findings": (briefing or {}).get("key_findings", []),
+            "sections": (briefing or {}).get("sections", []),
+        },
+    }
 
 
 @router.get("/briefings")

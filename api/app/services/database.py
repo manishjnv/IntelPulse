@@ -608,6 +608,13 @@ async def get_insight_detail(
     detail_type: product | threat_actor | ransomware | malware | cve
     name: the entity name / tag / CVE id
     """
+    # ── Campaign detail: query news articles linked to this campaign ──
+    if detail_type == "campaign":
+        return await _get_campaign_detail(db, name=name, limit=limit)
+    # ── Sector detail: query campaigns targeting this sector ──
+    if detail_type == "sector":
+        return await _get_sector_detail(db, name=name, limit=limit)
+
     # Build WHERE clause depending on type
     if detail_type == "product":
         where_clause = ":name = ANY(affected_products)"
@@ -699,6 +706,162 @@ async def get_insight_detail(
         "top_products": [{"name": p, "count": n} for p, n in product_counter.most_common(10)],
     }
 
+    return {"items": items, "summary": summary}
+
+
+async def _get_campaign_detail(db: AsyncSession, *, name: str, limit: int = 20) -> dict:
+    """Detail view for a specific campaign from news intelligence."""
+    from collections import Counter
+
+    # Get campaign record
+    camp_q = text("""
+        SELECT tc.actor_name, tc.campaign_name, tc.severity,
+               tc.source_count, tc.targeted_sectors, tc.targeted_regions,
+               tc.malware_used, tc.techniques_used, tc.cves_exploited,
+               tc.first_seen, tc.last_seen
+        FROM intel_threat_campaigns tc
+        WHERE (tc.campaign_name ILIKE :name OR tc.actor_name ILIKE :name)
+          AND tc.is_false_positive = FALSE
+        ORDER BY tc.source_count DESC
+        LIMIT 1
+    """)
+    camp_row = (await db.execute(camp_q, {"name": name})).mappings().first()
+
+    # Get related news articles
+    news_q = text("""
+        SELECT n.id::text, n.headline, n.summary, n.cves, n.threat_actors,
+               n.vulnerable_products, n.category, n.confidence, n.published_at,
+               n.source, n.source_url, n.targeted_sectors, n.targeted_regions
+        FROM news_items n
+        WHERE n.ai_enriched = TRUE
+          AND (n.campaign_name ILIKE :name
+               OR :name = ANY(n.threat_actors)
+               OR n.headline ILIKE :pattern)
+        ORDER BY n.published_at DESC
+        LIMIT :lim
+    """)
+    news_rows = (await db.execute(news_q, {"name": name, "pattern": f"%{name}%", "lim": limit})).mappings().all()
+
+    items = []
+    all_cves: list[str] = []
+    all_sectors: list[str] = []
+    all_regions: list[str] = []
+    severity_counts: dict[str, int] = {}
+
+    for r in news_rows:
+        items.append({
+            "id": r["id"],
+            "title": r["headline"],
+            "summary": (r["summary"] or "")[:200],
+            "severity": r["confidence"] or "medium",
+            "risk_score": 70,
+            "source": r["source"] or "",
+            "source_url": r["source_url"] or "",
+            "cve_ids": r["cves"] or [],
+            "date": r["published_at"].isoformat() if r["published_at"] else None,
+        })
+        all_cves.extend(r["cves"] or [])
+        all_sectors.extend(r["targeted_sectors"] or [])
+        all_regions.extend(r["targeted_regions"] or [])
+        sev = r["confidence"] or "medium"
+        severity_counts[sev] = severity_counts.get(sev, 0) + 1
+
+    cve_counter = Counter(all_cves)
+    sector_counter = Counter(all_sectors)
+    region_counter = Counter(all_regions)
+
+    campaign_info = dict(camp_row) if camp_row else {}
+
+    summary = {
+        "total_items": len(items),
+        "avg_risk": 70,
+        "exploit_count": sum(1 for c in all_cves if c),
+        "severity_distribution": severity_counts,
+        "top_cves": [{"name": c, "count": n} for c, n in cve_counter.most_common(10)],
+        "top_tags": [],
+        "top_regions": [{"name": r, "count": n} for r, n in region_counter.most_common(10)],
+        "top_industries": [{"name": s, "count": n} for s, n in sector_counter.most_common(10)],
+        "top_products": [],
+        "campaign": campaign_info,
+    }
+    return {"items": items, "summary": summary}
+
+
+async def _get_sector_detail(db: AsyncSession, *, name: str, limit: int = 20) -> dict:
+    """Detail view for a sector showing campaigns and news targeting it."""
+    from collections import Counter
+
+    # Get campaigns targeting this sector
+    camp_q = text("""
+        SELECT tc.actor_name, tc.campaign_name, tc.severity,
+               tc.source_count, tc.targeted_regions, tc.malware_used,
+               tc.techniques_used, tc.cves_exploited, tc.last_seen
+        FROM intel_threat_campaigns tc
+        WHERE :sector = ANY(tc.targeted_sectors)
+          AND tc.is_false_positive = FALSE
+        ORDER BY tc.source_count DESC
+        LIMIT :lim
+    """)
+    camp_rows = (await db.execute(camp_q, {"sector": name, "lim": limit})).mappings().all()
+
+    # Get news articles mentioning this sector
+    news_q = text("""
+        SELECT n.id::text, n.headline, n.summary, n.cves, n.threat_actors,
+               n.confidence, n.published_at, n.source
+        FROM news_items n
+        WHERE n.ai_enriched = TRUE
+          AND :sector = ANY(n.targeted_sectors)
+        ORDER BY n.published_at DESC
+        LIMIT :lim
+    """)
+    news_rows = (await db.execute(news_q, {"sector": name, "lim": limit})).mappings().all()
+
+    items = []
+    all_cves: list[str] = []
+    all_actors: list[str] = []
+    severity_counts: dict[str, int] = {}
+
+    for r in news_rows:
+        items.append({
+            "id": r["id"],
+            "title": r["headline"],
+            "summary": (r["summary"] or "")[:200],
+            "severity": r["confidence"] or "medium",
+            "risk_score": 65,
+            "source": r["source"] or "",
+            "cve_ids": r["cves"] or [],
+            "date": r["published_at"].isoformat() if r["published_at"] else None,
+        })
+        all_cves.extend(r["cves"] or [])
+        all_actors.extend(r["threat_actors"] or [])
+        sev = r["confidence"] or "medium"
+        severity_counts[sev] = severity_counts.get(sev, 0) + 1
+
+    cve_counter = Counter(all_cves)
+    actor_counter = Counter(all_actors)
+
+    campaigns = [
+        {
+            "campaign_name": c["campaign_name"],
+            "actor_name": c["actor_name"],
+            "severity": c["severity"],
+            "source_count": c["source_count"],
+        }
+        for c in camp_rows
+    ]
+
+    summary = {
+        "total_items": len(items),
+        "avg_risk": 65,
+        "exploit_count": 0,
+        "severity_distribution": severity_counts,
+        "top_cves": [{"name": c, "count": n} for c, n in cve_counter.most_common(10)],
+        "top_tags": [{"name": a, "count": n} for a, n in actor_counter.most_common(10)],
+        "top_regions": [],
+        "top_industries": [],
+        "top_products": [],
+        "campaigns": campaigns,
+    }
     return {"items": items, "summary": summary}
 
 

@@ -352,7 +352,7 @@ export default function TechniquesPage() {
                 return (
                   <Link
                     key={tu.technique}
-                    href={`/techniques/${tu.technique}`}
+                    href={`/techniques/${tu.technique.split(' - ')[0]}`}
                     className="group relative flex flex-col p-2 rounded-md border transition-colors hover:border-amber-500/40 hover:shadow-md"
                     style={{ backgroundColor: `rgba(245, 158, 11, ${intensity * 0.15})` }}
                     title={`${tu.technique}\nActors: ${actorList}\nSectors: ${sectorList}\nCampaigns: ${campaignCount}\nArticles: ${tu.article_count}`}
