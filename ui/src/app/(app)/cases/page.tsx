@@ -973,6 +973,7 @@ function CasesPageInner() {
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-mono text-muted-foreground shrink-0">#{c.case_number}</span>
                       <h3 className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
                         {c.title}
                       </h3>

@@ -394,7 +394,10 @@ export default function CaseDetailPage() {
               className="text-lg font-bold w-full bg-muted/50 border border-border rounded-lg px-3 py-1 focus:outline-none focus:ring-1 focus:ring-primary"
             />
           ) : (
-            <h1 className="text-lg font-bold">{caseData.title}</h1>
+            <h1 className="text-lg font-bold">
+              <span className="text-xs font-mono text-muted-foreground mr-2">#{caseData.case_number}</span>
+              {caseData.title}
+            </h1>
           )}
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${statusCfg.color}`}>

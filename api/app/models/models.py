@@ -16,6 +16,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -466,6 +467,7 @@ class Case(Base):
     __tablename__ = "cases"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    case_number: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("nextval('case_number_seq')"))
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     case_type: Mapped[str] = mapped_column(

@@ -892,6 +892,7 @@ class CaseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    case_number: int = 0
     title: str
     description: str | None = None
     case_type: CaseType

@@ -883,6 +883,7 @@ export interface CaseActivity {
 
 export interface Case {
   id: string;
+  case_number: number;
   title: string;
   description: string | null;
   case_type: CaseType;
