@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime
 from typing import Annotated
@@ -21,7 +20,7 @@ from app.middleware.auth import get_current_user, require_viewer
 from app.models.models import IntelItem, User, IOC, IntelIOCLink
 from app.schemas import IntelItemListResponse, IntelItemResponse, IntelStatsResponse
 from app.services import database as db_service
-from app.services.ai import chat_completion
+from app.services.ai import chat_completion_json
 from app.services.export import export_to_excel
 
 router = APIRouter(prefix="/intel", tags=["intel"])
@@ -226,19 +225,61 @@ async def get_intel_item(
 
 # ─── Enrichment ──────────────────────────────────────────
 
-_ENRICHMENT_SYSTEM_PROMPT = """You are an expert cyber threat intelligence analyst. Given an intel item, produce a structured JSON enrichment analysis. Return ONLY valid JSON with these keys:
+_ENRICHMENT_PROMPT_VERSION = "B-2.0"
 
+_ENRICHMENT_SYSTEM_PROMPT = """You are a senior cyber threat intelligence analyst at a Fortune 100 SOC. You write for two audiences: a CISO who needs business-impact framing in ≤60 seconds, and a SOC analyst who needs detection rules and IOC-actionable details.
+
+Given an intel item (vulnerability, threat, advisory, or indicator), produce a structured JSON enrichment analysis.
+
+## QUALITY RULES — READ CAREFULLY
+
+**BANNED PHRASES (never use these — they are meaningless filler):**
+- "timely patching is crucial", "apply patches and updates", "keep software up to date"
+- "monitor for suspicious/unusual activity", "implement robust security controls"
+- "organizations should prioritize security", "stay vigilant"
+- Any sentence that could apply to ANY intel item generically is FILLER — delete it.
+
+**REQUIRED QUALITY: every bullet/sentence must contain at least ONE of:**
+- A specific technology, CVE, tool name, or protocol
+- A concrete SIEM query, log source, or EDR detection
+- A measurable action with a clear owner (e.g., "IAM team should audit OAuth app grants in Entra ID within 48h")
+- A named threat group, malware hash, or campaign identifier
+- A quantified business impact (dollar amount, number of records, downtime hours)
+
+**EXAMPLES — BAD vs GOOD:**
+
+executive_summary BAD: "This vulnerability highlights the importance of timely patching."
+executive_summary GOOD: "CVE-2024-3400 allows unauthenticated RCE in PAN-OS GlobalProtect (10.2/11.0/11.1). Volexity confirmed active exploitation since March 26 by UTA0218. CISA added it to KEV with a federal patch deadline of April 19. Any org with internet-facing Palo Alto firewalls faces full device compromise risk."
+
+detection_opportunities BAD: "Monitor for suspicious network activity."
+detection_opportunities GOOD: "Hunt for POST requests to /ssl-vpn/hipreport.php with shell metacharacters in the SESSID cookie — create a Suricata rule on content:\"/ssl-vpn/hipreport.php\"; pcre:\"/SESSID=.*[;|`$]/\""
+
+remediation guidance BAD: "Apply the latest security patches."
+remediation guidance GOOD: "Apply PAN-OS hotfix 10.2.9-h1, 11.0.4-h1, or 11.1.2-h3. If patching requires a maintenance window, immediately enable Threat Prevention signature 95187 and disable device telemetry as an interim measure."
+
+## JSON SCHEMA — return ONLY valid JSON, no markdown fences:
 {
-  "executive_summary": "2-3 sentence executive brief for decision makers",
+  "executive_summary": "4-6 sentences structured as: (1) What is this threat/vuln with specific names/dates, (2) Technical mechanism in 1-2 sentences, (3) Scope of impact with numbers if available, (4) What this means for the organization. NEVER use filler.",
   "threat_actors": [{"name": "APT group or actor name", "aliases": ["other names"], "motivation": "financial/espionage/hacktivism/unknown", "confidence": "high/medium/low", "description": "1 sentence about this actor's involvement"}],
-  "attack_techniques": [{"technique_id": "T1xxx or T1xxx.xxx", "technique_name": "Name", "tactic": "tactic-name", "description": "How this technique relates to this threat", "mitigations": ["mitigation 1"]}],
+  "attack_techniques": [{"technique_id": "T1xxx or T1xxx.xxx", "technique_name": "Name", "tactic": "tactic-name", "description": "How this technique relates to this threat", "mitigations": ["specific mitigation action"]}],
+  "attack_narrative": "4-6 sentences describing the technical attack chain step-by-step. Name specific tools, protocols, and techniques at each stage. If this is a vulnerability without a known attack chain, describe the most likely exploitation scenario.",
+  "initial_access_vector": "Specific vector: 'Exploitation of internet-facing PAN-OS', 'Phishing with ISO attachment', 'Supply chain compromise via npm package', or null",
+  "post_exploitation": ["Name specific tools & actions: 'LSASS credential dump via Nanodump', 'Lateral movement using WMI and PSExec'. 2-5 items. Empty [] if not applicable."],
   "affected_versions": [{"product": "Product Name", "vendor": "Vendor", "versions_affected": "< 5.2.1 or specific range", "fixed_version": "5.2.1 or null if unknown", "patch_url": "URL or null", "cpe": "cpe string or null"}],
   "timeline_events": [{"date": "YYYY-MM-DD or null", "event": "Event title", "description": "What happened", "type": "disclosure/publication/patch/exploit/kev/advisory/update"}],
   "notable_campaigns": [{"name": "Campaign or breach name", "date": "YYYY or approximate", "description": "Brief description", "impact": "Impact description"}],
-  "exploitation_info": {"epss_estimate": 0.0 to 1.0, "exploit_maturity": "none/poc/weaponized/unknown", "in_the_wild": true/false, "ransomware_use": true/false, "description": "Brief exploitation context"},
-  "remediation": {"priority": "critical/high/medium/low", "guidance": ["Step 1", "Step 2"], "workarounds": ["Workaround if no patch"], "references": [{"title": "Reference name", "url": "URL"}]},
-  "related_cves": ["CVE-YYYY-NNNNN"],
-  "tags_suggested": ["tag1", "tag2"]
+  "exploitation_info": {"epss_estimate": 0.0, "exploit_maturity": "none/poc/weaponized/unknown", "in_the_wild": true, "ransomware_use": false, "description": "Brief exploitation context"},
+  "detection_opportunities": ["3-5 items. Each MUST name a log source, query pattern, or signature ID. Examples: 'Sigma rule for regsvr32 loading DLL from user temp folder', 'Snort SID 300125 for CobaltStrike beacon HTTP profile', 'Windows Event 4688 + CommandLine containing certutil -urlcache'. No vague 'monitor for anomalies'."],
+  "ioc_summary": {"domains": [], "ips": [], "hashes": [], "urls": []},
+  "targeted_sectors": ["Specific sectors: 'Government — Defense', 'Financial Services — Banking'. Always at least 1."],
+  "targeted_regions": ["Specific regions: 'South Korea', 'Western Europe', 'United States — Federal'. Always at least 1."],
+  "impacted_assets": ["Specific asset types: 'Palo Alto GlobalProtect VPN appliances', 'Chrome browser on Windows/Mac/Linux'. Not generic 'endpoints'."],
+  "remediation": {"priority": "critical/high/medium/low", "guidance": ["Step 1 — must name specific fix: patch version, config change, GPO setting", "Step 2"], "workarounds": ["Workaround if no patch — must be specific"], "references": [{"title": "Reference name", "url": "URL"}]},
+  "related_cves": ["CVE-YYYY-NNNNN — include co-exploited or chained CVEs"],
+  "tags_suggested": ["tag1", "tag2"],
+  "recommended_priority": "critical/high/medium/low",
+  "confidence": "high/medium/low",
+  "source_reliability": "authoritative/credible/speculative/unknown"
 }
 
 Rules:
@@ -300,35 +341,20 @@ async def get_intel_enrichment(
 
     user_prompt = "\n".join(parts)
 
-    # Call AI
-    raw = await chat_completion(
+    # Call AI with JSON validation and retry
+    enrichment = await chat_completion_json(
         system_prompt=_ENRICHMENT_SYSTEM_PROMPT,
         user_prompt=user_prompt,
-        max_tokens=2000,
+        max_tokens=3000,
         temperature=0.2,
+        required_keys=["executive_summary", "threat_actors", "attack_techniques"],
+        caller="intel_enrichment",
     )
 
-    if not raw:
-        # Return empty enrichment
-        result = _empty_enrichment()
-        return result
-
-    # Parse JSON
-    try:
-        # Strip markdown fences if present
-        cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3]
-        cleaned = cleaned.strip()
-        if cleaned.startswith("json"):
-            cleaned = cleaned[4:].strip()
-
-        enrichment = json.loads(cleaned)
-    except (json.JSONDecodeError, Exception) as e:
-        logger.warning("enrichment_parse_error", error=str(e), raw=raw[:200])
+    if not enrichment:
         enrichment = _empty_enrichment()
+    else:
+        enrichment["_prompt_version"] = _ENRICHMENT_PROMPT_VERSION
 
     # Cache for 6 hours
     await set_cached(ck, enrichment, ttl=21600)
@@ -340,6 +366,9 @@ def _empty_enrichment() -> dict:
         "executive_summary": None,
         "threat_actors": [],
         "attack_techniques": [],
+        "attack_narrative": None,
+        "initial_access_vector": None,
+        "post_exploitation": [],
         "affected_versions": [],
         "timeline_events": [],
         "notable_campaigns": [],
@@ -350,6 +379,11 @@ def _empty_enrichment() -> dict:
             "ransomware_use": False,
             "description": None,
         },
+        "detection_opportunities": [],
+        "ioc_summary": {"domains": [], "ips": [], "hashes": [], "urls": []},
+        "targeted_sectors": [],
+        "targeted_regions": [],
+        "impacted_assets": [],
         "remediation": {
             "priority": None,
             "guidance": [],
@@ -358,6 +392,10 @@ def _empty_enrichment() -> dict:
         },
         "related_cves": [],
         "tags_suggested": [],
+        "recommended_priority": None,
+        "confidence": None,
+        "source_reliability": None,
+        "_prompt_version": _ENRICHMENT_PROMPT_VERSION,
     }
 
 

@@ -274,8 +274,8 @@ async def list_vulnerable_products(
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     limit: int = Query(100, ge=1, le=500),
 ):
-    """Get vulnerable products extracted from news in the last 48 hours."""
-    from app.services.intel_extraction import get_vulnerable_products, PRODUCTS_WINDOW_HOURS
+    """Get vulnerable products extracted from news."""
+    from app.services.intel_extraction import get_vulnerable_products, PRODUCTS_WINDOW_DAYS
 
     ck = cache_key("vuln_products", search, severity, sort_by, sort_order, limit)
     cached = await get_cached(ck)
@@ -289,7 +289,7 @@ async def list_vulnerable_products(
     response = VulnerableProductsListResponse(
         items=[VulnerableProductResponse.model_validate(i) for i in items],
         total=total,
-        window_hours=PRODUCTS_WINDOW_HOURS,
+        window_days=PRODUCTS_WINDOW_DAYS,
     )
     await set_cached(ck, response.model_dump(), ttl=60)
     return response

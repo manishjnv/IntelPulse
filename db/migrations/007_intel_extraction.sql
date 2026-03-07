@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS intel_vulnerable_products (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     product_name    VARCHAR(300) NOT NULL,
     vendor          VARCHAR(200),
-    cve_id          VARCHAR(30),
+    cve_id          VARCHAR(50),
     cvss_score      REAL,
     epss_score      REAL,
     severity        VARCHAR(20) NOT NULL DEFAULT 'unknown',

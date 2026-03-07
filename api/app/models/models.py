@@ -416,7 +416,7 @@ class VulnerableProduct(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     product_name: Mapped[str] = mapped_column(String(300), nullable=False)
     vendor: Mapped[str | None] = mapped_column(String(200))
-    cve_id: Mapped[str | None] = mapped_column(String(30))
+    cve_id: Mapped[str | None] = mapped_column(String(50))
     cvss_score: Mapped[float | None] = mapped_column(Float)
     epss_score: Mapped[float | None] = mapped_column(Float)
     severity: Mapped[str] = mapped_column(String(20), nullable=False, default="unknown")

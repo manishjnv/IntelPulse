@@ -13,6 +13,8 @@ Features:
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass
 
 import httpx
@@ -299,6 +301,78 @@ async def chat_completion(
     return await _call_with_fallback(
         messages, max_tokens=max_tokens, temperature=temperature, caller="ai_chat"
     )
+
+
+def _strip_json_fences(text: str) -> str:
+    """Remove markdown code fences from an AI response to extract raw JSON."""
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+    cleaned = cleaned.strip()
+    if cleaned.startswith("json"):
+        cleaned = cleaned[4:].strip()
+    return cleaned
+
+
+async def chat_completion_json(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    max_tokens: int = 800,
+    temperature: float = 0.3,
+    required_keys: list[str] | None = None,
+    caller: str = "ai_json",
+) -> dict | None:
+    """Chat completion that parses and validates JSON response.
+
+    Strips markdown fences, parses JSON, validates required keys are present.
+    On parse failure, retries once with a corrective prompt asking the LLM
+    to fix its output. Returns parsed dict or None.
+    """
+    raw = await chat_completion(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+
+    if not raw:
+        return None
+
+    # First attempt to parse
+    cleaned = _strip_json_fences(raw)
+    try:
+        data = json.loads(cleaned)
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning(f"{caller}_json_parse_error", error=str(e), raw=raw[:200])
+
+        # Corrective retry — ask the LLM to fix its own output
+        retry_raw = await chat_completion(
+            system_prompt="You are a JSON repair assistant. The user will give you malformed JSON. Fix it and return ONLY valid JSON with no markdown fences and no explanation.",
+            user_prompt=f"Fix this JSON:\n{raw[:4000]}",
+            max_tokens=max_tokens,
+            temperature=0.1,
+        )
+        if not retry_raw:
+            logger.warning(f"{caller}_json_retry_failed")
+            return None
+
+        cleaned_retry = _strip_json_fences(retry_raw)
+        try:
+            data = json.loads(cleaned_retry)
+        except (json.JSONDecodeError, ValueError) as e2:
+            logger.warning(f"{caller}_json_retry_parse_error", error=str(e2))
+            return None
+
+    # Validate required keys
+    if required_keys:
+        missing = [k for k in required_keys if k not in data]
+        if missing:
+            logger.warning(f"{caller}_missing_required_keys", missing=missing)
+            # Still return what we got — partial enrichment is better than nothing
+
+    return data
 
 
 async def check_ai_health() -> dict:

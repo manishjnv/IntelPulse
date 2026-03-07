@@ -755,7 +755,7 @@ class VulnerableProductResponse(BaseModel):
 class VulnerableProductsListResponse(BaseModel):
     items: list[VulnerableProductResponse]
     total: int
-    window_hours: int = 48
+    window_days: int = 30
 
 
 class ThreatCampaignResponse(BaseModel):
@@ -786,8 +786,8 @@ class ExtractionStatsResponse(BaseModel):
     vulnerable_products_count: int = 0
     threat_campaigns_count: int = 0
     last_extraction_at: datetime | None = None
-    products_window_hours: int = 48
-    campaigns_window_days: int = 7
+    products_window_days: int = 30
+    campaigns_window_days: int = 90
 
 
 # ─── Case / Incident Management ─────────────────────────

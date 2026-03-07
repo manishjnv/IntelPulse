@@ -6,6 +6,7 @@ from AI-enriched news items and upserts into dedicated tables.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, func, delete, case, text
@@ -19,8 +20,11 @@ from app.models.models import NewsItem, VulnerableProduct, ThreatCampaign
 logger = get_logger("intel_extraction")
 
 # ── Windows ──────────────────────────────────────────────
-PRODUCTS_WINDOW_HOURS = 48
-CAMPAIGNS_WINDOW_DAYS = 7
+PRODUCTS_WINDOW_DAYS = 30
+CAMPAIGNS_WINDOW_DAYS = 90
+
+# Regex to extract clean CVE ID (CVE-YYYY-NNNNN)
+_CVE_RE = re.compile(r"(CVE-\d{4}-\d{4,})", re.IGNORECASE)
 
 # Severity priority for merging (higher wins)
 _SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0, "unknown": -1}
@@ -103,10 +107,11 @@ def _extract_products_sync(session: Session, item: NewsItem) -> int:
 
     # If we have CVEs, create a product entry per CVE
     if cves:
-        for cve in cves:
-            cve = cve.strip().upper()
-            if not cve.startswith("CVE-"):
+        for raw_cve in cves:
+            m = _CVE_RE.search(raw_cve)
+            if not m:
                 continue
+            cve = m.group(1).upper()
 
             product_name = products[0] if products else "Unknown Product"
             vendor = _guess_vendor(product_name)
@@ -274,7 +279,7 @@ def _prune_stale_sync(session: Session) -> None:
     """Remove entries older than their respective windows."""
     now = datetime.now(timezone.utc)
 
-    products_cutoff = now - timedelta(hours=PRODUCTS_WINDOW_HOURS)
+    products_cutoff = now - timedelta(days=PRODUCTS_WINDOW_DAYS)
     campaigns_cutoff = now - timedelta(days=CAMPAIGNS_WINDOW_DAYS)
 
     try:
@@ -339,8 +344,8 @@ async def get_vulnerable_products(
     sort_order: str = "desc",
     limit: int = 100,
 ) -> tuple[list[VulnerableProduct], int]:
-    """Fetch vulnerable products within the 48h window."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=PRODUCTS_WINDOW_HOURS)
+    """Fetch vulnerable products within the rolling window."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=PRODUCTS_WINDOW_DAYS)
 
     base = select(VulnerableProduct).where(VulnerableProduct.last_seen >= cutoff)
     count_q = select(func.count(VulnerableProduct.id)).where(VulnerableProduct.last_seen >= cutoff)
@@ -387,7 +392,7 @@ async def get_threat_campaigns(
     sort_order: str = "desc",
     limit: int = 100,
 ) -> tuple[list[ThreatCampaign], int]:
-    """Fetch threat campaigns within the 7d window."""
+    """Fetch threat campaigns within the rolling window."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=CAMPAIGNS_WINDOW_DAYS)
 
     base = select(ThreatCampaign).where(ThreatCampaign.last_seen >= cutoff)
@@ -427,7 +432,7 @@ async def get_threat_campaigns(
 async def get_extraction_stats(db: AsyncSession) -> dict:
     """Get quick stats for the extraction pipeline."""
     now = datetime.now(timezone.utc)
-    products_cutoff = now - timedelta(hours=PRODUCTS_WINDOW_HOURS)
+    products_cutoff = now - timedelta(days=PRODUCTS_WINDOW_DAYS)
     campaigns_cutoff = now - timedelta(days=CAMPAIGNS_WINDOW_DAYS)
 
     p_count = await db.execute(
@@ -453,7 +458,7 @@ async def get_extraction_stats(db: AsyncSession) -> dict:
         "vulnerable_products_count": p_count.scalar() or 0,
         "threat_campaigns_count": c_count.scalar() or 0,
         "last_extraction_at": last_at,
-        "products_window_hours": PRODUCTS_WINDOW_HOURS,
+        "products_window_days": PRODUCTS_WINDOW_DAYS,
         "campaigns_window_days": CAMPAIGNS_WINDOW_DAYS,
     }
 

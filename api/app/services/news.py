@@ -7,7 +7,6 @@ source_hash, and queues AI enrichment for structured intelligence extraction.
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -18,7 +17,7 @@ import trafilatura
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.services.ai import chat_completion
+from app.services.ai import chat_completion_json
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -745,6 +744,8 @@ async def fetch_all_feeds(known_hashes: set[str] | None = None) -> list[dict]:
 
 # ── AI Enrichment ────────────────────────────────────────
 
+_NEWS_ENRICHMENT_PROMPT_VERSION = "D-2.0"
+
 _NEWS_ENRICHMENT_SYSTEM = """You are a senior cyber threat intelligence analyst at a Fortune 100 SOC. You write for two audiences: a CISO who needs business-impact framing in ≤60 seconds, and a SOC analyst who needs detection rules and IOC-actionable details.
 
 Given a cybersecurity news headline + content, produce a structured JSON intelligence brief.
@@ -790,8 +791,11 @@ executive_brief GOOD: "Volexity observed UTA0218 deploying a Python reverse shel
   "threat_actors": ["Named APT groups with aliases in parens, e.g., 'APT29 (Cozy Bear / Midnight Blizzard)'. Empty [] only if truly unknown."],
   "malware_families": ["Named malware, RATs, loaders, tools. Include dual-use tools (Cobalt Strike, Mimikatz, Impacket). Empty [] only if none involved."],
   "campaign_name": "Named campaign or null",
+  "notable_campaigns": [{"name": "Campaign or breach name", "date": "YYYY or approximate", "description": "Brief description", "impact": "Impact description"}],
   "cves": ["CVE-YYYY-NNNNN format. Include CVEs mentioned + any related CVEs you know are chained or co-exploited."],
+  "related_cves": ["CVE-YYYY-NNNNN — additional CVEs that are co-exploited, chained, or related but not directly mentioned."],
   "vulnerable_products": ["Product name with version ranges, e.g., 'PAN-OS 10.2.x < 10.2.9-h1', 'Chrome < 123.0.6312.86'. Be specific."],
+  "exploitation_info": {"epss_estimate": 0.0, "exploit_maturity": "none/poc/weaponized/unknown", "in_the_wild": true, "ransomware_use": false, "description": "Brief exploitation context"},
   "tactics_techniques": ["Format: 'T1234.001 - Technique Name'. Include 3-6 techniques. Map the FULL kill chain, not just initial access."],
   "initial_access_vector": "Specific vector: 'Phishing with ISO attachment', 'Exploitation of internet-facing PAN-OS', 'Supply chain compromise via npm package', or null",
   "post_exploitation": ["Name specific tools & actions: 'LSASS credential dump via Nanodump', 'Lateral movement using WMI and PSExec', 'Data exfiltration to attacker-controlled S3 bucket'. 2-5 items."],
@@ -799,40 +803,48 @@ executive_brief GOOD: "Volexity observed UTA0218 deploying a Python reverse shel
   "targeted_regions": ["Specific regions. 'South Korea', 'Western Europe', 'United States — Federal'. Always at least 1."],
   "impacted_assets": ["Specific asset types: 'Palo Alto GlobalProtect VPN appliances', 'Chrome browser on Windows/Mac/Linux', 'OAuth tokens in Azure AD'. Not generic 'endpoints'."],
   "ioc_summary": {"domains": [], "ips": [], "hashes": [], "urls": []},
-  "timeline": [{"date": "YYYY-MM-DD or null", "event": "description"}],
+  "timeline": [{"date": "YYYY-MM-DD or null", "event": "description", "type": "disclosure/publication/patch/exploit/kev/advisory/update"}],
   "detection_opportunities": ["3-5 items. Each MUST name a log source, query pattern, or signature ID. Examples: 'Sigma rule for regsvr32 loading DLL from user temp folder', 'Snort SID 300125 for CobaltStrike beacon HTTP profile', 'Windows Event 4688 + CommandLine containing certutil -urlcache'. No vague 'monitor for anomalies'."],
   "mitigation_recommendations": ["3-5 items. Each MUST name the specific fix: patch version, config change command, GPO setting, or firewall rule. Example: 'Disable PAN-OS telemetry: set deviceconfig system device-telemetry device-health-performance no', 'Block .iso/.img at email gateway via transport rule'. No generic 'apply patches'."],
   "recommended_priority": "critical|high|medium|low",
   "confidence": "high|medium|low",
+  "source_reliability": "authoritative/credible/speculative/unknown",
   "relevance_score": 50
 }
 
 Scoring: 90-100 active zero-day/KEV; 70-89 major breach/APT/ransomware; 50-69 notable vuln/research; 30-49 policy/informational; 1-29 low-impact."""
 
 
-async def enrich_news_item(headline: str, raw_content: str) -> dict | None:
+async def enrich_news_item(
+    headline: str,
+    raw_content: str,
+    *,
+    source_name: str = "",
+    published_date: str | None = None,
+    existing_tags: list[str] | None = None,
+) -> dict | None:
     """Use AI to extract structured intelligence from a news article."""
-    user_prompt = f"Headline: {headline}\n\nContent:\n{raw_content[:10000]}"
+    parts = [f"Headline: {headline}"]
+    if source_name:
+        parts.append(f"Source: {source_name}")
+    if published_date:
+        parts.append(f"Published: {published_date}")
+    if existing_tags:
+        parts.append(f"Tags: {', '.join(existing_tags[:15])}")
+    parts.append(f"\nContent:\n{raw_content[:10000]}")
+    user_prompt = "\n".join(parts)
 
-    result = await chat_completion(
+    data = await chat_completion_json(
         system_prompt=_NEWS_ENRICHMENT_SYSTEM,
         user_prompt=user_prompt,
         max_tokens=3500,
         temperature=0.15,
+        required_keys=["category", "summary", "executive_brief"],
+        caller="news_enrichment",
     )
 
-    if not result:
+    if not data:
         return None
 
-    # Parse JSON from response (strip markdown fences if present)
-    text = result.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
-
-    try:
-        data = json.loads(text)
-        return data
-    except json.JSONDecodeError:
-        logger.warning("news_ai_json_parse_error", headline=headline[:80])
-        return None
+    data["_prompt_version"] = _NEWS_ENRICHMENT_PROMPT_VERSION
+    return data

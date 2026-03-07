@@ -361,9 +361,11 @@ Five providers tried in order until one succeeds:
 | User prompt input cap | **10,000 characters** |
 | Output parsing | Strip markdown ```json fences, parse as JSON |
 
-### 6.3 System Prompt Rules
+### 6.3 System Prompt (Prompt D — `_NEWS_ENRICHMENT_SYSTEM`)
 
-The AI is instructed to act as a **Fortune 100 SOC analyst** with specific quality constraints.
+The full system prompt is ~150 lines in `services/news.py` (lines 748–812). The AI is instructed to act as a **Fortune 100 SOC analyst** writing for two audiences: a CISO needing business-impact framing in ≤60s, and a SOC analyst needing detection rules and IOC-actionable details.
+
+#### Key Sections in the System Prompt
 
 #### Banned Phrases
 
@@ -624,6 +626,12 @@ Each result shows:
 | `GET` | `/news/{id}` | `require_viewer` | 120s | Full detail for single item |
 | `GET` | `/news/{id}/report` | `require_viewer` | — | Generate PDF/HTML/Markdown report |
 | `POST` | `/news/refresh` | `require_viewer` | — | Manual feed refresh via RQ worker |
+| `GET` | `/news/feed-status` | `require_viewer` | — | Health status of all 19 RSS sources |
+| `GET` | `/news/pipeline-status` | `require_viewer` | — | Overall pipeline health (stale check) |
+
+### Pipeline Status Endpoint
+
+`GET /news/pipeline-status` returns `{ stale: bool, ... }` — `stale=true` if no new articles were stored in the last **1 hour**.
 
 ### List Endpoint Query Parameters
 

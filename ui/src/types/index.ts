@@ -817,7 +817,7 @@ export interface ExtractionStatsResponse {
   vulnerable_products_count: number;
   threat_campaigns_count: number;
   last_extraction_at: string | null;
-  products_window_hours: number;
+  products_window_days: number;
   campaigns_window_days: number;
 }
 
