@@ -631,7 +631,12 @@ async def check_ai_health() -> dict:
                     "Authorization": f"Bearer {provider.key}",
                     "User-Agent": "IntelWatch/1.0",
                 }
-                base = provider.url.rsplit("/", 1)[0]
+                # Strip /chat/completions to get the API base URL
+                base = provider.url.rstrip("/")
+                for suffix in ("/chat/completions", "/chat"):
+                    if base.endswith(suffix):
+                        base = base[: -len(suffix)]
+                        break
                 response = await client.get(f"{base}/models", headers=headers)
                 ok = response.status_code == 200
                 results.append({"name": provider.name, "model": provider.model, "healthy": ok})
