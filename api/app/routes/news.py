@@ -528,6 +528,7 @@ async def bulk_cve_lookup(
 ):
     """Bulk lookup CVEs — accepts {"cves": ["CVE-2024-1234", ...]}."""
     from app.models.models import VulnerableProduct
+    from app.services.intel_extraction import resolve_product_campaign_links
 
     raw_cves = payload.get("cves", [])
     if not raw_cves or not isinstance(raw_cves, list):
@@ -546,7 +547,21 @@ async def bulk_cve_lookup(
     )
     items = result.scalars().all()
 
-    found = {i.cve_id: VulnerableProductResponse.model_validate(i) for i in items}
+    # Resolve source articles & campaign cross-links (same as list endpoint)
+    all_ids: set = set()
+    for i in items:
+        all_ids.update(i.source_news_ids or [])
+    source_map = await _resolve_source_articles(db, all_ids)
+    campaign_links = await resolve_product_campaign_links(db, items)
+
+    found: dict[str, VulnerableProductResponse] = {}
+    for i in items:
+        obj = VulnerableProductResponse.model_validate(i)
+        obj.source_articles = [source_map[sid] for sid in (i.source_news_ids or []) if sid in source_map]
+        obj.related_campaigns = campaign_links.get(str(i.id), [])
+        if i.cve_id and (i.cve_id not in found):
+            found[i.cve_id] = obj
+
     return {
         "requested": len(cves),
         "found": len(found),
