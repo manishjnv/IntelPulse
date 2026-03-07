@@ -765,6 +765,14 @@ export interface IntelStatsResponse {
 
 // ─── Intelligence Extraction ────────────────────────────
 
+export interface SourceArticle {
+  id: string;
+  headline: string;
+  source: string;
+  source_url: string;
+  published_at: string | null;
+}
+
 export interface VulnerableProduct {
   id: string;
   product_name: string;
@@ -780,6 +788,8 @@ export interface VulnerableProduct {
   targeted_sectors: string[];
   targeted_regions: string[];
   source_count: number;
+  source_news_ids: string[];
+  source_articles: SourceArticle[];
   first_seen: string;
   last_seen: string;
   confidence: string;
@@ -788,7 +798,7 @@ export interface VulnerableProduct {
 export interface VulnerableProductsListResponse {
   items: VulnerableProduct[];
   total: number;
-  window_hours: number;
+  window_days: number;
 }
 
 export interface ThreatCampaign {
@@ -804,6 +814,8 @@ export interface ThreatCampaign {
   techniques_used: string[];
   cves_exploited: string[];
   source_count: number;
+  source_news_ids: string[];
+  source_articles: SourceArticle[];
   confidence: string;
 }
 

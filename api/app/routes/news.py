@@ -35,6 +35,7 @@ from app.schemas import (
     NewsFeedStatusResponse,
     NewsPipelineStatusResponse,
     NewsStatsResponse,
+    SourceArticle,
     VulnerableProductResponse,
     VulnerableProductsListResponse,
     ThreatCampaignResponse,
@@ -273,21 +274,37 @@ async def list_vulnerable_products(
     sort_by: str = Query("last_seen", pattern="^(last_seen|cvss_score|epss_score|severity|source_count|product_name)$"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     limit: int = Query(100, ge=1, le=500),
+    window: str = Query("24h", pattern="^(24h|all)$"),
 ):
     """Get vulnerable products extracted from news."""
     from app.services.intel_extraction import get_vulnerable_products, PRODUCTS_WINDOW_DAYS
 
-    ck = cache_key("vuln_products", search, severity, sort_by, sort_order, limit)
+    window_hours = 24 if window == "24h" else None
+
+    ck = cache_key("vuln_products", search, severity, sort_by, sort_order, limit, window)
     cached = await get_cached(ck)
     if cached:
         return cached
 
     items, total = await get_vulnerable_products(
-        db, search=search, severity=severity, sort_by=sort_by, sort_order=sort_order, limit=limit
+        db, search=search, severity=severity, sort_by=sort_by, sort_order=sort_order,
+        limit=limit, window_hours=window_hours,
     )
 
+    # Resolve source articles
+    all_ids = set()
+    for i in items:
+        all_ids.update(i.source_news_ids or [])
+    source_map = await _resolve_source_articles(db, all_ids)
+
+    resp_items = []
+    for i in items:
+        obj = VulnerableProductResponse.model_validate(i)
+        obj.source_articles = [source_map[sid] for sid in (i.source_news_ids or []) if sid in source_map]
+        resp_items.append(obj)
+
     response = VulnerableProductsListResponse(
-        items=[VulnerableProductResponse.model_validate(i) for i in items],
+        items=resp_items,
         total=total,
         window_days=PRODUCTS_WINDOW_DAYS,
     )
@@ -304,26 +321,64 @@ async def list_threat_campaigns(
     sort_by: str = Query("last_seen", pattern="^(last_seen|severity|source_count|actor_name)$"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     limit: int = Query(100, ge=1, le=500),
+    window: str = Query("7d", pattern="^(7d|all)$"),
 ):
-    """Get active threat actors & campaigns from news in the last 7 days."""
+    """Get active threat actors & campaigns from news."""
     from app.services.intel_extraction import get_threat_campaigns, CAMPAIGNS_WINDOW_DAYS
 
-    ck = cache_key("threat_campaigns", search, severity, sort_by, sort_order, limit)
+    window_days = 7 if window == "7d" else None
+
+    ck = cache_key("threat_campaigns", search, severity, sort_by, sort_order, limit, window)
     cached = await get_cached(ck)
     if cached:
         return cached
 
     items, total = await get_threat_campaigns(
-        db, search=search, severity=severity, sort_by=sort_by, sort_order=sort_order, limit=limit
+        db, search=search, severity=severity, sort_by=sort_by, sort_order=sort_order,
+        limit=limit, window_days=window_days,
     )
 
+    # Resolve source articles
+    all_ids = set()
+    for i in items:
+        all_ids.update(i.source_news_ids or [])
+    source_map = await _resolve_source_articles(db, all_ids)
+
+    resp_items = []
+    for i in items:
+        obj = ThreatCampaignResponse.model_validate(i)
+        obj.source_articles = [source_map[sid] for sid in (i.source_news_ids or []) if sid in source_map]
+        resp_items.append(obj)
+
     response = ThreatCampaignsListResponse(
-        items=[ThreatCampaignResponse.model_validate(i) for i in items],
+        items=resp_items,
         total=total,
         window_days=CAMPAIGNS_WINDOW_DAYS,
     )
     await set_cached(ck, response.model_dump(), ttl=60)
     return response
+
+
+async def _resolve_source_articles(db: AsyncSession, news_ids: set) -> dict:
+    """Bulk-fetch NewsItem headline/source/source_url/published_at for a set of IDs."""
+    if not news_ids:
+        return {}
+    result = await db.execute(
+        select(
+            NewsItem.id, NewsItem.headline, NewsItem.source,
+            NewsItem.source_url, NewsItem.published_at,
+        ).where(NewsItem.id.in_(news_ids))
+    )
+    return {
+        row.id: SourceArticle(
+            id=row.id,
+            headline=row.headline,
+            source=row.source,
+            source_url=row.source_url,
+            published_at=row.published_at,
+        )
+        for row in result.all()
+    }
 
 
 @router.get("/extraction-stats", response_model=ExtractionStatsResponse)

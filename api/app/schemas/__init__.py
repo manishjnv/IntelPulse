@@ -730,6 +730,14 @@ class IntelStatsResponse(BaseModel):
 
 # ─── Intelligence Extraction ────────────────────────────
 
+class SourceArticle(BaseModel):
+    id: uuid.UUID
+    headline: str
+    source: str
+    source_url: str
+    published_at: datetime | None = None
+
+
 class VulnerableProductResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -747,6 +755,8 @@ class VulnerableProductResponse(BaseModel):
     targeted_sectors: list[str] = Field(default_factory=list)
     targeted_regions: list[str] = Field(default_factory=list)
     source_count: int = 1
+    source_news_ids: list[uuid.UUID] = Field(default_factory=list)
+    source_articles: list[SourceArticle] = Field(default_factory=list)
     first_seen: datetime
     last_seen: datetime
     confidence: str = "medium"
@@ -773,6 +783,8 @@ class ThreatCampaignResponse(BaseModel):
     techniques_used: list[str] = Field(default_factory=list)
     cves_exploited: list[str] = Field(default_factory=list)
     source_count: int = 1
+    source_news_ids: list[uuid.UUID] = Field(default_factory=list)
+    source_articles: list[SourceArticle] = Field(default_factory=list)
     confidence: str = "medium"
 
 

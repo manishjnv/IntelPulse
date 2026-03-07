@@ -1103,23 +1103,23 @@ const SUBTOPIC_META: { id: Subtopic; label: string; shortLabel: string; icon: Re
   },
   {
     id: "vulnerable-products",
-    label: "Vulnerable Products",
+    label: "Vulnerable Products (24H)",
     shortLabel: "Vulns",
     icon: Bug,
     color: "text-orange-400",
     bg: "bg-orange-500/10",
     border: "border-orange-500/40",
-    description: "Products with active vulnerabilities (48h)",
+    description: "Products with active vulnerabilities",
   },
   {
     id: "threat-campaigns",
-    label: "Threat Actors & Campaigns",
+    label: "Threat Actors & Campaigns (7 Days)",
     shortLabel: "Actors",
     icon: Swords,
     color: "text-red-400",
     bg: "bg-red-500/10",
     border: "border-red-500/40",
-    description: "Active threat actors and campaigns (7d)",
+    description: "Active threat actors and campaigns",
   },
 ];
 
@@ -1134,6 +1134,20 @@ function severityBadge(sev: string) {
   }
 }
 
+// ── Clickable entity helper ───────────────────────────────
+function EntityBadge({ label, searchPrefix, className }: { label: string; searchPrefix?: string; className?: string }) {
+  const router = useRouter();
+  return (
+    <button
+      onClick={() => router.push(`/search?q=${encodeURIComponent(searchPrefix ? `${searchPrefix}:${label}` : label)}`)}
+      className={cn("cursor-pointer hover:brightness-125 transition-all", className)}
+      title={`Search for "${label}"`}
+    >
+      {label}
+    </button>
+  );
+}
+
 // ── Vulnerable Products Table ─────────────────────────────
 function VulnerableProductsTable() {
   const [data, setData] = useState<VulnerableProductsListResponse | null>(null);
@@ -1142,6 +1156,7 @@ function VulnerableProductsTable() {
   const [sortBy, setSortBy] = useState("last_seen");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [sevFilter, setSevFilter] = useState("");
+  const [windowMode, setWindowMode] = useState<"24h" | "all">("24h");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -1152,12 +1167,13 @@ function VulnerableProductsTable() {
         sort_by: sortBy,
         sort_order: sortOrder,
         limit: 200,
+        window: windowMode,
       });
       setData(result);
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
-  }, [search, sevFilter, sortBy, sortOrder]);
+  }, [search, sevFilter, sortBy, sortOrder, windowMode]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -1208,8 +1224,29 @@ function VulnerableProductsTable() {
           <option value="medium">Medium</option>
           <option value="low">Low</option>
         </select>
+        {/* Time window toggle */}
+        <div className="flex items-center bg-card/50 border border-border/50 rounded-md overflow-hidden">
+          <button
+            onClick={() => setWindowMode("24h")}
+            className={cn(
+              "px-2.5 py-1.5 text-[11px] font-medium transition-colors",
+              windowMode === "24h" ? "bg-orange-500/20 text-orange-300" : "text-muted-foreground/60 hover:text-muted-foreground",
+            )}
+          >
+            Last 24H
+          </button>
+          <button
+            onClick={() => setWindowMode("all")}
+            className={cn(
+              "px-2.5 py-1.5 text-[11px] font-medium transition-colors",
+              windowMode === "all" ? "bg-orange-500/20 text-orange-300" : "text-muted-foreground/60 hover:text-muted-foreground",
+            )}
+          >
+            View All
+          </button>
+        </div>
         <span className="text-[10px] text-muted-foreground/60 ml-auto">
-          {data ? `${data.total} products • ${data.window_hours}h window` : ""}
+          {data ? `${data.total} products` : ""}
         </span>
       </div>
 
@@ -1222,7 +1259,17 @@ function VulnerableProductsTable() {
         <Card className="card-3d">
           <CardContent className="py-12 text-center">
             <Bug className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">No vulnerable products found in the last {data?.window_hours || 48} hours.</p>
+            <p className="text-sm text-muted-foreground">
+              No vulnerable products found{windowMode === "24h" ? " in the last 24 hours" : ""}.
+            </p>
+            {windowMode === "24h" && (
+              <button
+                onClick={() => setWindowMode("all")}
+                className="mt-2 text-xs text-primary hover:underline"
+              >
+                View all products →
+              </button>
+            )}
             <p className="text-xs text-muted-foreground/60 mt-1">Products are extracted automatically from enriched news articles.</p>
           </CardContent>
         </Card>
@@ -1239,8 +1286,8 @@ function VulnerableProductsTable() {
                   <th className="text-center px-3 py-2"><SortHeader col="severity">Severity</SortHeader></th>
                   <th className="text-center px-3 py-2 hidden lg:table-cell">KEV</th>
                   <th className="text-center px-3 py-2 hidden lg:table-cell">Exploit</th>
-                  <th className="text-center px-3 py-2 hidden xl:table-cell"><SortHeader col="source_count">Sources</SortHeader></th>
-                  <th className="text-right px-3 py-2"><SortHeader col="last_seen">Last Seen</SortHeader></th>
+                  <th className="text-left px-3 py-2 hidden xl:table-cell">Sources</th>
+                  <th className="text-right px-3 py-2"><SortHeader col="last_seen">Published</SortHeader></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/20">
@@ -1289,11 +1336,34 @@ function VulnerableProductsTable() {
                       <td className="px-3 py-2 text-center hidden lg:table-cell">
                         {item.exploit_available && <span title="Exploit available"><Zap className="h-3.5 w-3.5 text-amber-400 mx-auto" /></span>}
                       </td>
-                      <td className="px-3 py-2 text-center hidden xl:table-cell text-muted-foreground">
-                        {item.source_count}
+                      <td className="px-3 py-2 hidden xl:table-cell">
+                        <div className="flex flex-col gap-0.5 max-w-[180px]">
+                          {(item.source_articles || []).slice(0, 2).map((a) => (
+                            <a
+                              key={a.id}
+                              href={a.source_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-[10px] text-primary hover:underline truncate"
+                              title={a.headline}
+                            >
+                              <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                              <span className="truncate">{a.source}</span>
+                            </a>
+                          ))}
+                          {(item.source_articles || []).length > 2 && (
+                            <span className="text-[9px] text-muted-foreground/50">+{item.source_articles.length - 2} more</span>
+                          )}
+                          {(!item.source_articles || item.source_articles.length === 0) && (
+                            <span className="text-[10px] text-muted-foreground/40">{item.source_count} source{item.source_count !== 1 ? "s" : ""}</span>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-3 py-2 text-right text-muted-foreground text-[10px]">
-                        {timeAgo(item.last_seen)}
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex flex-col items-end gap-0">
+                          <span className="text-muted-foreground text-[10px]">{timeAgo(item.last_seen)}</span>
+                          <span className="text-muted-foreground/50 text-[9px]">{formatPublishDate(item.last_seen)}</span>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1315,6 +1385,7 @@ function ThreatCampaignsTable() {
   const [sortBy, setSortBy] = useState("last_seen");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [sevFilter, setSevFilter] = useState("");
+  const [windowMode, setWindowMode] = useState<"7d" | "all">("7d");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -1325,12 +1396,13 @@ function ThreatCampaignsTable() {
         sort_by: sortBy,
         sort_order: sortOrder,
         limit: 200,
+        window: windowMode,
       });
       setData(result);
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
-  }, [search, sevFilter, sortBy, sortOrder]);
+  }, [search, sevFilter, sortBy, sortOrder, windowMode]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -1381,8 +1453,29 @@ function ThreatCampaignsTable() {
           <option value="medium">Medium</option>
           <option value="low">Low</option>
         </select>
+        {/* Time window toggle */}
+        <div className="flex items-center bg-card/50 border border-border/50 rounded-md overflow-hidden">
+          <button
+            onClick={() => setWindowMode("7d")}
+            className={cn(
+              "px-2.5 py-1.5 text-[11px] font-medium transition-colors",
+              windowMode === "7d" ? "bg-red-500/20 text-red-300" : "text-muted-foreground/60 hover:text-muted-foreground",
+            )}
+          >
+            Last 7 Days
+          </button>
+          <button
+            onClick={() => setWindowMode("all")}
+            className={cn(
+              "px-2.5 py-1.5 text-[11px] font-medium transition-colors",
+              windowMode === "all" ? "bg-red-500/20 text-red-300" : "text-muted-foreground/60 hover:text-muted-foreground",
+            )}
+          >
+            View All
+          </button>
+        </div>
         <span className="text-[10px] text-muted-foreground/60 ml-auto">
-          {data ? `${data.total} campaigns • ${data.window_days}d window` : ""}
+          {data ? `${data.total} campaigns` : ""}
         </span>
       </div>
 
@@ -1395,7 +1488,17 @@ function ThreatCampaignsTable() {
         <Card className="card-3d">
           <CardContent className="py-12 text-center">
             <Swords className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">No active threat campaigns found in the last {data?.window_days || 7} days.</p>
+            <p className="text-sm text-muted-foreground">
+              No active threat campaigns found{windowMode === "7d" ? " in the last 7 days" : ""}.
+            </p>
+            {windowMode === "7d" && (
+              <button
+                onClick={() => setWindowMode("all")}
+                className="mt-2 text-xs text-primary hover:underline"
+              >
+                View all campaigns →
+              </button>
+            )}
             <p className="text-xs text-muted-foreground/60 mt-1">Campaigns are extracted automatically from enriched news articles.</p>
           </CardContent>
         </Card>
@@ -1412,8 +1515,8 @@ function ThreatCampaignsTable() {
                   <th className="text-left px-3 py-2 hidden lg:table-cell">Techniques</th>
                   <th className="text-left px-3 py-2 hidden xl:table-cell">CVEs</th>
                   <th className="text-left px-3 py-2 hidden xl:table-cell">Targets</th>
-                  <th className="text-center px-3 py-2 hidden md:table-cell"><SortHeader col="source_count">Sources</SortHeader></th>
-                  <th className="text-right px-3 py-2"><SortHeader col="last_seen">Last Seen</SortHeader></th>
+                  <th className="text-left px-3 py-2 hidden md:table-cell">Sources</th>
+                  <th className="text-right px-3 py-2"><SortHeader col="last_seen">Published</SortHeader></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/20">
@@ -1421,10 +1524,10 @@ function ThreatCampaignsTable() {
                   const sev = severityBadge(item.severity);
                   return (
                     <tr key={item.id} className="hover:bg-accent/10 transition-colors">
-                      <td className="px-3 py-2 font-medium max-w-[160px] truncate" title={item.actor_name}>
+                      <td className="px-3 py-2 font-medium max-w-[160px]" title={item.actor_name}>
                         <div className="flex items-center gap-1.5">
                           <Users className="h-3 w-3 text-red-400 shrink-0" />
-                          {item.actor_name}
+                          <EntityBadge label={item.actor_name} searchPrefix="actor:" className="text-xs font-medium text-foreground hover:text-primary" />
                         </div>
                       </td>
                       <td className="px-3 py-2 text-muted-foreground hidden md:table-cell max-w-[140px] truncate" title={item.campaign_name || ""}>
@@ -1438,9 +1541,7 @@ function ThreatCampaignsTable() {
                       <td className="px-3 py-2 hidden lg:table-cell">
                         <div className="flex gap-1 flex-wrap max-w-[120px]">
                           {item.malware_used.slice(0, 2).map((m) => (
-                            <Badge key={m} variant="outline" className="text-[8px] h-3.5 px-1 border-purple-500/30 text-purple-300">
-                              {m}
-                            </Badge>
+                            <EntityBadge key={m} label={m} searchPrefix="malware:" className="text-[8px] px-1 py-0 rounded border border-purple-500/30 text-purple-300 hover:bg-purple-500/10" />
                           ))}
                           {item.malware_used.length > 2 && (
                             <span className="text-[8px] text-muted-foreground/50">+{item.malware_used.length - 2}</span>
@@ -1450,9 +1551,7 @@ function ThreatCampaignsTable() {
                       <td className="px-3 py-2 hidden lg:table-cell">
                         <div className="flex gap-1 flex-wrap max-w-[120px]">
                           {item.techniques_used.slice(0, 2).map((t) => (
-                            <Badge key={t} variant="outline" className="text-[8px] h-3.5 px-1 border-sky-500/30 text-sky-300">
-                              {t}
-                            </Badge>
+                            <EntityBadge key={t} label={t} searchPrefix="technique:" className="text-[8px] px-1 py-0 rounded border border-sky-500/30 text-sky-300 hover:bg-sky-500/10" />
                           ))}
                           {item.techniques_used.length > 2 && (
                             <span className="text-[8px] text-muted-foreground/50">+{item.techniques_used.length - 2}</span>
@@ -1462,7 +1561,15 @@ function ThreatCampaignsTable() {
                       <td className="px-3 py-2 hidden xl:table-cell">
                         <div className="flex gap-1 flex-wrap max-w-[100px]">
                           {item.cves_exploited.slice(0, 2).map((c) => (
-                            <span key={c} className="text-[8px] font-mono text-orange-300">{c}</span>
+                            <a
+                              key={c}
+                              href={`https://nvd.nist.gov/vuln/detail/${c}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[8px] font-mono text-orange-300 hover:underline"
+                            >
+                              {c}
+                            </a>
                           ))}
                           {item.cves_exploited.length > 2 && (
                             <span className="text-[8px] text-muted-foreground/50">+{item.cves_exploited.length - 2}</span>
@@ -1476,11 +1583,34 @@ function ThreatCampaignsTable() {
                           ))}
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-center text-muted-foreground hidden md:table-cell">
-                        {item.source_count}
+                      <td className="px-3 py-2 hidden md:table-cell">
+                        <div className="flex flex-col gap-0.5 max-w-[180px]">
+                          {(item.source_articles || []).slice(0, 2).map((a) => (
+                            <a
+                              key={a.id}
+                              href={a.source_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-[10px] text-primary hover:underline truncate"
+                              title={a.headline}
+                            >
+                              <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                              <span className="truncate">{a.source}</span>
+                            </a>
+                          ))}
+                          {(item.source_articles || []).length > 2 && (
+                            <span className="text-[9px] text-muted-foreground/50">+{item.source_articles.length - 2} more</span>
+                          )}
+                          {(!item.source_articles || item.source_articles.length === 0) && (
+                            <span className="text-[10px] text-muted-foreground/40">{item.source_count} source{item.source_count !== 1 ? "s" : ""}</span>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-3 py-2 text-right text-muted-foreground text-[10px]">
-                        {timeAgo(item.last_seen)}
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex flex-col items-end gap-0">
+                          <span className="text-muted-foreground text-[10px]">{timeAgo(item.last_seen)}</span>
+                          <span className="text-muted-foreground/50 text-[9px]">{formatPublishDate(item.last_seen)}</span>
+                        </div>
                       </td>
                     </tr>
                   );

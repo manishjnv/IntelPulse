@@ -658,6 +658,7 @@ export async function getVulnerableProducts(params: {
   sort_by?: string;
   sort_order?: string;
   limit?: number;
+  window?: string;
 } = {}): Promise<import("@/types").VulnerableProductsListResponse> {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
@@ -672,6 +673,7 @@ export async function getThreatCampaigns(params: {
   sort_by?: string;
   sort_order?: string;
   limit?: number;
+  window?: string;
 } = {}): Promise<import("@/types").ThreatCampaignsListResponse> {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {

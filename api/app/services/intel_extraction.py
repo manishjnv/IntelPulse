@@ -343,12 +343,16 @@ async def get_vulnerable_products(
     sort_by: str = "last_seen",
     sort_order: str = "desc",
     limit: int = 100,
+    window_hours: int | None = 24,
 ) -> tuple[list[VulnerableProduct], int]:
     """Fetch vulnerable products within the rolling window."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=PRODUCTS_WINDOW_DAYS)
+    base = select(VulnerableProduct)
+    count_q = select(func.count(VulnerableProduct.id))
 
-    base = select(VulnerableProduct).where(VulnerableProduct.last_seen >= cutoff)
-    count_q = select(func.count(VulnerableProduct.id)).where(VulnerableProduct.last_seen >= cutoff)
+    if window_hours is not None:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=window_hours)
+        base = base.where(VulnerableProduct.last_seen >= cutoff)
+        count_q = count_q.where(VulnerableProduct.last_seen >= cutoff)
 
     if search:
         like = f"%{search}%"
@@ -391,12 +395,16 @@ async def get_threat_campaigns(
     sort_by: str = "last_seen",
     sort_order: str = "desc",
     limit: int = 100,
+    window_days: int | None = 7,
 ) -> tuple[list[ThreatCampaign], int]:
     """Fetch threat campaigns within the rolling window."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=CAMPAIGNS_WINDOW_DAYS)
+    base = select(ThreatCampaign)
+    count_q = select(func.count(ThreatCampaign.id))
 
-    base = select(ThreatCampaign).where(ThreatCampaign.last_seen >= cutoff)
-    count_q = select(func.count(ThreatCampaign.id)).where(ThreatCampaign.last_seen >= cutoff)
+    if window_days is not None:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+        base = base.where(ThreatCampaign.last_seen >= cutoff)
+        count_q = count_q.where(ThreatCampaign.last_seen >= cutoff)
 
     if search:
         like = f"%{search}%"
