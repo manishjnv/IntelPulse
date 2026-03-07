@@ -1871,11 +1871,14 @@ function AIConfigSettings() {
     // Build new fallback list: replace promoted entry with old primary
     const list = [...(cfg.fallback_providers || [])];
     list[idx] = oldPrimary;
+    // Use known-good default URL for the promoted provider if available
+    const defaults = PROVIDER_DEFAULTS[fb.name];
+    const promotedUrl = defaults ? defaults.url : fb.url;
     // Set promoted fallback as new primary
     setCfg({
       ...cfg,
       primary_provider: fb.name,
-      primary_api_url: fb.url,
+      primary_api_url: promotedUrl,
       primary_api_key: fb.key,
       primary_model: fb.model,
       primary_timeout: fb.timeout,
