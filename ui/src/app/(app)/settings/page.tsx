@@ -166,6 +166,7 @@ export default function SettingsPage() {
               <AlertCircle className="h-3 w-3" /> {error}
             </span>
           )}
+          {activeSection !== "ai" && (
           <button
             onClick={handleSave}
             disabled={saving || loading}
@@ -180,6 +181,7 @@ export default function SettingsPage() {
             )}
             {saving ? "Saving..." : saved ? "Saved!" : "Save Changes"}
           </button>
+          )}
         </div>
       </div>
 
