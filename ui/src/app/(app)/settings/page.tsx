@@ -1534,7 +1534,8 @@ const AI_FEATURES = [
     tip: "Auto-generates a concise AI summary for each intelligence item. Helps analysts quickly understand new threats without reading full descriptions.",
     limitTip: "Max AI summaries per day. Set 0 for unlimited. Each new intel item may trigger one summary call.",
     effects: "Intel list auto-summary, Intel detail page",
-    modelTip: "Fast 8B model recommended — outputs are short summaries (~150 tokens).",
+    modelTip: "Lite model recommended — outputs are short summaries (~150 tokens). Lite is 10x cheaper and faster.",
+    taskType: "simple" as const,
   },
   {
     key: "intel_enrichment",
@@ -1542,15 +1543,17 @@ const AI_FEATURES = [
     tip: "Deep AI analysis that extracts threat actors, TTPs, MITRE mappings, and actionable recommendations from intel items on demand.",
     limitTip: "Max enrichment requests per day. Enrichment is heavier than summaries (~3000 tokens). Set 0 for unlimited.",
     effects: "Intel detail page \u2018Enrich\u2019 button",
-    modelTip: "Large 70B model recommended — complex structured JSON extraction needs higher reasoning.",
+    modelTip: "Flash recommended — complex structured JSON extraction with 30+ fields needs strong reasoning at high speed.",
+    taskType: "extraction" as const,
   },
   {
     key: "news_enrichment",
     label: "News AI Extraction",
-    tip: "Extracts IOCs, CVEs, threat actors, and structured intelligence from ingested news articles automatically.",
-    limitTip: "Max news articles processed by AI per day. Each article uses ~3500 tokens. Set 0 for unlimited.",
-    effects: "News pipeline ingestion, News detail page",
-    modelTip: "Large 70B model recommended — multi-field entity extraction requires strong comprehension.",
+    tip: "Extracts IOCs, CVEs, threat actors, YARA/KQL rules, and structured intelligence from ingested news articles automatically.",
+    limitTip: "Max news articles processed by AI per day. Each article uses ~4000 tokens. Set 0 for unlimited.",
+    effects: "News pipeline ingestion, News detail page, Detection rules",
+    modelTip: "Flash recommended — multi-field entity extraction + detection rule generation needs strong structured output.",
+    taskType: "extraction" as const,
   },
   {
     key: "live_lookup",
@@ -1558,7 +1561,8 @@ const AI_FEATURES = [
     tip: "Real-time AI-powered indicator lookups that provide context, risk assessment, and recommendations for IPs, domains, and hashes.",
     limitTip: "Max live lookup queries per day. Each query triggers a provider call. Set 0 for unlimited.",
     effects: "Investigate page, Search results context",
-    modelTip: "Fast 8B model recommended — quick response time is critical for interactive lookups.",
+    modelTip: "Lite model recommended — quick response time is critical for interactive lookups. Short output (~500 tokens).",
+    taskType: "simple" as const,
   },
   {
     key: "report_gen",
@@ -1566,7 +1570,8 @@ const AI_FEATURES = [
     tip: "AI drafts executive threat reports, export summaries, and briefing documents for stakeholder communication.",
     limitTip: "Max AI-generated reports per day. Reports use higher token counts (~4000). Set 0 for unlimited.",
     effects: "Reports page, Report builder AI draft",
-    modelTip: "Large 70B model recommended — long-form generation requires coherent multi-paragraph output.",
+    modelTip: "Pro recommended — long-form coherent narrative with deep reasoning produces better executive reports.",
+    taskType: "generation" as const,
   },
   {
     key: "briefing_gen",
@@ -1574,9 +1579,50 @@ const AI_FEATURES = [
     tip: "Generates periodic threat briefings that synthesize recent intelligence into an executive-ready summary with key findings and recommendations.",
     limitTip: "Max threat briefings generated per day. Each briefing analyzes many items at once. Set 0 for unlimited.",
     effects: "Briefings page, Scheduled daily briefings",
-    modelTip: "Large 70B model recommended — synthesizes multiple intel items into cohesive narrative.",
+    modelTip: "Pro recommended — synthesizes multiple intel items into cohesive narrative requiring deep reasoning.",
+    taskType: "generation" as const,
   },
 ] as const;
+
+/**
+ * Recommended model per feature, per provider.
+ * Key = provider name from PROVIDER_OPTIONS.
+ * Value = map of feature key → recommended model ID.
+ */
+const MODEL_RECOMMENDATIONS: Record<string, Record<string, { model: string; reason: string }>> = {
+  gemini: {
+    intel_summary:     { model: "gemini-2.0-flash-lite", reason: "Short output, high volume — Lite is 10x cheaper & faster" },
+    intel_enrichment:  { model: "gemini-2.5-flash",      reason: "Complex JSON extraction — Flash with thinking balances quality & speed" },
+    news_enrichment:   { model: "gemini-2.5-flash",      reason: "30+ field extraction + rules — Flash handles structured output best" },
+    live_lookup:       { model: "gemini-2.0-flash-lite", reason: "Interactive speed critical — Lite responds fastest" },
+    report_gen:        { model: "gemini-2.5-pro",        reason: "Long-form narrative — Pro's deep reasoning produces coherent reports" },
+    briefing_gen:      { model: "gemini-2.5-pro",        reason: "Multi-item synthesis — Pro excels at complex analytical summaries" },
+  },
+  groq: {
+    intel_summary:     { model: "llama-3.1-8b-instant",      reason: "Short output — 8B is fast & free for simple summaries" },
+    intel_enrichment:  { model: "llama-3.3-70b-versatile",   reason: "Complex extraction — 70B model needed for structured JSON" },
+    news_enrichment:   { model: "llama-3.3-70b-versatile",   reason: "Multi-field extraction — 70B handles 30+ fields reliably" },
+    live_lookup:       { model: "llama-3.1-8b-instant",      reason: "Fast interactive response — 8B is sufficient for IOC analysis" },
+    report_gen:        { model: "llama-3.3-70b-versatile",   reason: "Long-form generation — 70B for coherent multi-paragraph output" },
+    briefing_gen:      { model: "llama-3.3-70b-versatile",   reason: "Multi-item synthesis — needs strong reasoning capabilities" },
+  },
+  openai: {
+    intel_summary:     { model: "gpt-4o-mini",  reason: "Short output — Mini is cost-effective for simple summaries" },
+    intel_enrichment:  { model: "gpt-4o",       reason: "Complex extraction — full GPT-4o for structured JSON quality" },
+    news_enrichment:   { model: "gpt-4o",       reason: "Multi-field extraction — GPT-4o handles complex schemas best" },
+    live_lookup:       { model: "gpt-4o-mini",  reason: "Interactive speed — Mini responds faster at lower cost" },
+    report_gen:        { model: "gpt-4o",       reason: "Long-form narrative — GPT-4o for coherent reports" },
+    briefing_gen:      { model: "gpt-4o",       reason: "Multi-item synthesis — needs full model reasoning" },
+  },
+  anthropic: {
+    intel_summary:     { model: "claude-3-5-haiku-20241022",   reason: "Short output — Haiku is fast & cheap for summaries" },
+    intel_enrichment:  { model: "claude-sonnet-4-20250514",    reason: "Complex extraction — Sonnet for structured JSON quality" },
+    news_enrichment:   { model: "claude-sonnet-4-20250514",    reason: "Multi-field extraction — Sonnet handles complex schemas" },
+    live_lookup:       { model: "claude-3-5-haiku-20241022",   reason: "Interactive speed — Haiku is fastest Claude model" },
+    report_gen:        { model: "claude-sonnet-4-20250514",    reason: "Long-form narrative — Sonnet for coherent reports" },
+    briefing_gen:      { model: "claude-sonnet-4-20250514",    reason: "Multi-item synthesis — needs strong reasoning" },
+  },
+};
 
 const PROVIDER_OPTIONS = [
   { value: "groq", label: "Groq" },
@@ -2259,11 +2305,28 @@ function AIConfigSettings() {
           <CardHeader className="pb-2 pt-4 px-5">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Zap className="h-3.5 w-3.5" /> Feature Toggles &amp; Model Overrides
-              <Tooltip text="Enable or disable individual AI features. Disabled features return gracefully without calling any AI provider, saving quota and cost. Optionally assign a different model per feature." />
+              <Tooltip text="Enable or disable individual AI features. Assign a specific model per feature to optimize cost, speed, and quality. Click 'Apply Recommended' to auto-fill optimal models for your provider." />
             </CardTitle>
-            <p className="text-[10px] text-muted-foreground mt-0.5">
-              The master AI toggle must be ON for any feature to work. Leave model blank to use the primary model ({cfg.primary_model}).
-            </p>
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-[10px] text-muted-foreground">
+                Select a model per feature or leave as &quot;Use Primary&quot; to use <span className="font-mono text-primary">{cfg.primary_model || "default"}</span>.
+              </p>
+              {MODEL_RECOMMENDATIONS[cfg.primary_provider] && (
+                <button
+                  onClick={() => {
+                    const recs = MODEL_RECOMMENDATIONS[cfg.primary_provider];
+                    if (!recs) return;
+                    for (const f of AI_FEATURES) {
+                      const rec = recs[f.key];
+                      if (rec) update(`model_${f.key}` as keyof AISettings, rec.model);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-medium hover:bg-emerald-500/20 transition-colors"
+                >
+                  <Zap className="h-3 w-3" /> Apply Recommended
+                </button>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="px-5 pb-4">
             {!cfg.ai_enabled && (
@@ -2271,14 +2334,50 @@ function AIConfigSettings() {
                 <AlertCircle className="h-3 w-3" /> Master AI toggle is OFF. All features are disabled regardless of individual settings.
               </div>
             )}
+
+            {/* Cost optimization guide */}
+            {MODEL_RECOMMENDATIONS[cfg.primary_provider] && (
+              <div className="mb-4 p-3 rounded-md bg-blue-500/5 border border-blue-500/15">
+                <p className="text-[10px] font-semibold text-blue-400 mb-1.5">Model Optimization Guide — {PROVIDER_OPTIONS.find(p => p.value === cfg.primary_provider)?.label || cfg.primary_provider}</p>
+                <div className="grid grid-cols-3 gap-2 text-[9px]">
+                  <div className="p-1.5 rounded bg-emerald-500/10 border border-emerald-500/10">
+                    <p className="font-semibold text-emerald-400">Lite / Fast</p>
+                    <p className="text-muted-foreground mt-0.5">Short outputs, high volume. Summaries, lookups.</p>
+                  </div>
+                  <div className="p-1.5 rounded bg-blue-500/10 border border-blue-500/10">
+                    <p className="font-semibold text-blue-400">Flash / Standard</p>
+                    <p className="text-muted-foreground mt-0.5">Complex extraction, structured JSON. Entity extraction, enrichment.</p>
+                  </div>
+                  <div className="p-1.5 rounded bg-purple-500/10 border border-purple-500/10">
+                    <p className="font-semibold text-purple-400">Pro / Large</p>
+                    <p className="text-muted-foreground mt-0.5">Deep reasoning, long-form. Reports, briefings, detection rules.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {AI_FEATURES.map((f) => {
               const featureKey = `feature_${f.key}` as keyof AISettings;
               const modelKey = `model_${f.key}` as keyof AISettings;
+              const currentModel = (cfg[modelKey] as string) || "";
+              const providerModels = PROVIDER_INFO[cfg.primary_provider]?.models || [];
+              const recommendation = MODEL_RECOMMENDATIONS[cfg.primary_provider]?.[f.key];
+              const isRecommended = recommendation && currentModel === recommendation.model;
+              const tierColor = f.taskType === "simple"
+                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                : f.taskType === "extraction"
+                ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
+                : "bg-purple-500/10 text-purple-400 border-purple-500/20";
+              const tierLabel = f.taskType === "simple" ? "Lite" : f.taskType === "extraction" ? "Flash" : "Pro";
+
               return (
                 <div key={f.key} className="py-3 border-b border-border/30 last:border-0">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-medium">{f.label}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold border ${tierColor}`}>
+                        {tierLabel}
+                      </span>
                       <Tooltip text={f.tip} />
                     </div>
                     <ToggleSwitch
@@ -2287,19 +2386,94 @@ function AIConfigSettings() {
                     />
                   </div>
                   <p className="text-[9px] text-muted-foreground mt-1">Effects: {f.effects}</p>
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={(cfg[modelKey] as string) || ""}
-                      onChange={(e) => update(modelKey, e.target.value)}
-                      placeholder={cfg.primary_model || "Primary model"}
-                      className="flex-1 max-w-[280px] px-2 py-1 rounded bg-muted/30 border border-border text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50"
-                    />
-                    <Tooltip text={f.modelTip} />
+
+                  {/* Model selector */}
+                  <div className="mt-2 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={currentModel && providerModels.includes(currentModel) ? currentModel : currentModel ? "__custom__" : ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "__custom__") return; // handled by text input
+                          update(modelKey, val);
+                        }}
+                        className="flex-1 max-w-[320px] px-2 py-1.5 rounded bg-muted/30 border border-border text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                      >
+                        <option value="">Use Primary ({cfg.primary_model})</option>
+                        {providerModels.map((m) => (
+                          <option key={m} value={m}>
+                            {m}{recommendation?.model === m ? " ★ Recommended" : ""}
+                          </option>
+                        ))}
+                        {currentModel && !providerModels.includes(currentModel) && (
+                          <option value="__custom__">Custom: {currentModel}</option>
+                        )}
+                      </select>
+                      {isRecommended && (
+                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          <CheckCircle2 className="h-2.5 w-2.5" /> Optimal
+                        </span>
+                      )}
+                      {recommendation && !isRecommended && currentModel !== "" && (
+                        <button
+                          onClick={() => update(modelKey, recommendation.model)}
+                          className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-medium bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 hover:bg-yellow-500/20 transition-colors"
+                        >
+                          Use {recommendation.model}
+                        </button>
+                      )}
+                      <Tooltip text={f.modelTip} />
+                    </div>
+
+                    {/* Custom model text input (shown when model is not in provider list) */}
+                    {currentModel && !providerModels.includes(currentModel) && (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={currentModel}
+                          onChange={(e) => update(modelKey, e.target.value)}
+                          placeholder="Custom model name"
+                          className="flex-1 max-w-[320px] px-2 py-1 rounded bg-muted/30 border border-border text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        <button
+                          onClick={() => update(modelKey, "")}
+                          className="text-muted-foreground hover:text-red-400 transition-colors"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Show recommendation reason */}
+                    {recommendation && (
+                      <p className="text-[9px] text-muted-foreground/70 pl-0.5">
+                        <span className="text-primary/60">★</span> {recommendation.reason}
+                      </p>
+                    )}
                   </div>
                 </div>
               );
             })}
+
+            {/* Quick model pills for the configured provider */}
+            {(PROVIDER_INFO[cfg.primary_provider]?.models || []).length > 0 && (
+              <div className="mt-4 pt-3 border-t border-border/30">
+                <p className="text-[10px] text-muted-foreground mb-2">Available {PROVIDER_OPTIONS.find(p => p.value === cfg.primary_provider)?.label} models:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(PROVIDER_INFO[cfg.primary_provider]?.models || []).map((m) => {
+                    const usedBy = AI_FEATURES.filter(f => (cfg[`model_${f.key}` as keyof AISettings] as string) === m);
+                    return (
+                      <span key={m} className="inline-flex items-center gap-1 px-2 py-1 rounded text-[9px] font-mono bg-muted/30 border border-border/50">
+                        {m}
+                        {usedBy.length > 0 && (
+                          <span className="text-primary font-sans">({usedBy.length})</span>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
