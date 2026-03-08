@@ -1178,7 +1178,7 @@ function VendorStatsWidget() {
         <div className="space-y-1.5">
           {data.slice(0, 10).map((v) => (
             <div key={v.vendor} className="flex items-center gap-2 text-[11px]">
-              <span className="w-[100px] truncate text-muted-foreground font-medium" title={v.vendor}>{v.vendor}</span>
+              <span className="w-[140px] truncate text-muted-foreground font-medium" title={v.vendor}>{v.vendor}</span>
               <div className="flex-1 h-3 bg-muted/20 rounded-full overflow-hidden relative">
                 <div className="h-full rounded-full bg-gradient-to-r from-orange-500/60 to-red-500/60" style={{ width: `${(v.count / max) * 100}%` }} />
               </div>
@@ -1215,7 +1215,7 @@ function CampaignTimelineWidget({ campaigns }: { campaigns: Array<{ id: string; 
             const color = sev === "critical" ? "bg-red-500/70" : sev === "high" ? "bg-orange-500/70" : sev === "medium" ? "bg-yellow-500/70" : "bg-green-500/70";
             return (
               <div key={c.id} className="flex items-center gap-2 text-[10px]">
-                <span className="w-[90px] truncate text-muted-foreground font-medium" title={c.actor_name}>{c.actor_name}</span>
+                <span className="w-[140px] truncate text-muted-foreground font-medium" title={c.actor_name}>{c.actor_name}</span>
                 <div className="flex-1 h-2.5 bg-muted/15 rounded-full relative overflow-hidden">
                   <div className={cn("absolute h-full rounded-full", color)} style={{ left: `${start}%`, width: `${width}%` }} title={`${formatPublishDate(c.first_seen)} — ${formatPublishDate(c.last_seen)}`} />
                 </div>
@@ -1223,9 +1223,9 @@ function CampaignTimelineWidget({ campaigns }: { campaigns: Array<{ id: string; 
             );
           })}
         </div>
-        <div className="flex justify-between text-[9px] text-muted-foreground/50 mt-1.5">
-          <span>{formatPublishDate(new Date(minDate).toISOString())}</span>
-          <span>{formatPublishDate(new Date(maxDate).toISOString())}</span>
+        <div className="flex justify-between text-[9px] mt-1.5">
+          <span className="text-sky-400/80 font-medium">{formatPublishDate(new Date(minDate).toISOString())}</span>
+          <span className="text-sky-400/80 font-medium">{formatPublishDate(new Date(maxDate).toISOString())}</span>
         </div>
       </CardContent>
     </Card>
@@ -1507,7 +1507,7 @@ function VulnerableProductsTable() {
                         expanded && "bg-accent/10",
                       )}
                     >
-                      <td className="px-3 py-2 font-medium max-w-[200px]" title={item.product_name}>
+                      <td className="px-3 py-2 font-medium max-w-[280px]" title={item.product_name}>
                         <div className="flex items-center gap-1.5">
                           <ChevronDown className={cn("h-3 w-3 text-muted-foreground/50 shrink-0 transition-transform", expanded && "rotate-180")} />
                           <span className="truncate">{item.product_name}</span>
@@ -1523,7 +1523,7 @@ function VulnerableProductsTable() {
                             href={`https://nvd.nist.gov/vuln/detail/${item.cve_id}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-primary hover:underline font-mono text-[10px]"
+                            className="text-primary hover:underline font-mono text-[11px]"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {item.cve_id}
@@ -1563,7 +1563,7 @@ function VulnerableProductsTable() {
                       </td>
                       <td className="px-3 py-2 text-center hidden lg:table-cell">
                         <div className="flex items-center justify-center gap-1">
-                          {item.is_kev && <span title="CISA KEV"><ShieldAlert className="h-3.5 w-3.5 text-red-400" /></span>}
+                          {item.is_kev && <span title="CISA KEV" className="inline-flex items-center gap-0.5 text-[8px] font-bold px-1 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/30"><ShieldAlert className="h-3 w-3" />KEV</span>}
                           {item.exploit_available && <span title="Exploit available"><Zap className="h-3.5 w-3.5 text-amber-400" /></span>}
                           {item.patch_available && <span title="Patch available"><ShieldCheck className="h-3.5 w-3.5 text-green-400" /></span>}
                         </div>
@@ -1607,8 +1607,8 @@ function VulnerableProductsTable() {
                       </td>
                       <td className="px-3 py-2 text-right">
                         <div className="flex flex-col items-end gap-0">
-                          <span className="text-muted-foreground text-[10px]">{timeAgo(item.last_seen)}</span>
-                          <span className="text-muted-foreground/50 text-[9px]">{formatPublishDate(item.last_seen)}</span>
+                          <span className="text-sky-400 font-medium text-[10px]">{timeAgo(item.last_seen)}</span>
+                          <span className="text-sky-300/60 text-[9px]">{formatPublishDate(item.last_seen)}</span>
                         </div>
                       </td>
                     </tr>
@@ -1883,7 +1883,7 @@ function ThreatCampaignsTable() {
                         expanded && "bg-accent/10",
                       )}
                     >
-                      <td className="px-3 py-2 font-medium max-w-[160px]" title={item.actor_name}>
+                      <td className="px-3 py-2 font-medium max-w-[220px]" title={item.actor_name}>
                         <div className="flex items-center gap-1.5">
                           <ChevronDown className={cn("h-3 w-3 text-muted-foreground/50 shrink-0 transition-transform", expanded && "rotate-180")} />
                           <Users className="h-3 w-3 text-red-400 shrink-0" />
@@ -1893,7 +1893,7 @@ function ThreatCampaignsTable() {
                           {item.is_false_positive && <span className="shrink-0 text-[7px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded px-1">FP</span>}
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-muted-foreground hidden md:table-cell max-w-[140px] truncate" title={item.campaign_name || ""}>
+                      <td className="px-3 py-2 text-muted-foreground hidden md:table-cell max-w-[220px] truncate" title={item.campaign_name || ""}>
                         {item.campaign_name || "—"}
                       </td>
                       <td className="px-3 py-2 text-center">
@@ -1929,14 +1929,14 @@ function ThreatCampaignsTable() {
                         </div>
                       </td>
                       <td className="px-3 py-2 hidden xl:table-cell">
-                        <div className="flex gap-1 flex-wrap max-w-[100px]">
+                        <div className="flex gap-1 flex-wrap max-w-[150px]">
                           {item.cves_exploited.slice(0, 2).map((c) => (
                             <a
                               key={c}
                               href={`https://nvd.nist.gov/vuln/detail/${c}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-[8px] font-mono text-orange-300 hover:underline"
+                              className="text-[9px] font-mono text-orange-300 hover:underline"
                               onClick={(e) => e.stopPropagation()}
                             >
                               {c}
@@ -1993,8 +1993,8 @@ function ThreatCampaignsTable() {
                       </td>
                       <td className="px-3 py-2 text-right">
                         <div className="flex flex-col items-end gap-0">
-                          <span className="text-muted-foreground text-[10px]">{timeAgo(item.last_seen)}</span>
-                          <span className="text-muted-foreground/50 text-[9px]">{formatPublishDate(item.last_seen)}</span>
+                          <span className="text-sky-400 font-medium text-[10px]">{timeAgo(item.last_seen)}</span>
+                          <span className="text-sky-300/60 text-[9px]">{formatPublishDate(item.last_seen)}</span>
                         </div>
                       </td>
                     </tr>
