@@ -217,71 +217,28 @@ class _Provider:
     timeout: int = 30
 
 
-def _build_fallback_chain() -> list[_Provider]:
-    """Build ordered list of providers.  Primary from env, then free fallbacks."""
-    chain: list[_Provider] = []
-
-    # 1. Primary — from env (Groq llama-3.3-70b-versatile)
-    if settings.ai_api_key:
-        chain.append(_Provider(
-            name="groq-primary",
-            url=settings.ai_api_url,
-            key=settings.ai_api_key,
-            model=settings.ai_model,
-            timeout=settings.ai_timeout,
-        ))
-
-    # 2. Groq alt model — same key, different model (separate per-model bucket)
-    if settings.ai_api_key:
-        chain.append(_Provider(
-            name="groq-llama3.1-8b",
-            url="https://api.groq.com/openai/v1/chat/completions",
-            key=settings.ai_api_key,
-            model="llama-3.1-8b-instant",
-            timeout=30,
-        ))
-
-    # 3. Cerebras — free tier, fast inference (enable when account verified)
-    cerebras_key = getattr(settings, "cerebras_api_key", "")
-    if cerebras_key:
-        chain.append(_Provider(
-            name="cerebras",
-            url="https://api.cerebras.ai/v1/chat/completions",
-            key=cerebras_key,
-            model="llama3.1-8b",
-            timeout=60,
-        ))
-
-    # 4. Groq Qwen3 32B — another model bucket
-    if settings.ai_api_key:
-        chain.append(_Provider(
-            name="groq-qwen3",
-            url="https://api.groq.com/openai/v1/chat/completions",
-            key=settings.ai_api_key,
-            model="qwen/qwen3-32b",
-            timeout=30,
-        ))
-
-    # 5. HuggingFace Inference API — free (enable when api-inference.huggingface.co resolves)
-    hf_key = getattr(settings, "hf_api_key", "")
-    if hf_key:
-        chain.append(_Provider(
-            name="huggingface",
-            url="https://api-inference.huggingface.co/v1/chat/completions",
-            key=hf_key,
-            model="mistralai/Mistral-7B-Instruct-v0.3",
-            timeout=60,
-        ))
-
-    return chain
-
-
 _fallback_chain: list[_Provider] | None = None
 _chain_built_ts: float = 0
 
 
+def _ensure_chat_url(u: str) -> str:
+    """Normalize a base API URL to a full chat completions endpoint."""
+    u = u.rstrip("/")
+    # Gemini requires /openai/ in the path for OpenAI-compatible mode
+    if "generativelanguage.googleapis.com" in u and "/openai" not in u:
+        u = u.rstrip("/") + "/openai"
+    if not u.endswith("/chat/completions"):
+        u += "/chat/completions"
+    return u
+
+
 async def _get_chain_async() -> list[_Provider]:
-    """Get the provider chain, rebuilding from DB settings if stale (>60s)."""
+    """Get the provider chain, always from DB settings. Rebuilds every 60s.
+
+    The chain is ONLY built from DB ai_settings. If no DB settings exist
+    and env vars are set, a minimal single-provider env fallback is used.
+    No hardcoded alt-model or multi-provider env chains.
+    """
     global _fallback_chain, _chain_built_ts
     import time
 
@@ -291,15 +248,6 @@ async def _get_chain_async() -> list[_Provider]:
 
     db_cfg = await get_ai_db_settings()
     chain: list[_Provider] = []
-
-    def _ensure_chat_url(u: str) -> str:
-        u = u.rstrip("/")
-        # Gemini requires /openai/ in the path for OpenAI-compatible mode
-        if "generativelanguage.googleapis.com" in u and "/openai" not in u:
-            u = u.rstrip("/") + "/openai"
-        if not u.endswith("/chat/completions"):
-            u += "/chat/completions"
-        return u
 
     if db_cfg and db_cfg.get("primary_api_key"):
         # Build chain from DB settings — split comma-separated models
@@ -321,7 +269,7 @@ async def _get_chain_async() -> list[_Provider]:
                 timeout=primary_timeout,
             ))
         for fb in db_cfg.get("fallback_providers", []):
-            if fb.get("enabled") and fb.get("key"):
+            if fb.get("enabled") and fb.get("key") and "****" not in fb.get("key", ""):
                 fb_models = [m.strip() for m in fb.get("model", "").split(",") if m.strip()]
                 if not fb_models:
                     fb_models = [fb.get("model", "")]
@@ -335,25 +283,21 @@ async def _get_chain_async() -> list[_Provider]:
                         model=model,
                         timeout=int(fb.get("timeout", 30)),
                     ))
-    else:
-        # Fall back to env-based chain
-        chain = _build_fallback_chain()
+    elif settings.ai_api_key:
+        # Last-resort env fallback — single provider only, no hardcoded alts
+        chain.append(_Provider(
+            name="env-primary",
+            url=_ensure_chat_url(settings.ai_api_url),
+            key=settings.ai_api_key,
+            model=settings.ai_model,
+            timeout=settings.ai_timeout,
+        ))
 
     _fallback_chain = chain
     _chain_built_ts = now
     names = [f"{p.name}({p.model})" for p in chain]
-    logger.info("ai_chain_loaded", providers=names, source="db" if db_cfg else "env")
+    logger.info("ai_chain_loaded", providers=names, source="db" if (db_cfg and db_cfg.get("primary_api_key")) else "env")
     return chain
-
-
-def _get_chain() -> list[_Provider]:
-    """Synchronous chain getter — uses cached chain, or builds from env."""
-    global _fallback_chain
-    if _fallback_chain is None:
-        _fallback_chain = _build_fallback_chain()
-        names = [f"{p.name}({p.model})" for p in _fallback_chain]
-        logger.info("ai_fallback_chain_built", providers=names, count=len(names))
-    return _fallback_chain
 
 _DEFAULT_SYSTEM_PROMPT = (
     "You are a cybersecurity threat intelligence analyst. "
