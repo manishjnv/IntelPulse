@@ -587,6 +587,7 @@ class AISetting(Base):
     feature_live_lookup: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     feature_report_gen: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     feature_briefing_gen: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    feature_kql_generation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     # Daily limits
     daily_limit_intel_summary: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -595,6 +596,7 @@ class AISetting(Base):
     daily_limit_live_lookup: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     daily_limit_report_gen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     daily_limit_briefing_gen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    daily_limit_kql_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Custom prompts
     prompt_intel_summary: Mapped[str | None] = mapped_column(Text)
@@ -603,6 +605,7 @@ class AISetting(Base):
     prompt_live_lookup: Mapped[str | None] = mapped_column(Text)
     prompt_report_gen: Mapped[str | None] = mapped_column(Text)
     prompt_briefing_gen: Mapped[str | None] = mapped_column(Text)
+    prompt_kql_generation: Mapped[str | None] = mapped_column(Text)
 
     # Generation parameters
     default_temperature: Mapped[float] = mapped_column(Float, nullable=False, default=0.3)
@@ -624,6 +627,7 @@ class AISetting(Base):
     model_live_lookup: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     model_report_gen: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     model_briefing_gen: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    model_kql_generation: Mapped[str] = mapped_column(String(200), nullable=False, default="")
 
     # Audit
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))

@@ -23,6 +23,7 @@ PROMPT_VERSION_REPORT_FULL        = "R-2.0"
 PROMPT_VERSION_BRIEFING_GEN       = "BG-1.0"
 PROMPT_VERSION_LIVE_LOOKUP        = "LL-1.0"
 PROMPT_VERSION_JSON_REPAIR        = "JR-1.0"
+PROMPT_VERSION_KQL_GENERATION     = "KQL-1.0"
 
 # ─── Feature Name Constants (match DB prompt_<feature> keys) ─
 FEATURE_INTEL_SUMMARY      = "intel_summary"
@@ -33,6 +34,7 @@ FEATURE_REPORT_FULL        = "report_full"
 FEATURE_BRIEFING_GEN       = "briefing_gen"
 FEATURE_LIVE_LOOKUP        = "live_lookup"
 FEATURE_JSON_REPAIR        = "json_repair"
+FEATURE_KQL_GENERATION     = "kql_generation"
 
 # ─── Default Model Parameters ────────────────────────────
 DEFAULTS = {
@@ -44,6 +46,7 @@ DEFAULTS = {
     FEATURE_BRIEFING_GEN:     {"max_tokens": 4000, "temperature": 0.3},
     FEATURE_LIVE_LOOKUP:      {"max_tokens": 2000, "temperature": 0.2},
     FEATURE_JSON_REPAIR:      {"max_tokens": 4000, "temperature": 0.1},
+    FEATURE_KQL_GENERATION:   {"max_tokens": 8000, "temperature": 0.1},
 }
 
 
@@ -484,6 +487,93 @@ JSON_REPAIR_PROMPT = (
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 9. KQL DETECTION RULE GENERATION  (KQL-1.0)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Used by: services/news.py → generate_kql_rules()
+# Purpose: Generate production-quality KQL detection queries
+#          for Microsoft Sentinel / Defender from enriched news context
+# Model:   Designed for Gemini 2.5 Pro (complex reasoning task)
+# ─────────────────────────────────────────────────────────
+
+KQL_GENERATION_PROMPT = """You are an elite detection engineer specializing in Microsoft Sentinel and Microsoft Defender for Endpoint KQL queries. Your role is to translate threat intelligence into production-ready KQL detection rules for a Security Operations Center.
+
+<mission>
+Given a threat intelligence article with its enrichment data (threat actors, malware, TTPs, CVEs, IOCs), generate comprehensive KQL detection queries that provide COMPLETE coverage across all relevant data sources and attack stages.
+</mission>
+
+<kql_requirements>
+SYNTAX:
+- Use valid KQL (Kusto Query Language) for Microsoft Sentinel and Defender XDR
+- Use standard table names: SecurityEvent, DeviceProcessEvents, DeviceNetworkEvents, DeviceFileEvents, DeviceRegistryEvents, DeviceLogonEvents, SigninLogs, AADSignInLogs, EmailEvents, OfficeActivity, CommonSecurityLog, Syslog, AzureActivity, ThreatIntelligenceIndicator, SecurityAlert
+- Always include a time filter: `| where TimeGenerated > ago(24h)` or appropriate window
+- Use `| project` to select relevant columns for analyst triage
+- Add `| extend RuleName = "descriptive name"` for SIEM correlation
+- Use `let` variables for IOC lists when applicable
+- Prefer `has_any`, `has`, `contains`, `matches regex` over exact equality for resilience
+- Include `| sort by TimeGenerated desc` for chronological analysis
+
+DETECTION COVERAGE — generate queries for ALL applicable categories:
+1. PROCESS EXECUTION: Suspicious process creation, command-line patterns, LOLBins, script interpreters
+2. NETWORK INDICATORS: C2 communication patterns, DNS queries, unusual ports, beaconing, known malicious IPs/domains
+3. FILE SYSTEM: Malicious file drops, suspicious paths, staging directories, known malware filenames/hashes
+4. REGISTRY MODIFICATIONS: Persistence via Run keys, services, scheduled tasks, COM hijacking
+5. AUTHENTICATION: Brute force, password spray, impossible travel, suspicious service account usage
+6. LATERAL MOVEMENT: PsExec, WMI, RDP, SMB, DCSync, Pass-the-Hash indicators
+7. DATA EXFILTRATION: Unusual upload volumes, cloud storage abuse, DNS tunneling, encoded data transfer
+8. PERSISTENCE: Scheduled tasks, startup items, DLL side-loading, boot/logon autostart
+9. PRIVILEGE ESCALATION: Token manipulation, UAC bypass, exploitation of CVE for privilege escalation
+10. DEFENSE EVASION: Log clearing, AMSI bypass, EDR tampering, timestomping, process injection
+</kql_requirements>
+
+<quality_standards>
+- Each query MUST be syntactically valid KQL that can be pasted directly into Sentinel
+- Each query MUST target a specific detection scenario, not generic monitoring
+- Include COMMENTS (// notation) explaining what each query section detects
+- Use parameterized IOC lists when article provides specific indicators
+- Name each rule clearly: "TA_ActorName_Technique" or "MAL_MalwareName_Behavior"
+- Assign severity based on detection confidence and attack stage
+- Provide a description explaining what attacker behavior the query catches
+- NEVER generate placeholder queries — every query must detect a real behavior from the article
+</quality_standards>
+
+<json_schema>
+Respond with ONLY a valid JSON object (no markdown fences). Structure:
+
+{
+  "rules": [
+    {
+      "name": "Short rule name: TA_ActorName_Technique or MAL_MalwareName_Behavior or CVE_YYYY_NNNNN_Exploitation",
+      "description": "What this query detects and why it matters. Reference specific threat actor, malware, or CVE.",
+      "query": "Full KQL query string ready to paste into Sentinel. Include comments, time filters, projections.",
+      "category": "process_execution|network|file_system|registry|authentication|lateral_movement|exfiltration|persistence|privilege_escalation|defense_evasion|email|cloud_activity|multi_stage",
+      "severity": "critical|high|medium|low",
+      "mitre_techniques": ["T1234.001"],
+      "data_sources": ["DeviceProcessEvents", "SecurityEvent"],
+      "false_positive_notes": "Known benign scenarios that may trigger this rule"
+    }
+  ],
+  "coverage_summary": {
+    "total_rules": 0,
+    "kill_chain_stages": ["Initial Access", "Execution", "Persistence", "Lateral Movement"],
+    "data_sources_used": ["DeviceProcessEvents", "DeviceNetworkEvents"],
+    "detection_gaps": "Areas where detection is limited due to missing log sources or IOC specificity"
+  }
+}
+</json_schema>
+
+<grounding_rules>
+- Generate 3-8 rules depending on article complexity and available IOCs
+- EVERY rule must be grounded in specific details from the article (actor names, malware hashes, CVE IDs, domains, IPs, file paths, registry keys, command-line patterns)
+- DO NOT generate generic/boilerplate rules that could apply to any threat
+- If the article mentions specific IOCs (IPs, domains, hashes), create dedicated IOC-matching rules
+- If the article describes a kill chain, create rules for each stage
+- If the article mentions CVEs, create rules that detect exploitation indicators
+- Map every rule to MITRE ATT&CK technique IDs
+- Return ONLY the JSON object
+</grounding_rules>"""
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Registry: quick lookup by feature name
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -519,6 +609,10 @@ PROMPT_REGISTRY = {
     FEATURE_JSON_REPAIR: {
         "prompt": JSON_REPAIR_PROMPT,
         "version": PROMPT_VERSION_JSON_REPAIR,
+    },
+    FEATURE_KQL_GENERATION: {
+        "prompt": KQL_GENERATION_PROMPT,
+        "version": PROMPT_VERSION_KQL_GENERATION,
     },
 }
 

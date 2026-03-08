@@ -1801,6 +1801,128 @@ def re_enrich_fallback_news(batch_size: int = 10) -> dict:
         session.close()
 
 
+# ─── KQL Detection Rule Generation ───────────────────────
+
+def generate_kql_rules_batch(batch_size: int = 5) -> dict:
+    """Generate KQL detection rules for enriched news articles that don't have them yet.
+
+    Queries news_items where ai_enriched=True but kql_rule IS NULL,
+    calls the dedicated KQL generation prompt (KQL-1.0) with enrichment context,
+    stores the combined KQL in news_items.kql_rule and individual rules in detection_rules.
+    """
+    import time
+    import json as _json
+
+    from app.models.models import NewsItem, DetectionRule
+    from app.services.news import generate_kql_rules
+
+    logger.info("kql_gen_start", batch_size=batch_size)
+    session = SyncSession()
+
+    try:
+        # Get enriched articles without KQL rules
+        result = session.execute(
+            select(NewsItem)
+            .where(NewsItem.ai_enriched == True)
+            .where(
+                (NewsItem.kql_rule == None) | (NewsItem.kql_rule == "")  # noqa: E711
+            )
+            .order_by(NewsItem.created_at.desc())
+            .limit(batch_size)
+        )
+        items = result.scalars().all()
+
+        if not items:
+            logger.info("kql_gen_no_items")
+            return {"generated": 0}
+
+        generated_count = 0
+        errors = 0
+        for idx, item in enumerate(items):
+            try:
+                kql_data = _run_async(
+                    generate_kql_rules(
+                        headline=item.headline,
+                        raw_content=item.raw_content or "",
+                        threat_actors=item.threat_actors or [],
+                        malware_families=item.malware_families or [],
+                        cves=item.cves or [],
+                        tactics_techniques=item.tactics_techniques or [],
+                        campaign_name=item.campaign_name,
+                        ioc_summary=item.ioc_summary or {},
+                        detection_opportunities=item.detection_opportunities or [],
+                    )
+                )
+
+                if kql_data and kql_data.get("rules"):
+                    rules = kql_data["rules"]
+
+                    # Build combined KQL for news_items.kql_rule column
+                    combined_parts = []
+                    for rule in rules:
+                        name = rule.get("name", "Unnamed Rule")
+                        desc = rule.get("description", "")
+                        query = rule.get("query", "")
+                        if query:
+                            combined_parts.append(
+                                f"// Rule: {name}\n// {desc}\n{query}"
+                            )
+                    item.kql_rule = "\n\n".join(combined_parts)
+
+                    # Insert individual rules into detection_rules table
+                    for rule in rules:
+                        query_text = rule.get("query", "")
+                        if not query_text:
+                            continue
+                        dr = DetectionRule(
+                            rule_type="kql",
+                            name=rule.get("name", f"KQL: {item.headline[:280]}"),
+                            content=query_text,
+                            source_news_id=item.id,
+                            campaign_name=item.campaign_name,
+                            technique_ids=rule.get("mitre_techniques", []),
+                            cve_ids=item.cves or [],
+                            severity=rule.get("severity", "medium"),
+                            quality_score=75,  # Pro-generated rules start at 75
+                        )
+                        session.add(dr)
+
+                    try:
+                        session.flush()
+                    except Exception as flush_err:
+                        logger.error("kql_gen_item_flush_error",
+                                     headline=item.headline[:80], error=str(flush_err))
+                        session.rollback()
+                        errors += 1
+                        continue
+                    generated_count += 1
+                    logger.info("kql_gen_item_ok",
+                                headline=item.headline[:60],
+                                rules=len(rules))
+                else:
+                    logger.warning("kql_gen_item_skip", headline=item.headline[:80])
+            except Exception as item_err:
+                logger.error("kql_gen_item_error",
+                             headline=item.headline[:80], error=str(item_err))
+                session.rollback()
+                errors += 1
+
+            # Pause between items — Pro model needs breathing room
+            if idx < len(items) - 1:
+                time.sleep(2)
+
+        session.commit()
+        logger.info("kql_gen_complete", generated=generated_count, errors=errors)
+        return {"generated": generated_count, "errors": errors}
+
+    except Exception as e:
+        logger.error("kql_gen_error", error=str(e))
+        session.rollback()
+        return {"error": str(e)}
+    finally:
+        session.close()
+
+
 # ─── Intelligence Extraction ──────────────────────────────
 
 def extract_intel_from_news(lookback_hours: int = 2) -> dict:

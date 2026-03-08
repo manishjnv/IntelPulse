@@ -9,6 +9,8 @@ from __future__ import annotations
 from app.prompts import (
     NEWS_ENRICHMENT_PROMPT,
     PROMPT_VERSION_NEWS_ENRICHMENT,
+    KQL_GENERATION_PROMPT,
+    PROMPT_VERSION_KQL_GENERATION,
 )
 
 import hashlib
@@ -786,4 +788,67 @@ async def enrich_news_item(
         return None
 
     data["_prompt_version"] = _NEWS_ENRICHMENT_PROMPT_VERSION
+    return data
+
+
+# ── KQL Detection Rule Generation ────────────────────────
+_KQL_GENERATION_PROMPT_VERSION = PROMPT_VERSION_KQL_GENERATION
+_KQL_GENERATION_SYSTEM = KQL_GENERATION_PROMPT
+
+
+async def generate_kql_rules(
+    headline: str,
+    raw_content: str,
+    *,
+    threat_actors: list[str] | None = None,
+    malware_families: list[str] | None = None,
+    cves: list[str] | None = None,
+    tactics_techniques: list[str] | None = None,
+    campaign_name: str | None = None,
+    ioc_summary: dict | None = None,
+    detection_opportunities: list[str] | None = None,
+) -> dict | None:
+    """Generate KQL detection rules from enriched news article context.
+
+    Uses a dedicated prompt (KQL-1.0) designed for Gemini 2.5 Pro
+    to produce production-quality Microsoft Sentinel/Defender KQL queries.
+    """
+    parts = [f"Headline: {headline}"]
+    if campaign_name:
+        parts.append(f"Campaign: {campaign_name}")
+    if threat_actors:
+        parts.append(f"Threat Actors: {', '.join(threat_actors[:10])}")
+    if malware_families:
+        parts.append(f"Malware Families: {', '.join(malware_families[:10])}")
+    if cves:
+        parts.append(f"CVEs: {', '.join(cves[:15])}")
+    if tactics_techniques:
+        parts.append(f"MITRE ATT&CK: {', '.join(tactics_techniques[:10])}")
+    if detection_opportunities:
+        parts.append(f"Detection Hints: {'; '.join(detection_opportunities[:5])}")
+    if ioc_summary:
+        ioc_parts = []
+        for ioc_type in ("domains", "ips", "hashes", "urls"):
+            items = ioc_summary.get(ioc_type, [])
+            if items:
+                ioc_parts.append(f"  {ioc_type}: {', '.join(items[:20])}")
+        if ioc_parts:
+            parts.append("IOCs:\n" + "\n".join(ioc_parts))
+    parts.append(f"\nArticle Content:\n{raw_content[:8000]}")
+    user_prompt = "\n".join(parts)
+
+    data = await chat_completion_json(
+        system_prompt=_KQL_GENERATION_SYSTEM,
+        user_prompt=user_prompt,
+        max_tokens=8000,
+        temperature=0.1,
+        required_keys=["rules"],
+        caller="kql_generation",
+        feature="kql_generation",
+    )
+
+    if not data:
+        return None
+
+    data["_prompt_version"] = _KQL_GENERATION_PROMPT_VERSION
     return data

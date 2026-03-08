@@ -167,6 +167,87 @@ async def sync_detection_rules(
     return {"synced": count}
 
 
+@router.post("/detection-rules/generate-kql")
+async def generate_kql_for_article(
+    body: dict,
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Generate KQL detection rules for a specific news article on demand."""
+    from sqlalchemy import select, text
+    from app.models.models import NewsItem, DetectionRule
+    from app.services.news import generate_kql_rules
+
+    news_id = body.get("news_id")
+    if not news_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="news_id required")
+
+    result = await db.execute(
+        select(NewsItem).where(NewsItem.id == news_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="News article not found")
+
+    kql_data = await generate_kql_rules(
+        headline=item.headline,
+        raw_content=item.raw_content or "",
+        threat_actors=item.threat_actors or [],
+        malware_families=item.malware_families or [],
+        cves=item.cves or [],
+        tactics_techniques=item.tactics_techniques or [],
+        campaign_name=item.campaign_name,
+        ioc_summary=item.ioc_summary or {},
+        detection_opportunities=item.detection_opportunities or [],
+    )
+
+    if not kql_data or not kql_data.get("rules"):
+        return {"generated": 0, "message": "AI did not return KQL rules"}
+
+    rules = kql_data["rules"]
+    combined_parts = []
+    for rule in rules:
+        name = rule.get("name", "Unnamed Rule")
+        desc = rule.get("description", "")
+        query = rule.get("query", "")
+        if query:
+            combined_parts.append(f"// Rule: {name}\n// {desc}\n{query}")
+
+    item.kql_rule = "\n\n".join(combined_parts)
+
+    # Delete old KQL rules for this article, then insert new ones
+    await db.execute(
+        text("DELETE FROM detection_rules WHERE source_news_id = :nid AND rule_type = 'kql'"),
+        {"nid": str(item.id)},
+    )
+
+    for rule in rules:
+        query_text = rule.get("query", "")
+        if not query_text:
+            continue
+        dr = DetectionRule(
+            rule_type="kql",
+            name=rule.get("name", f"KQL: {item.headline[:280]}"),
+            content=query_text,
+            source_news_id=item.id,
+            campaign_name=item.campaign_name,
+            technique_ids=rule.get("mitre_techniques", []),
+            cve_ids=item.cves or [],
+            severity=rule.get("severity", "medium"),
+            quality_score=75,
+        )
+        db.add(dr)
+
+    await db.commit()
+    return {
+        "generated": len(rules),
+        "rules": [{"name": r.get("name"), "category": r.get("category"), "severity": r.get("severity")} for r in rules],
+        "coverage_summary": kql_data.get("coverage_summary"),
+    }
+
+
 # ─── Threat Briefings ──────────────────────────────────
 
 @router.get("/briefing-data")

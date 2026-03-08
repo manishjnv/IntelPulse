@@ -35,7 +35,7 @@ redis_conn = Redis.from_url(settings.redis_url)
 scheduler = Scheduler(queue_name="default", connection=redis_conn)
 
 # ── Constants ────────────────────────────────────────────
-EXPECTED_JOB_COUNT = 27          # total scheduled jobs we register
+EXPECTED_JOB_COUNT = 28          # total scheduled jobs we register
 WATCHDOG_INTERVAL = 120          # seconds between health checks
 HEARTBEAT_KEY = "scheduler:heartbeat"
 HEARTBEAT_TTL = 300              # seconds — expires if scheduler dies
@@ -346,6 +346,19 @@ def setup_schedules():
         interval=timedelta(minutes=5).total_seconds(),
         queue_name="low",
         meta={"task": "news_enrichment"},
+    )
+
+    # ─── KQL Detection Rule Generation — every 10 minutes ──
+    # Generates Pro-quality KQL detection rules for enriched news
+    # articles that don't have KQL rules yet. Uses dedicated prompt
+    # with Gemini 2.5 Pro for production-grade Sentinel queries.
+    scheduler.schedule(
+        scheduled_time=datetime.now(timezone.utc) + timedelta(minutes=6),
+        func="worker.tasks.generate_kql_rules_batch",
+        kwargs={"batch_size": 5},
+        interval=timedelta(minutes=10).total_seconds(),
+        queue_name="low",
+        meta={"task": "kql_generation"},
     )
 
     # ─── News Re-Enrichment (fallback upgrade) — every 15 min ─

@@ -1169,18 +1169,21 @@ export interface AISettings {
   feature_live_lookup: boolean;
   feature_report_gen: boolean;
   feature_briefing_gen: boolean;
+  feature_kql_generation: boolean;
   daily_limit_intel_summary: number;
   daily_limit_intel_enrichment: number;
   daily_limit_news_enrichment: number;
   daily_limit_live_lookup: number;
   daily_limit_report_gen: number;
   daily_limit_briefing_gen: number;
+  daily_limit_kql_generation: number;
   prompt_intel_summary: string;
   prompt_intel_enrichment: string;
   prompt_news_enrichment: string;
   prompt_live_lookup: string;
   prompt_report_gen: string;
   prompt_briefing_gen: string;
+  prompt_kql_generation: string;
   default_temperature: number;
   default_max_tokens: number;
   requests_per_minute: number;
@@ -1194,6 +1197,7 @@ export interface AISettings {
   model_live_lookup: string;
   model_report_gen: string;
   model_briefing_gen: string;
+  model_kql_generation: string;
   updated_at: string | null;
   daily_usage?: Record<string, number>;
 }

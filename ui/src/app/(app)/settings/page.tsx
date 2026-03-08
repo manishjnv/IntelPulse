@@ -1582,6 +1582,15 @@ const AI_FEATURES = [
     modelTip: "Pro recommended — synthesizes multiple intel items into cohesive narrative requiring deep reasoning.",
     taskType: "generation" as const,
   },
+  {
+    key: "kql_generation",
+    label: "KQL Detection Rules",
+    tip: "Generates production-quality KQL detection queries for Microsoft Sentinel / Defender from enriched news articles. Covers process, network, file, registry, auth, and lateral movement indicators.",
+    limitTip: "Max KQL rule generation calls per day. Each enriched article triggers one call producing 3-8 rules. Set 0 for unlimited.",
+    effects: "Detection rules library, News detail KQL panel, Automated detection pipeline",
+    modelTip: "Pro strongly recommended — KQL syntax requires precise reasoning, complex query construction, and deep security domain knowledge.",
+    taskType: "generation" as const,
+  },
 ] as const;
 
 /**
@@ -1597,6 +1606,7 @@ const MODEL_RECOMMENDATIONS: Record<string, Record<string, { model: string; reas
     live_lookup:       { model: "gemini-2.0-flash-lite", reason: "Interactive speed critical — Lite responds fastest" },
     report_gen:        { model: "gemini-2.5-pro",        reason: "Long-form narrative — Pro's deep reasoning produces coherent reports" },
     briefing_gen:      { model: "gemini-2.5-pro",        reason: "Multi-item synthesis — Pro excels at complex analytical summaries" },
+    kql_generation:    { model: "gemini-2.5-pro",        reason: "KQL query construction — Pro's deep reasoning produces valid, comprehensive Sentinel queries" },
   },
   groq: {
     intel_summary:     { model: "llama-3.1-8b-instant",      reason: "Short output — 8B is fast & free for simple summaries" },
@@ -1605,6 +1615,7 @@ const MODEL_RECOMMENDATIONS: Record<string, Record<string, { model: string; reas
     live_lookup:       { model: "llama-3.1-8b-instant",      reason: "Fast interactive response — 8B is sufficient for IOC analysis" },
     report_gen:        { model: "llama-3.3-70b-versatile",   reason: "Long-form generation — 70B for coherent multi-paragraph output" },
     briefing_gen:      { model: "llama-3.3-70b-versatile",   reason: "Multi-item synthesis — needs strong reasoning capabilities" },
+    kql_generation:    { model: "llama-3.3-70b-versatile",   reason: "KQL generation — 70B needed for valid query syntax and security logic" },
   },
   openai: {
     intel_summary:     { model: "gpt-4o-mini",  reason: "Short output — Mini is cost-effective for simple summaries" },
@@ -1613,6 +1624,7 @@ const MODEL_RECOMMENDATIONS: Record<string, Record<string, { model: string; reas
     live_lookup:       { model: "gpt-4o-mini",  reason: "Interactive speed — Mini responds faster at lower cost" },
     report_gen:        { model: "gpt-4o",       reason: "Long-form narrative — GPT-4o for coherent reports" },
     briefing_gen:      { model: "gpt-4o",       reason: "Multi-item synthesis — needs full model reasoning" },
+    kql_generation:    { model: "gpt-4o",       reason: "KQL generation — GPT-4o for precise query syntax and security domain knowledge" },
   },
   anthropic: {
     intel_summary:     { model: "claude-3-5-haiku-20241022",   reason: "Short output — Haiku is fast & cheap for summaries" },
@@ -1621,6 +1633,7 @@ const MODEL_RECOMMENDATIONS: Record<string, Record<string, { model: string; reas
     live_lookup:       { model: "claude-3-5-haiku-20241022",   reason: "Interactive speed — Haiku is fastest Claude model" },
     report_gen:        { model: "claude-sonnet-4-20250514",    reason: "Long-form narrative — Sonnet for coherent reports" },
     briefing_gen:      { model: "claude-sonnet-4-20250514",    reason: "Multi-item synthesis — needs strong reasoning" },
+    kql_generation:    { model: "claude-sonnet-4-20250514",    reason: "KQL generation — Sonnet for precise query construction and security reasoning" },
   },
 };
 
