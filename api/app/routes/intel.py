@@ -26,6 +26,7 @@ from app.schemas import IntelItemListResponse, IntelItemResponse, IntelStatsResp
 from app.services import database as db_service
 from app.services.ai import chat_completion_json
 from app.services.export import export_to_excel
+from app.normalizers.stix import ioc_list_to_bundle, news_item_to_bundle
 
 router = APIRouter(prefix="/intel", tags=["intel"])
 settings = get_settings()
@@ -108,6 +109,35 @@ async def export_intel(
     return Response(
         content=excel_bytes.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/export/stix")
+async def export_intel_stix(
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    severity: str | None = None,
+    feed_type: str | None = None,
+    page_size: int = Query(100, ge=1, le=1000),
+):
+    """Export intel items as a STIX 2.1 JSON bundle."""
+    import json
+
+    items, _ = await db_service.get_intel_items(
+        db, page=1, page_size=page_size, severity=severity, feed_type=feed_type
+    )
+    item_dicts = [IntelItemResponse.model_validate(i).model_dump() for i in items]
+    iocs = []
+    for item in item_dicts:
+        for cve in item.get("cve_ids") or []:
+            iocs.append({"value": cve, "ioc_type": "cve", "risk_score": item.get("risk_score", 50), "tags": item.get("tags", [])})
+    bundle = ioc_list_to_bundle(iocs) if iocs else {"type": "bundle", "id": "bundle--empty", "objects": []}
+
+    filename = f"threat_intel_stix_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+    return Response(
+        content=json.dumps(bundle, indent=2, default=str),
+        media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

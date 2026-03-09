@@ -5,6 +5,8 @@ Provides:
   - GET /news/categories — category counts with latest headlines
   - GET /news/{id} — single news item detail
   - GET /news/{id}/report — generate downloadable report (pdf|html|markdown)
+  - GET /news/{id}/export/stix — export news item as STIX 2.1 bundle
+  - GET /news/{id}/export/sigma — export Sigma detection rules for news item
   - POST /news/refresh — trigger manual feed refresh (admin)
 """
 
@@ -27,6 +29,8 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.middleware.auth import require_viewer, require_analyst
 from app.models.models import NewsItem, User, VulnerableProduct, ThreatCampaign
+from app.normalizers.stix import news_item_to_bundle
+from app.normalizers.rules import news_item_to_sigma
 from app.schemas import (
     NewsItemResponse,
     NewsListResponse,
@@ -640,6 +644,61 @@ async def toggle_campaign_false_positive(
     campaign.is_false_positive = value
     await db.commit()
     return {"id": str(campaign_id), "is_false_positive": value}
+
+
+@router.get("/{news_id}/export/stix")
+async def export_news_stix(
+    news_id: uuid.UUID,
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Export a single news item as a STIX 2.1 JSON bundle."""
+    import json
+
+    result = await db.execute(select(NewsItem).where(NewsItem.id == news_id))
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="News item not found")
+
+    item_dict = NewsItemResponse.model_validate(item).model_dump()
+    bundle = news_item_to_bundle(item_dict)
+
+    filename = f"news_{news_id}_stix.json"
+    return Response(
+        content=json.dumps(bundle, indent=2, default=str),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{news_id}/export/sigma")
+async def export_news_sigma(
+    news_id: uuid.UUID,
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Export Sigma detection rules generated from a news item's IOCs and context."""
+    result = await db.execute(select(NewsItem).where(NewsItem.id == news_id))
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="News item not found")
+
+    item_dict = NewsItemResponse.model_validate(item).model_dump()
+    rules = news_item_to_sigma(item_dict)
+
+    if not rules:
+        return Response(
+            content="# No Sigma rules could be generated — no actionable IOCs found.\n",
+            media_type="text/yaml",
+        )
+
+    content = "\n---\n".join(rules)
+    filename = f"news_{news_id}_sigma.yml"
+    return Response(
+        content=content,
+        media_type="text/yaml",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{news_id}", response_model=NewsItemResponse)
