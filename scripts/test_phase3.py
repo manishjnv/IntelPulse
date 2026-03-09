@@ -153,9 +153,9 @@ def test_stix_module():
     ok("Relationship SRO", f"{rel['source_ref'][:25]} → {rel['target_ref'][:25]}")
 
     # 10. Bundle
-    bundle = build_bundle([identity, indicator, actor, mal, vuln, tech, report, rel])
+    bundle = build_bundle([indicator, actor, mal, vuln, tech, report, rel])
     assert bundle["type"] == "bundle"
-    assert len(bundle["objects"]) == 8
+    assert len(bundle["objects"]) == 8  # platform_identity + 7 objects
     bundle_json = json.dumps(bundle, indent=2, default=str)
     ok("STIX Bundle", f"{len(bundle['objects'])} objects, {len(bundle_json)} bytes")
 
