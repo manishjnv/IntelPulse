@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.core.logging import get_logger
+from app.normalizers.severity import SEVERITY_SCORES
 
 logger = get_logger(__name__)
 
@@ -22,15 +23,6 @@ DEFAULT_WEIGHTS = {
     "source_reliability": 15,
     "freshness": 20,
     "ioc_prevalence": 15,
-}
-
-SEVERITY_SCORES = {
-    "critical": 100,
-    "high": 80,
-    "medium": 50,
-    "low": 25,
-    "info": 10,
-    "unknown": 0,
 }
 
 

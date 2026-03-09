@@ -28,6 +28,8 @@ from datetime import datetime, timezone
 
 import httpx
 
+from app.normalizers.text import strip_json_fences as _strip_json_fences
+
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.redis import cache_key, get_cached, set_cached, redis_client
@@ -526,18 +528,6 @@ async def chat_completion(
         await increment_daily_usage(feature)
 
     return result
-
-
-def _strip_json_fences(text: str) -> str:
-    """Remove markdown code fences from an AI response to extract raw JSON."""
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-        cleaned = re.sub(r"\s*```$", "", cleaned)
-    cleaned = cleaned.strip()
-    if cleaned.startswith("json"):
-        cleaned = cleaned[4:].strip()
-    return cleaned
 
 
 async def chat_completion_json(

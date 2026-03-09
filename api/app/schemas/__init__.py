@@ -596,6 +596,8 @@ class NewsCategory(str, Enum):
     security_research = "security_research"
     tools_technology = "tools_technology"
     policy_regulation = "policy_regulation"
+    general_news = "general_news"
+    geopolitical_cyber = "geopolitical_cyber"
 
 
 class ConfidenceLevel(str, Enum):

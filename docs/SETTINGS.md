@@ -287,6 +287,53 @@ For each key, the UI shows:
 
 ---
 
+## 7.1 AI Settings (Per-Feature Model Configuration)
+
+The AI Settings panel (`/settings` → AI Configuration tab) provides granular control
+over 7 AI features via the `ai_settings` database table and `PUT /ai-settings` endpoint.
+
+### AI Features
+
+| Feature Key | Label | Task Type | Default Model | max_tokens | temp |
+|-------------|-------|-----------|---------------|-----------|------|
+| `intel_summary` | Intel Summary | summary | Provider default | 400 | 0.3 |
+| `intel_enrichment` | Intel Enrichment | enrichment | Provider default | 5000 | 0.15 |
+| `news_enrichment` | News Enrichment | enrichment | Provider default | 6000 | 0.15 |
+| `live_lookup` | Live IOC Lookup | analysis | Provider default | 2000 | 0.2 |
+| `report_gen` | Report Generation | generation | Provider default | 4000 | 0.3 |
+| `briefing_gen` | Briefing Generation | generation | Provider default | 4000 | 0.3 |
+| `kql_generation` | KQL Detection Rules | generation | `gemini-2.5-pro` | 8000 | 0.1 |
+
+### Per-Feature DB Columns (ai_settings table)
+
+Each feature `X` has 4 columns:
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `feature_X` | BOOLEAN | Enable/disable the feature |
+| `daily_limit_X` | INTEGER | Max AI calls per day (0 = unlimited) |
+| `model_X` | VARCHAR(200) | Override model for this feature (empty = use chain default) |
+| `prompt_X` | TEXT | Custom prompt override (NULL = use prompts.py default) |
+
+### Model Recommendations (UI)
+
+The settings UI shows recommended models per provider for each feature:
+
+| Provider | Summary/Enrichment | Generation | KQL Rules |
+|----------|--------------------|------------|-----------|
+| Gemini | `gemini-2.5-flash` | `gemini-2.5-flash` | `gemini-2.5-pro` |
+| Groq | `llama-3.3-70b-versatile` | `llama-3.3-70b-versatile` | `llama-3.3-70b-versatile` |
+| OpenAI | `gpt-4o-mini` | `gpt-4o` | `gpt-4o` |
+| Anthropic | `claude-sonnet-4-20250514` | `claude-sonnet-4-20250514` | `claude-sonnet-4-20250514` |
+
+### Prompt Centralization
+
+All default prompts live in `api/app/prompts.py` with version constants (e.g., `KQL-1.0`).
+DB-backed custom overrides via `/ai-settings` take precedence at runtime. See
+[PROMPT-ENGINEERING.md](PROMPT-ENGINEERING.md) for full prompt inventory and version history.
+
+---
+
 ## 8. Platform Setup Checklist
 
 The `GET /settings/platform-info` endpoint returns an 8-item setup checklist:

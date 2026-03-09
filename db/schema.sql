@@ -448,7 +448,9 @@ DO $$ BEGIN
         'ot_ics',
         'security_research',
         'tools_technology',
-        'policy_regulation'
+        'policy_regulation',
+        'general_news',
+        'geopolitical_cyber'
     );
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;

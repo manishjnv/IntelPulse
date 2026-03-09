@@ -21,6 +21,7 @@ feature names, and default model parameters. DB-backed custom overrides
 | `briefing_gen` | BG-1.0 | `enrichment.py → generate_briefing()` | 4000 | 0.3 | Weekly threat briefing |
 | `live_lookup` | LL-1.0 | `ai_settings.py → /ai-settings/live-lookup` | 2000 | 0.2 | IOC analysis from live lookup |
 | `json_repair` | JR-1.0 | `ai.py → chat_completion_json()` | 4000 | 0.1 | Fix malformed JSON (internal) |
+| `kql_generation` | **KQL-1.0** | `news.py → generate_kql_rules()` | 8000 | 0.1 | KQL detection rule generation from enriched news |
 
 ---
 
@@ -122,6 +123,63 @@ Centralized to `prompts.py` in commit `8c1b7ff`.
 Graph-ready entity extraction for intel items. Object-based `threat_actors` with
 name/aliases/motivation/confidence/description/nation_state. `affected_versions` with
 vendor/product/versions_affected/fixed_version/patch_url/cpe.
+
+---
+
+### KQL_GENERATION (KQL-series)
+
+#### KQL-1.0 (current) — 2026-03-09
+
+Dedicated prompt for generating Microsoft Sentinel KQL detection rules from AI-enriched
+news articles. Runs as a separate AI feature with its own model selection, daily limits,
+and prompt override in `/ai-settings`.
+
+**Design decisions:**
+
+1. **Separate AI feature** — KQL generation is a distinct task from news enrichment.
+   It runs post-enrichment, consuming the structured output (threat actors, malware,
+   CVEs, TTPs, IOCs) as context alongside the raw article content.
+
+2. **10 detection categories** — Process Execution, Network Activity, File System,
+   Registry, Authentication, Lateral Movement, Data Exfiltration, Persistence,
+   Privilege Escalation, Defense Evasion. Each rule is tagged with its category.
+
+3. **Gemini 2.5 Pro recommended** — KQL generation benefits from stronger reasoning.
+   MODEL_RECOMMENDATIONS defaults to `gemini-2.5-pro` for all providers.
+
+4. **Low temperature (0.1)** — Detection rules must be syntactically correct and
+   deterministic. Lower than enrichment (0.15) to minimize creative variance.
+
+5. **High max_tokens (8000)** — Complex articles can produce 5-8 rules, each with
+   multi-line KQL queries, MITRE mappings, and false positive notes.
+
+6. **JSON output schema** — Returns `{ rules: [...], coverage_summary: {...} }`.
+   Each rule has: `name`, `description`, `query` (KQL), `category`, `severity`,
+   `mitre_techniques[]`, `data_sources[]`, `false_positive_notes`.
+
+7. **Context-rich input** — The user prompt includes: headline, raw content (10K chars),
+   plus enrichment context (threat_actors, malware_families, cves, tactics_techniques,
+   campaign_name, ioc_summary, detection_opportunities). This avoids the model
+   re-extracting entities that D-5.0 already identified.
+
+8. **Quality gate** — Rules must use actual KQL syntax (not pseudo-code), reference
+   real log tables (SecurityEvent, Syslog, DeviceNetworkEvents, etc.), include
+   time filters, and avoid placeholder values.
+
+**Worker integration:**
+- `generate_kql_rules_batch(batch_size=5)` runs every 10 min on `low` queue
+- Queries articles with `ai_enriched=True AND (kql_rule IS NULL OR kql_rule='')`
+- Individual rules stored in `detection_rules` table with `rule_type='kql'`
+- Combined KQL stored in `news_items.kql_rule` for quick display
+- Default quality_score: 75 (analyst review recommended)
+
+**First batch results (2026-03-09):**
+- 5 articles processed, 3 generated KQL rules, 2 correctly skipped (product news)
+- 12 total rules: EU phishing (3 rules), .arpa DNS evasion (4 rules), Cisco SD-WAN (5 rules)
+- Rule naming: descriptive, prefixed by threat context (e.g., "Detect .arpa TLD DNS Queries")
+- Severity distribution: 2 high, 7 medium, 3 low
+- All rules include MITRE technique IDs and data source references
+- KQL syntax verified: proper `| where`, `| project`, `| extend`, time filters, regex
 
 ---
 

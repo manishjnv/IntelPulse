@@ -17,36 +17,20 @@ from sqlalchemy.types import Text
 
 from app.core.logging import get_logger
 from app.models.models import NewsItem, VulnerableProduct, ThreatCampaign
+from app.normalizers.entities import (
+    is_junk_product as _is_junk_product,
+    normalize_product_name as _normalize_product_name,
+    normalise_campaign_name as _normalise_campaign_name,
+    guess_vendor as _guess_vendor,
+)
+from app.normalizers.patterns import CVE_RE as _CVE_RE
+from app.normalizers.severity import SEVERITY_RANK as _SEVERITY_RANK, priority_to_severity as _priority_to_severity
 
 logger = get_logger("intel_extraction")
 
 # ── Windows ──────────────────────────────────────────────
 PRODUCTS_WINDOW_DAYS = 30
 CAMPAIGNS_WINDOW_DAYS = 90
-
-# Regex to extract clean CVE ID (CVE-YYYY-NNNNN)
-_CVE_RE = re.compile(r"(CVE-\d{4}-\d{4,})", re.IGNORECASE)
-
-# Severity priority for merging (higher wins)
-_SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0, "unknown": -1}
-
-# Blocklist: generic terms the AI hallucinates as "products" — not actual software
-_PRODUCT_BLOCKLIST = {
-    "nim", "zig", "crystal", "ip cameras", "wikipedia", "python executables",
-    "all mfa-enabled applications", "atm software and hardware",
-    "desktop oss", "mobile platforms", "web browsers", "email and cloud-based services",
-    "enterprise software and appliances", "tpms systems in modern cars",
-    "ring doorbell cameras", "unknown product",
-}
-
-# Terms that signal a product name is actually a category/summary
-_PRODUCT_JUNK_PATTERNS = re.compile(
-    r"\(\d+ zero-day|\(multiple |all .+ applications|generic|various",
-    re.IGNORECASE,
-)
-
-# Campaign names to normalise to NULL
-_NULL_CAMPAIGN_NAMES = {"unknown", "null", "n/a", "none", "", "unattributed"}
 
 
 # ──────────────────────────────────────────────────────────
@@ -638,97 +622,3 @@ async def get_vendor_stats(db: AsyncSession, *, limit: int = 15) -> list[dict]:
         }
         for row in result.all()
     ]
-
-
-# ──────────────────────────────────────────────────────────
-# Helpers
-# ──────────────────────────────────────────────────────────
-
-def _priority_to_severity(priority: str | None) -> str:
-    """Map news recommended_priority to severity string."""
-    mapping = {"critical": "critical", "high": "high", "medium": "medium", "low": "low"}
-    return mapping.get((priority or "").lower(), "unknown")
-
-
-def _is_junk_product(name: str) -> bool:
-    """Return True if the product name is a known junk / generic entry."""
-    n = name.strip().lower()
-    if n in _PRODUCT_BLOCKLIST:
-        return True
-    if _PRODUCT_JUNK_PATTERNS.search(n):
-        return True
-    # Single-word names that are too generic (programming langs, etc.)
-    if len(n.split()) == 1 and len(n) < 12 and n.isalpha():
-        return True
-    return False
-
-
-def _normalize_product_name(name: str) -> str:
-    """Canonicalize product name to reduce duplicates.
-
-    Rules:
-    - Strip leading/trailing whitespace
-    - Collapse extra whitespace
-    - Remove trailing version strings like 'v1.2', '10.3.2', '(2024)' etc.
-    - Title-case for consistency
-    """
-    n = name.strip()
-    # Remove trailing version-like suffixes: v1.2, 10.3.x, (2024), etc.
-    n = re.sub(r"\s+v?\d+[\d.x*]+\s*$", "", n, flags=re.IGNORECASE)
-    n = re.sub(r"\s*\(\d{4}\)\s*$", "", n)
-    # Collapse whitespace
-    n = re.sub(r"\s+", " ", n).strip()
-    # Title case but keep all-upper acronyms (e.g. "ESXi", "PAN-OS")
-    words = n.split()
-    result = []
-    for w in words:
-        if w.isupper() and len(w) > 1:
-            result.append(w)  # keep acronym
-        elif "-" in w:
-            result.append(w)  # keep hyphenated as-is
-        else:
-            result.append(w.capitalize() if w.islower() else w)
-    return " ".join(result) if result else n
-
-
-def _normalise_campaign_name(name: str | None) -> str | None:
-    """Normalise 'null', 'Unknown', etc. to None."""
-    if name is None:
-        return None
-    if name.strip().lower() in _NULL_CAMPAIGN_NAMES:
-        return None
-    return name.strip()
-
-
-def _guess_vendor(product_name: str) -> str | None:
-    """Extract vendor from common product naming patterns."""
-    known_vendors = {
-        "windows": "Microsoft", "office": "Microsoft", "exchange": "Microsoft",
-        "azure": "Microsoft", "edge": "Microsoft", ".net": "Microsoft",
-        "chrome": "Google", "android": "Google", "chromium": "Google",
-        "ios": "Apple", "macos": "Apple", "safari": "Apple", "webkit": "Apple",
-        "firefox": "Mozilla", "thunderbird": "Mozilla",
-        "linux": "Linux Foundation", "kernel": "Linux Foundation",
-        "apache": "Apache", "tomcat": "Apache", "struts": "Apache",
-        "nginx": "F5/NGINX", "cisco": "Cisco", "fortinet": "Fortinet",
-        "fortigate": "Fortinet", "fortios": "Fortinet",
-        "palo alto": "Palo Alto Networks", "pan-os": "Palo Alto Networks",
-        "vmware": "VMware/Broadcom", "esxi": "VMware/Broadcom",
-        "ivanti": "Ivanti", "pulse": "Ivanti",
-        "citrix": "Citrix", "netscaler": "Citrix",
-        "confluence": "Atlassian", "jira": "Atlassian",
-        "jenkins": "Jenkins", "wordpress": "WordPress",
-        "oracle": "Oracle", "java": "Oracle",
-        "adobe": "Adobe", "acrobat": "Adobe",
-        "sap": "SAP", "ibm": "IBM",
-        "juniper": "Juniper Networks", "sonicwall": "SonicWall",
-        "zyxel": "Zyxel", "qnap": "QNAP", "synology": "Synology",
-        "samsung": "Samsung", "huawei": "Huawei", "tp-link": "TP-Link",
-        "d-link": "D-Link",
-    }
-
-    name_lower = product_name.lower()
-    for keyword, vendor in known_vendors.items():
-        if keyword in name_lower:
-            return vendor
-    return None

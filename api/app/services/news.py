@@ -6,6 +6,8 @@ source_hash, and queues AI enrichment for structured intelligence extraction.
 
 from __future__ import annotations
 
+from app.normalizers.categories import detect_category as _detect_category
+from app.normalizers.text import parse_pub_date as _parse_pub_date, strip_html as _strip_html
 from app.prompts import (
     NEWS_ENRICHMENT_PROMPT,
     PROMPT_VERSION_NEWS_ENRICHMENT,
@@ -16,7 +18,6 @@ from app.prompts import (
 import hashlib
 import re
 from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
 from xml.etree import ElementTree
 
 import httpx
@@ -138,33 +139,6 @@ NEWS_FEEDS: list[dict] = [
 def _hash(text: str) -> str:
     """SHA-256 hash for dedup."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def _parse_pub_date(date_str: str | None) -> datetime | None:
-    """Parse RSS pubDate / Atom updated to datetime."""
-    if not date_str:
-        return None
-    try:
-        return parsedate_to_datetime(date_str)
-    except Exception:
-        pass
-    # Try ISO format
-    for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(date_str, fmt).replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    return None
-
-
-def _strip_html(html: str | None) -> str:
-    """Remove HTML tags, decode entities."""
-    if not html:
-        return ""
-    text = re.sub(r"<[^>]+>", " ", html)
-    text = re.sub(r"&[a-z]+;", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text[:12000]  # cap long descriptions
 
 
 # ── Cross-source Deduplication ───────────────────────────
@@ -295,30 +269,6 @@ async def _enrich_articles_with_fulltext(articles: list[dict]) -> list[dict]:
             return await _fetch_one(art)
 
     return await asyncio.gather(*[_limited(a) for a in articles])
-
-
-def _detect_category(title: str, description: str) -> str:
-    """Simple keyword-based category detection. AI enrichment refines later."""
-    text = f"{title} {description}".lower()
-
-    if any(k in text for k in ("ransomware", "breach", "leak", "stolen data", "extortion")):
-        return "ransomware_breaches"
-    if any(k in text for k in ("exploit", "vulnerability", "cve-", "zero-day", "0-day", "patch", "kev")):
-        return "exploited_vulnerabilities"
-    if any(k in text for k in ("apt", "nation-state", "nation state", "china", "russia", "iran", "north korea", "espionage")):
-        return "nation_state"
-    if any(k in text for k in ("cloud", "saas", "azure", "aws", "identity", "oauth", "sso", "credential")):
-        return "cloud_identity"
-    if any(k in text for k in ("ics", "ot ", "scada", "plc", "industrial", "operational technology")):
-        return "ot_ics"
-    if any(k in text for k in ("tool", "framework", "open source", "github", "release", "platform")):
-        return "tools_technology"
-    if any(k in text for k in ("policy", "regulation", "compliance", "gdpr", "law", "legislation", "executive order")):
-        return "policy_regulation"
-    if any(k in text for k in ("research", "analysis", "report", "study", "paper", "findings")):
-        return "security_research"
-
-    return "active_threats"
 
 
 async def fetch_rss_feed(feed: dict) -> dict:

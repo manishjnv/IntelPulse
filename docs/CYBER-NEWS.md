@@ -361,6 +361,24 @@ Five providers tried in order until one succeeds:
 | User prompt input cap | **10,000 characters** |
 | Output parsing | Strip markdown ```json fences, parse as JSON |
 
+### 6.2.1 KQL Detection Rule Generation
+
+A dedicated post-enrichment AI pipeline generates Microsoft Sentinel KQL detection rules
+from enriched news articles. This runs as a **separate AI feature** (`kql_generation`) with
+its own model selection, daily limits, and prompt override.
+
+| Parameter | Value |
+|-----------|-------|
+| Function | `generate_kql_rules(headline, raw_content, context)` |
+| max_tokens | **8,000** |
+| temperature | **0.1** |
+| Recommended model | `gemini-2.5-pro` |
+| Input | Headline + raw content + enrichment context (actors, malware, CVEs, TTPs, IOCs) |
+| Output | JSON `{ rules: [...], coverage_summary: {...} }` |
+| Storage | Individual rules → `detection_rules` table; combined KQL → `news_items.kql_rule` |
+
+See [PROMPT-ENGINEERING.md](PROMPT-ENGINEERING.md) for full prompt design (KQL-1.0).
+
 ### 6.3 System Prompt (Prompt D — `_NEWS_ENRICHMENT_SYSTEM`)
 
 The full system prompt is ~150 lines in `services/news.py` (lines 748–812). The AI is instructed to act as a **Fortune 100 SOC analyst** writing for two audiences: a CISO needing business-impact framing in ≤60s, and a SOC analyst needing detection rules and IOC-actionable details.
@@ -740,13 +758,14 @@ CREATE TYPE confidence_level AS ENUM ('high', 'medium', 'low');
 |------|----------|----------|-------|-------------|------------|
 | News Ingestion | `worker.tasks.ingest_news` | **30 min** | `default` | +2 min | Top 10 per cycle |
 | News Enrichment | `worker.tasks.enrich_news_batch` | **5 min** | `low` | +4 min | `batch_size=5` |
+| KQL Rule Generation | `worker.tasks.generate_kql_rules_batch` | **10 min** | `low` | +6 min | `batch_size=5` |
 | Stale News Cleanup | `worker.tasks.cleanup_stale_news` | **6 hours** | `low` | +10 min | `max_age_hours=6` |
 
 ### Scheduler Constants
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
-| `EXPECTED_JOB_COUNT` | 22 | Total scheduled jobs across all features |
+| `EXPECTED_JOB_COUNT` | 28 | Total scheduled jobs across all features |
 | `MAX_ARTICLES_PER_CYCLE` | 10 | Max articles stored per ingestion cycle |
 | `WATCHDOG_INTERVAL` | 120s | Job health check interval |
 | `HEARTBEAT_KEY` | `scheduler:heartbeat` | Redis key for heartbeat |
@@ -783,6 +802,36 @@ CREATE TYPE confidence_level AS ENUM ('high', 'medium', 'low');
 1. Find unenriched items older than `max_age_hours`
 2. DELETE them — stale content replaced by fresher articles next cycle
 3. Runs every **6 hours**
+
+### Worker Task: `generate_kql_rules_batch(batch_size=5)`
+
+1. Query `WHERE ai_enriched = TRUE AND (kql_rule IS NULL OR kql_rule = '') ORDER BY created_at ASC LIMIT batch_size`
+2. For each item:
+   a. Build enrichment context from existing AI fields (threat_actors, malware_families, cves, tactics_techniques, campaign_name, ioc_summary, detection_opportunities)
+   b. Call `generate_kql_rules(headline, raw_content[:10000], enrichment_context)`
+   c. Feature: `kql_generation` (separate AI feature with own model/limits/prompt)
+   d. Parse JSON response containing `rules[]` array and `coverage_summary`
+   e. Delete existing KQL rules for this article (idempotent re-generation)
+   f. Insert each rule into `detection_rules` table with `rule_type='kql'`, `quality_score=75`
+   g. Store combined KQL text in `news_items.kql_rule` for quick access
+   h. Sleep **2 seconds** between items
+3. Articles with no actionable threat content (product news, policy) return empty rules array — `kql_rule` set to empty string to prevent re-processing
+4. Per-item try/except with rollback isolates failures
+
+#### KQL Rule Output Schema
+
+Each rule in the `rules[]` array:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Descriptive rule name (e.g., "Detect .arpa TLD DNS Queries") |
+| `description` | string | What the rule detects and why |
+| `query` | string | Complete KQL query with time filters and projections |
+| `category` | string | One of 10 detection categories |
+| `severity` | string | `critical`, `high`, `medium`, or `low` |
+| `mitre_techniques` | string[] | MITRE ATT&CK technique IDs (e.g., `["T1071.004"]`) |
+| `data_sources` | string[] | Required log tables (e.g., `["Syslog", "SecurityEvent"]`) |
+| `false_positive_notes` | string | Guidance on expected false positives |
 
 ### Category Validation
 
@@ -1100,6 +1149,9 @@ The Feed Status page (`/feeds`) now has two tabs:
 - **IOC auto-extraction (regex fallback):** Extract IOCs from raw_content directly when AI is unavailable
 - **Human-in-the-loop:** Allow analysts to correct/override AI classifications, feed corrections back as training signal
 - **Multi-language support:** Translate non-English articles before enrichment
+- **KQL rule quality scoring:** Auto-validate generated KQL syntax, score rule effectiveness based on log coverage
+- **Additional rule formats:** Sigma, YARA, Snort/Suricata rules alongside KQL (extend detection_rules table)
+- **Rule deduplication:** Detect semantically similar rules across articles and deduplicate
 
 ### 19.4 Content Extraction
 

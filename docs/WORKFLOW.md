@@ -153,13 +153,34 @@ cat ~/.ssh/github_deploy   # Copy this private key
 |-----------|------|
 | DB Schema | `db/schema.sql` |
 | API App | `api/app/main.py` |
+| AI Prompts | `api/app/prompts.py` |
 | Feed Connectors | `api/app/services/feeds/` |
+| News Enrichment | `api/app/services/news.py` |
+| KQL Generation | `api/app/services/news.py → generate_kql_rules()` |
+| AI Settings | `api/app/routes/ai_settings.py` |
 | Worker Tasks | `worker/tasks.py` |
 | Scheduler | `worker/scheduler.py` |
 | UI Pages | `ui/src/app/(app)/` |
 | Docker | `docker/`, `docker-compose.yml` |
 | Cloudflare | `cloudflare/tunnel-config.yml` |
 | CI/CD | `.github/workflows/ci.yml` |
+
+## AI Pipeline Overview
+
+News articles flow through a multi-stage AI pipeline:
+
+```
+RSS Feeds → ingest_news (30 min)
+               ↓
+         enrich_news_batch (5 min) → D-5.0 prompt → 28 enrichment fields
+               ↓
+         generate_kql_rules_batch (10 min) → KQL-1.0 prompt → detection_rules table
+```
+
+**7 AI features** with per-feature model selection, daily limits, and prompt overrides:
+`intel_summary`, `intel_enrichment`, `news_enrichment`, `live_lookup`, `report_gen`, `briefing_gen`, `kql_generation`
+
+See [PROMPT-ENGINEERING.md](docs/PROMPT-ENGINEERING.md) for prompt versions and design decisions.
 
 ## Troubleshooting
 
@@ -168,6 +189,8 @@ cat ~/.ssh/github_deploy   # Copy this private key
 | Feeds not syncing | Check `docker compose logs worker`. Verify API keys in `.env`. |
 | Login not working (dev) | Set `DEV_BYPASS_AUTH=true` in `.env`, restart API. |
 | Login not working (prod) | Verify `CF_ACCESS_TEAM_NAME` and `CF_ACCESS_AUD` in `.env`. Check Cloudflare Access config. |
+| KQL rules not generating | Check `docker compose logs worker` for kql_generation errors. Verify AI feature enabled in `/settings`. Ensure articles are enriched first (`ai_enriched=True`). |
+| AI enrichment failing | Check provider API keys. Review fallback chain in `docker compose logs api`. Check daily limits in AI Settings. |
 | Auth bypass leaking to prod | Ensure `DEV_BYPASS_AUTH` is **not** `true` in production `.env`. |
 | Session expired | Sessions last 8 hours by default. Adjust `JWT_EXPIRE_MINUTES`. |
 | OpenSearch index missing | API auto-creates on startup. Check `:9200/_cluster/health`. |

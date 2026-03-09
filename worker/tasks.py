@@ -18,6 +18,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
 from app.core.opensearch import bulk_index_items, ensure_index
+from app.normalizers.categories import normalize_category
+from app.normalizers.enrichment import apply_news_enrichment
+from app.normalizers.geo import CC_CONTINENT, CC_NAMES
 from app.services.scoring import batch_score
 
 setup_logging()
@@ -765,103 +768,6 @@ def _prepare_os_docs(items: list[dict]) -> list[dict]:
 
 # ── IPinfo Lite IP Enrichment ────────────────────────────
 
-# Country-code → continent mapping (ISO 3166 / UN M49 groupings)
-_CC_CONTINENT: dict[str, tuple[str, str]] = {
-    "AF": ("AS", "Asia"), "AX": ("EU", "Europe"), "AL": ("EU", "Europe"), "DZ": ("AF", "Africa"),
-    "AS": ("OC", "Oceania"), "AD": ("EU", "Europe"), "AO": ("AF", "Africa"), "AI": ("NA", "North America"),
-    "AQ": ("AN", "Antarctica"), "AG": ("NA", "North America"), "AR": ("SA", "South America"),
-    "AM": ("AS", "Asia"), "AW": ("NA", "North America"), "AU": ("OC", "Oceania"), "AT": ("EU", "Europe"),
-    "AZ": ("AS", "Asia"), "BS": ("NA", "North America"), "BH": ("AS", "Asia"), "BD": ("AS", "Asia"),
-    "BB": ("NA", "North America"), "BY": ("EU", "Europe"), "BE": ("EU", "Europe"), "BZ": ("NA", "North America"),
-    "BJ": ("AF", "Africa"), "BM": ("NA", "North America"), "BT": ("AS", "Asia"), "BO": ("SA", "South America"),
-    "BA": ("EU", "Europe"), "BW": ("AF", "Africa"), "BR": ("SA", "South America"), "BN": ("AS", "Asia"),
-    "BG": ("EU", "Europe"), "BF": ("AF", "Africa"), "BI": ("AF", "Africa"), "KH": ("AS", "Asia"),
-    "CM": ("AF", "Africa"), "CA": ("NA", "North America"), "CV": ("AF", "Africa"), "KY": ("NA", "North America"),
-    "CF": ("AF", "Africa"), "TD": ("AF", "Africa"), "CL": ("SA", "South America"), "CN": ("AS", "Asia"),
-    "CO": ("SA", "South America"), "KM": ("AF", "Africa"), "CG": ("AF", "Africa"), "CD": ("AF", "Africa"),
-    "CR": ("NA", "North America"), "CI": ("AF", "Africa"), "HR": ("EU", "Europe"), "CU": ("NA", "North America"),
-    "CY": ("EU", "Europe"), "CZ": ("EU", "Europe"), "DK": ("EU", "Europe"), "DJ": ("AF", "Africa"),
-    "DM": ("NA", "North America"), "DO": ("NA", "North America"), "EC": ("SA", "South America"),
-    "EG": ("AF", "Africa"), "SV": ("NA", "North America"), "GQ": ("AF", "Africa"), "ER": ("AF", "Africa"),
-    "EE": ("EU", "Europe"), "ET": ("AF", "Africa"), "FJ": ("OC", "Oceania"), "FI": ("EU", "Europe"),
-    "FR": ("EU", "Europe"), "GA": ("AF", "Africa"), "GM": ("AF", "Africa"), "GE": ("AS", "Asia"),
-    "DE": ("EU", "Europe"), "GH": ("AF", "Africa"), "GR": ("EU", "Europe"), "GD": ("NA", "North America"),
-    "GT": ("NA", "North America"), "GN": ("AF", "Africa"), "GW": ("AF", "Africa"), "GY": ("SA", "South America"),
-    "HT": ("NA", "North America"), "HN": ("NA", "North America"), "HK": ("AS", "Asia"), "HU": ("EU", "Europe"),
-    "IS": ("EU", "Europe"), "IN": ("AS", "Asia"), "ID": ("AS", "Asia"), "IR": ("AS", "Asia"),
-    "IQ": ("AS", "Asia"), "IE": ("EU", "Europe"), "IL": ("AS", "Asia"), "IT": ("EU", "Europe"),
-    "JM": ("NA", "North America"), "JP": ("AS", "Asia"), "JO": ("AS", "Asia"), "KZ": ("AS", "Asia"),
-    "KE": ("AF", "Africa"), "KI": ("OC", "Oceania"), "KP": ("AS", "Asia"), "KR": ("AS", "Asia"),
-    "KW": ("AS", "Asia"), "KG": ("AS", "Asia"), "LA": ("AS", "Asia"), "LV": ("EU", "Europe"),
-    "LB": ("AS", "Asia"), "LS": ("AF", "Africa"), "LR": ("AF", "Africa"), "LY": ("AF", "Africa"),
-    "LI": ("EU", "Europe"), "LT": ("EU", "Europe"), "LU": ("EU", "Europe"), "MO": ("AS", "Asia"),
-    "MK": ("EU", "Europe"), "MG": ("AF", "Africa"), "MW": ("AF", "Africa"), "MY": ("AS", "Asia"),
-    "MV": ("AS", "Asia"), "ML": ("AF", "Africa"), "MT": ("EU", "Europe"), "MH": ("OC", "Oceania"),
-    "MR": ("AF", "Africa"), "MU": ("AF", "Africa"), "MX": ("NA", "North America"), "FM": ("OC", "Oceania"),
-    "MD": ("EU", "Europe"), "MC": ("EU", "Europe"), "MN": ("AS", "Asia"), "ME": ("EU", "Europe"),
-    "MA": ("AF", "Africa"), "MZ": ("AF", "Africa"), "MM": ("AS", "Asia"), "NA": ("AF", "Africa"),
-    "NR": ("OC", "Oceania"), "NP": ("AS", "Asia"), "NL": ("EU", "Europe"), "NZ": ("OC", "Oceania"),
-    "NI": ("NA", "North America"), "NE": ("AF", "Africa"), "NG": ("AF", "Africa"), "NO": ("EU", "Europe"),
-    "OM": ("AS", "Asia"), "PK": ("AS", "Asia"), "PW": ("OC", "Oceania"), "PS": ("AS", "Asia"),
-    "PA": ("NA", "North America"), "PG": ("OC", "Oceania"), "PY": ("SA", "South America"),
-    "PE": ("SA", "South America"), "PH": ("AS", "Asia"), "PL": ("EU", "Europe"), "PT": ("EU", "Europe"),
-    "QA": ("AS", "Asia"), "RO": ("EU", "Europe"), "RU": ("EU", "Europe"), "RW": ("AF", "Africa"),
-    "SA": ("AS", "Asia"), "SN": ("AF", "Africa"), "RS": ("EU", "Europe"), "SC": ("AF", "Africa"),
-    "SL": ("AF", "Africa"), "SG": ("AS", "Asia"), "SK": ("EU", "Europe"), "SI": ("EU", "Europe"),
-    "SB": ("OC", "Oceania"), "SO": ("AF", "Africa"), "ZA": ("AF", "Africa"), "ES": ("EU", "Europe"),
-    "LK": ("AS", "Asia"), "SD": ("AF", "Africa"), "SR": ("SA", "South America"), "SZ": ("AF", "Africa"),
-    "SE": ("EU", "Europe"), "CH": ("EU", "Europe"), "SY": ("AS", "Asia"), "TW": ("AS", "Asia"),
-    "TJ": ("AS", "Asia"), "TZ": ("AF", "Africa"), "TH": ("AS", "Asia"), "TL": ("AS", "Asia"),
-    "TG": ("AF", "Africa"), "TO": ("OC", "Oceania"), "TT": ("NA", "North America"), "TN": ("AF", "Africa"),
-    "TR": ("AS", "Asia"), "TM": ("AS", "Asia"), "TV": ("OC", "Oceania"), "UG": ("AF", "Africa"),
-    "UA": ("EU", "Europe"), "AE": ("AS", "Asia"), "GB": ("EU", "Europe"), "US": ("NA", "North America"),
-    "UY": ("SA", "South America"), "UZ": ("AS", "Asia"), "VU": ("OC", "Oceania"), "VE": ("SA", "South America"),
-    "VN": ("AS", "Asia"), "YE": ("AS", "Asia"), "ZM": ("AF", "Africa"), "ZW": ("AF", "Africa"),
-}
-
-# ISO 3166 country-code → full country name
-_CC_NAMES: dict[str, str] = {
-    "AF": "Afghanistan", "AL": "Albania", "DZ": "Algeria", "AD": "Andorra", "AO": "Angola",
-    "AG": "Antigua and Barbuda", "AR": "Argentina", "AM": "Armenia", "AU": "Australia",
-    "AT": "Austria", "AZ": "Azerbaijan", "BS": "Bahamas", "BH": "Bahrain", "BD": "Bangladesh",
-    "BB": "Barbados", "BY": "Belarus", "BE": "Belgium", "BZ": "Belize", "BJ": "Benin",
-    "BT": "Bhutan", "BO": "Bolivia", "BA": "Bosnia and Herzegovina", "BW": "Botswana",
-    "BR": "Brazil", "BN": "Brunei", "BG": "Bulgaria", "BF": "Burkina Faso", "BI": "Burundi",
-    "KH": "Cambodia", "CM": "Cameroon", "CA": "Canada", "CV": "Cape Verde", "CF": "Central African Republic",
-    "TD": "Chad", "CL": "Chile", "CN": "China", "CO": "Colombia", "KM": "Comoros",
-    "CG": "Congo", "CD": "DR Congo", "CR": "Costa Rica", "CI": "Ivory Coast", "HR": "Croatia",
-    "CU": "Cuba", "CY": "Cyprus", "CZ": "Czech Republic", "DK": "Denmark", "DJ": "Djibouti",
-    "DM": "Dominica", "DO": "Dominican Republic", "EC": "Ecuador", "EG": "Egypt",
-    "SV": "El Salvador", "GQ": "Equatorial Guinea", "ER": "Eritrea", "EE": "Estonia",
-    "ET": "Ethiopia", "FJ": "Fiji", "FI": "Finland", "FR": "France", "GA": "Gabon", "GM": "Gambia",
-    "GE": "Georgia", "DE": "Germany", "GH": "Ghana", "GR": "Greece", "GD": "Grenada",
-    "GT": "Guatemala", "GN": "Guinea", "GW": "Guinea-Bissau", "GY": "Guyana", "HT": "Haiti",
-    "HN": "Honduras", "HK": "Hong Kong", "HU": "Hungary", "IS": "Iceland", "IN": "India",
-    "ID": "Indonesia", "IR": "Iran", "IQ": "Iraq", "IE": "Ireland", "IL": "Israel", "IT": "Italy",
-    "JM": "Jamaica", "JP": "Japan", "JO": "Jordan", "KZ": "Kazakhstan", "KE": "Kenya",
-    "KI": "Kiribati", "KP": "North Korea", "KR": "South Korea", "KW": "Kuwait", "KG": "Kyrgyzstan",
-    "LA": "Laos", "LV": "Latvia", "LB": "Lebanon", "LS": "Lesotho", "LR": "Liberia", "LY": "Libya",
-    "LI": "Liechtenstein", "LT": "Lithuania", "LU": "Luxembourg", "MO": "Macau", "MK": "North Macedonia",
-    "MG": "Madagascar", "MW": "Malawi", "MY": "Malaysia", "MV": "Maldives", "ML": "Mali",
-    "MT": "Malta", "MH": "Marshall Islands", "MR": "Mauritania", "MU": "Mauritius", "MX": "Mexico",
-    "FM": "Micronesia", "MD": "Moldova", "MC": "Monaco", "MN": "Mongolia", "ME": "Montenegro",
-    "MA": "Morocco", "MZ": "Mozambique", "MM": "Myanmar", "NA": "Namibia", "NR": "Nauru",
-    "NP": "Nepal", "NL": "Netherlands", "NZ": "New Zealand", "NI": "Nicaragua", "NE": "Niger",
-    "NG": "Nigeria", "NO": "Norway", "OM": "Oman", "PK": "Pakistan", "PW": "Palau",
-    "PS": "Palestine", "PA": "Panama", "PG": "Papua New Guinea", "PY": "Paraguay", "PE": "Peru",
-    "PH": "Philippines", "PL": "Poland", "PT": "Portugal", "QA": "Qatar", "RO": "Romania",
-    "RU": "Russia", "RW": "Rwanda", "SA": "Saudi Arabia", "SN": "Senegal", "RS": "Serbia",
-    "SC": "Seychelles", "SL": "Sierra Leone", "SG": "Singapore", "SK": "Slovakia", "SI": "Slovenia",
-    "SB": "Solomon Islands", "SO": "Somalia", "ZA": "South Africa", "ES": "Spain", "LK": "Sri Lanka",
-    "SD": "Sudan", "SR": "Suriname", "SZ": "Eswatini", "SE": "Sweden", "CH": "Switzerland",
-    "SY": "Syria", "TW": "Taiwan", "TJ": "Tajikistan", "TZ": "Tanzania", "TH": "Thailand",
-    "TL": "Timor-Leste", "TG": "Togo", "TO": "Tonga", "TT": "Trinidad and Tobago", "TN": "Tunisia",
-    "TR": "Turkey", "TM": "Turkmenistan", "TV": "Tuvalu", "UG": "Uganda", "UA": "Ukraine",
-    "AE": "United Arab Emirates", "GB": "United Kingdom", "US": "United States", "UY": "Uruguay",
-    "UZ": "Uzbekistan", "VU": "Vanuatu", "VE": "Venezuela", "VN": "Vietnam", "YE": "Yemen",
-    "ZM": "Zambia", "ZW": "Zimbabwe",
-}
-
 IPINFO_BASE = "https://ipinfo.io"
 IPINFO_TIMEOUT = 10
 
@@ -902,13 +808,13 @@ def enrich_ips_ipinfo(batch_size: int = 100) -> dict:
                 continue
 
             cc = data.get("country", "")
-            continent_info = _CC_CONTINENT.get(cc, ("", ""))
+            continent_info = CC_CONTINENT.get(cc, ("", ""))
 
             ioc.asn = data.get("asn", "")[:20] or None
             ioc.as_name = data.get("as_name", "")[:200] or None
             ioc.as_domain = data.get("as_domain", "")[:200] or None
             ioc.country_code = cc[:5] or None
-            ioc.country = (data.get("country_name") or _CC_NAMES.get(cc, ""))[:100] or None
+            ioc.country = (data.get("country_name") or CC_NAMES.get(cc, ""))[:100] or None
             ioc.continent_code = continent_info[0][:5] or None
             ioc.continent = continent_info[1][:50] or None
             ioc.enriched_at = datetime.now(timezone.utc)
@@ -969,7 +875,7 @@ async def _ipinfo_lookup(ip: str, token: str = "") -> dict | None:
                 "as_name": as_name,
                 "as_domain": as_domain,
                 "country": data.get("country", ""),  # 2-letter code
-                "country_name": _CC_NAMES.get(data.get("country", ""), ""),
+                "country_name": CC_NAMES.get(data.get("country", ""), ""),
                 "city": data.get("city", ""),
                 "region": data.get("region", ""),
                 "loc": data.get("loc", ""),  # "lat,lng"
@@ -1526,61 +1432,6 @@ def cleanup_stale_news(max_age_hours: int = 6) -> dict:
         session.close()
 
 
-# Valid news_category enum values in PostgreSQL
-_VALID_NEWS_CATEGORIES = {
-    "active_threats", "exploited_vulnerabilities", "ransomware_breaches",
-    "nation_state", "cloud_identity", "ot_ics", "security_research",
-    "tools_technology", "policy_regulation", "general_news", "geopolitical_cyber",
-}
-
-# Map common AI-hallucinated categories to valid ones
-_CATEGORY_FALLBACK_MAP = {
-    "security_operations": "active_threats",
-    "cyber_operations": "active_threats",
-    "data_breach": "ransomware_breaches",
-    "data_breaches": "ransomware_breaches",
-    "malware": "active_threats",
-    "phishing": "active_threats",
-    "supply_chain": "active_threats",
-    "vulnerability": "exploited_vulnerabilities",
-    "vulnerabilities": "exploited_vulnerabilities",
-    "zero_day": "exploited_vulnerabilities",
-    "apt": "nation_state",
-    "espionage": "nation_state",
-    "iot": "ot_ics",
-    "iot_security": "ot_ics",
-    "cloud_security": "cloud_identity",
-    "identity": "cloud_identity",
-    "regulation": "policy_regulation",
-    "compliance": "policy_regulation",
-    "research": "security_research",
-    "tools": "tools_technology",
-    "technology": "tools_technology",
-    "general": "general_news",
-    "general_cybersecurity": "general_news",
-    "general_cybersecurity_news": "general_news",
-    "geopolitical": "geopolitical_cyber",
-    "geopolitical_cyber_development": "geopolitical_cyber",
-    "geopolitical_development": "geopolitical_cyber",
-    "cyber_diplomacy": "geopolitical_cyber",
-    "sanctions": "geopolitical_cyber",
-}
-
-
-def _normalize_category(raw: str, fallback: str = "active_threats") -> str:
-    """Validate and normalize AI-returned category to a valid enum value."""
-    if raw in _VALID_NEWS_CATEGORIES:
-        return raw
-    # Try fallback mapping
-    mapped = _CATEGORY_FALLBACK_MAP.get(raw)
-    if mapped:
-        logger.info("category_remapped", raw=raw, mapped=mapped)
-        return mapped
-    # Last resort: use existing item category or default
-    logger.warning("category_invalid_fallback", raw=raw, fallback=fallback)
-    return fallback
-
-
 def enrich_news_batch(batch_size: int = 10) -> dict:
     """AI-enrich unenriched news items in batch."""
     import time
@@ -1614,36 +1465,7 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
                 )
 
                 if enrichment:
-                    # Apply enrichment data — validate category against enum
-                    raw_cat = enrichment.get("category", item.category or "active_threats")
-                    item.category = _normalize_category(raw_cat, item.category or "active_threats")
-                    item.summary = enrichment.get("summary")
-                    item.executive_brief = enrichment.get("executive_brief")
-                    item.risk_assessment = enrichment.get("risk_assessment")
-                    item.attack_narrative = enrichment.get("attack_narrative")
-                    item.recommended_priority = enrichment.get("recommended_priority", "medium")
-                    item.why_it_matters = enrichment.get("why_it_matters", [])
-                    item.tags = enrichment.get("tags", [])
-                    item.threat_actors = enrichment.get("threat_actors", [])
-                    item.malware_families = enrichment.get("malware_families", [])
-                    item.campaign_name = enrichment.get("campaign_name")
-                    item.cves = enrichment.get("cves", [])
-                    item.vulnerable_products = enrichment.get("vulnerable_products", [])
-                    item.tactics_techniques = enrichment.get("tactics_techniques", [])
-                    item.initial_access_vector = enrichment.get("initial_access_vector")
-                    item.post_exploitation = enrichment.get("post_exploitation", [])
-                    item.targeted_sectors = enrichment.get("targeted_sectors", [])
-                    item.targeted_regions = enrichment.get("targeted_regions", [])
-                    item.impacted_assets = enrichment.get("impacted_assets", [])
-                    item.ioc_summary = enrichment.get("ioc_summary", {})
-                    item.timeline = enrichment.get("timeline", [])
-                    item.detection_opportunities = enrichment.get("detection_opportunities", [])
-                    item.mitigation_recommendations = enrichment.get("mitigation_recommendations", [])
-                    item.notable_campaigns = enrichment.get("notable_campaigns", [])
-                    item.exploitation_info = enrichment.get("exploitation_info", {})
-                    item.related_cves = enrichment.get("related_cves", [])
-                    item.confidence = enrichment.get("confidence", "medium") if enrichment.get("confidence") in ("high", "medium", "low") else "medium"
-                    item.relevance_score = max(1, min(100, enrichment.get("relevance_score", 50)))
+                    apply_news_enrichment(item, enrichment)
                     item.ai_enriched = True
                     try:
                         session.flush()  # Validate this single item immediately
@@ -1738,35 +1560,7 @@ def re_enrich_fallback_news(batch_size: int = 10) -> dict:
                 )
 
                 if enrichment:
-                    raw_cat = enrichment.get("category", item.category or "active_threats")
-                    item.category = _normalize_category(raw_cat, item.category or "active_threats")
-                    item.summary = enrichment.get("summary")
-                    item.executive_brief = enrichment.get("executive_brief")
-                    item.risk_assessment = enrichment.get("risk_assessment")
-                    item.attack_narrative = enrichment.get("attack_narrative")
-                    item.recommended_priority = enrichment.get("recommended_priority", "medium")
-                    item.why_it_matters = enrichment.get("why_it_matters", [])
-                    item.tags = enrichment.get("tags", [])
-                    item.threat_actors = enrichment.get("threat_actors", [])
-                    item.malware_families = enrichment.get("malware_families", [])
-                    item.campaign_name = enrichment.get("campaign_name")
-                    item.cves = enrichment.get("cves", [])
-                    item.vulnerable_products = enrichment.get("vulnerable_products", [])
-                    item.tactics_techniques = enrichment.get("tactics_techniques", [])
-                    item.initial_access_vector = enrichment.get("initial_access_vector")
-                    item.post_exploitation = enrichment.get("post_exploitation", [])
-                    item.targeted_sectors = enrichment.get("targeted_sectors", [])
-                    item.targeted_regions = enrichment.get("targeted_regions", [])
-                    item.impacted_assets = enrichment.get("impacted_assets", [])
-                    item.ioc_summary = enrichment.get("ioc_summary", {})
-                    item.timeline = enrichment.get("timeline", [])
-                    item.detection_opportunities = enrichment.get("detection_opportunities", [])
-                    item.mitigation_recommendations = enrichment.get("mitigation_recommendations", [])
-                    item.notable_campaigns = enrichment.get("notable_campaigns", [])
-                    item.exploitation_info = enrichment.get("exploitation_info", {})
-                    item.related_cves = enrichment.get("related_cves", [])
-                    item.confidence = enrichment.get("confidence", "medium") if enrichment.get("confidence") in ("high", "medium", "low") else "medium"
-                    item.relevance_score = max(1, min(100, enrichment.get("relevance_score", 50)))
+                    apply_news_enrichment(item, enrichment)
 
                     try:
                         session.flush()

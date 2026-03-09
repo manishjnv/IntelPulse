@@ -8,30 +8,10 @@ from app.core.logging import get_logger
 from app.core.opensearch import search_intel, INDEX_NAME
 from app.core.redis import cache_key, get_cached, set_cached
 from app.core.config import get_settings
+from app.normalizers.patterns import IOC_PATTERNS, detect_ioc_type
 
 logger = get_logger(__name__)
 settings = get_settings()
-
-# Regex patterns for IOC type detection
-IOC_PATTERNS = {
-    "cve": re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE),
-    "ip": re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"),
-    "domain": re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$"),
-    "url": re.compile(r"^https?://", re.IGNORECASE),
-    "hash_md5": re.compile(r"^[a-fA-F0-9]{32}$"),
-    "hash_sha1": re.compile(r"^[a-fA-F0-9]{40}$"),
-    "hash_sha256": re.compile(r"^[a-fA-F0-9]{64}$"),
-    "email": re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"),
-}
-
-
-def detect_ioc_type(query: str) -> str | None:
-    """Auto-detect the type of an IOC from the search query."""
-    q = query.strip()
-    for ioc_type, pattern in IOC_PATTERNS.items():
-        if pattern.match(q):
-            return ioc_type
-    return None
 
 
 async def global_search(
