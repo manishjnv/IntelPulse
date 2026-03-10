@@ -86,7 +86,7 @@ function DesktopSidebar() {
       )}
     >
       {/* Logo */}
-      <div className="flex h-14 items-center border-b border-border/50 px-2.5 gap-2 shrink-0">
+      <Link href="/dashboard" className="flex h-14 items-center border-b border-border/50 px-2.5 gap-2 shrink-0 hover:bg-accent/30 transition-colors">
         <div className="flex h-8 w-8 items-center justify-center shrink-0">
           <IntelWatchLogo />
         </div>
@@ -96,7 +96,7 @@ function DesktopSidebar() {
             <span className="text-[10px] text-muted-foreground leading-none mt-0.5">TI Platform</span>
           </div>
         )}
-      </div>
+      </Link>
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-3">
@@ -237,7 +237,7 @@ function MobileSidebar() {
       >
         {/* Header */}
         <div className="flex h-14 items-center border-b border-border/50 px-4 justify-between">
-          <div className="flex items-center gap-2">
+          <Link href="/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <div className="flex h-8 w-8 items-center justify-center shrink-0">
               <IntelWatchLogo />
             </div>
@@ -245,7 +245,7 @@ function MobileSidebar() {
               <span className="text-sm font-bold tracking-tight leading-none">IntelWatch</span>
               <span className="text-[10px] text-muted-foreground leading-none mt-0.5">TI Platform</span>
             </div>
-          </div>
+          </Link>
           <button
             onClick={() => setMobileSidebarOpen(false)}
             className="p-2 rounded-lg hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors"
