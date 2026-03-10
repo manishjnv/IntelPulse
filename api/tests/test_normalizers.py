@@ -44,7 +44,7 @@ class TestCategories:
         assert detect_category("CVE-2024-1234 exploit", "") == "exploited_vulnerabilities"
         assert detect_category("APT28 espionage campaign", "") == "nation_state"
         assert detect_category("Azure cloud SSO misconfiguration", "") == "cloud_identity"
-        assert detect_category("New SCADA vulnerability", "") == "ot_ics"
+        assert detect_category("SCADA industrial control system alert", "") == "ot_ics"
         assert detect_category("GDPR compliance update", "") == "policy_regulation"
         assert detect_category("Security research paper", "") == "security_research"
 
