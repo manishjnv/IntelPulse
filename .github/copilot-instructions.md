@@ -81,6 +81,18 @@ reports (12), search (3), settings (4), techniques (4)
 - 570 news items, 22,372 intel items in production DB
 - 28 scheduled jobs, 9 AI prompts, 12 feed connectors
 
+## Testing
+- **Framework**: pytest 9, pytest-asyncio, pytest-cov
+- **Config**: `api/pyproject.toml` `[tool.pytest.ini_options]`, asyncio_mode="auto"
+- **Test files**: `api/tests/` — conftest.py + 3 test modules
+  - `test_normalizers.py` — 60+ tests across all 14 normalizer modules
+  - `test_services.py` — 10 tests for scoring service
+  - `test_routes.py` — 13 route smoke tests (mocked auth + DB + Redis)
+- **Run locally**: `cd api && python -m pytest tests/ -v --tb=short`
+- **Run on VPS**: `docker exec -w /app/api ti-platform-api-1 python -m pytest tests/ -v --tb=short`
+- **Current**: 109 tests, all passing
+- **Key fixtures** (conftest.py): `mock_user` (admin), `async_client` (httpx ASGI), `_mock_redis` (autouse)
+
 ## Known Gaps (prioritized)
 P0: Visual graph explorer, TAXII 2.1 server, threat actor database, SOAR/playbook integration
 P1: GreyNoise/Censys enrichment, Slack/Teams notifications, detection rule deployment, IOC lifecycle, dark web monitoring, scoring config UI
