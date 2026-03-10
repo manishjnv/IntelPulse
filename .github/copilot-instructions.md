@@ -47,6 +47,8 @@ ui/
 - Feed connectors extend `BaseFeedConnector` abstract class.
 - UI pages use `api.ts` client functions (never raw `fetch`). Pages are server components; interactivity via client components.
 - Redis caching via `get_cached()`/`set_cached()` with TTL in route handlers.
+- **Before modifying existing code**: always review the current implementation and trace its dependencies (callers, imports, fixtures, tests) to ensure changes don't break existing features. Never blindly replace code — understand what depends on it first.
+- **Before starting any implementation**: suggest unique improvements or ideas that could enhance the feature, UX, or competitive edge — don't wait until after implementation.
 
 ## Deployment
 - VPS: 72.61.227.64, SSH: root, project at /opt/ti-platform

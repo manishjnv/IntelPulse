@@ -7,6 +7,9 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "IntelWatch - TI Platform",
   description: "IntelWatch — Threat Intelligence Platform with live feeds, IOC search, risk scoring",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
