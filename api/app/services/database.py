@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import Integer, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -944,10 +944,128 @@ async def get_users(db: AsyncSession) -> list[User]:
     return list(result.scalars().all())
 
 
-async def update_user_role(db: AsyncSession, user_id: uuid.UUID, role: str) -> User | None:
+async def update_user(db: AsyncSession, user_id: uuid.UUID, role: str | None, is_active: bool | None) -> User | None:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
-    if user:
+    if not user:
+        return None
+    if role is not None:
         user.role = role
-        await db.flush()
+    if is_active is not None:
+        user.is_active = is_active
+    await db.flush()
     return user
+
+
+async def update_user_role(db: AsyncSession, user_id: uuid.UUID, role: str) -> User | None:
+    """Legacy helper — prefer update_user."""
+    return await update_user(db, user_id, role=role, is_active=None)
+
+
+async def get_user_activity_stats(
+    db: AsyncSession, user_ids: list[uuid.UUID]
+) -> dict[str, dict]:
+    """Aggregate activity stats per user from audit_log."""
+    from datetime import timedelta, timezone
+    from sqlalchemy import func as sqlfunc
+    from app.models.models import AuditLog
+
+    if not user_ids:
+        return {}
+
+    cutoff_7d = datetime.now(timezone.utc) - timedelta(days=7)
+    str_ids = [str(uid) for uid in user_ids]
+
+    # Total actions + login count + last action per user
+    rows_all = (
+        await db.execute(
+            select(
+                AuditLog.user_id,
+                sqlfunc.count().label("total"),
+                sqlfunc.sum(
+                    sqlfunc.cast(AuditLog.action == "login", Integer)
+                ).label("logins"),
+                sqlfunc.max(AuditLog.created_at).label("last_at"),
+            )
+            .where(AuditLog.user_id.in_([uuid.UUID(x) for x in str_ids]))
+            .group_by(AuditLog.user_id)
+        )
+    ).all()
+
+    # Actions in last 7 days
+    rows_7d = (
+        await db.execute(
+            select(
+                AuditLog.user_id,
+                sqlfunc.count().label("cnt"),
+            )
+            .where(
+                AuditLog.user_id.in_([uuid.UUID(x) for x in str_ids]),
+                AuditLog.created_at >= cutoff_7d,
+            )
+            .group_by(AuditLog.user_id)
+        )
+    ).all()
+
+    # Last action type per user
+    rows_last = (
+        await db.execute(
+            select(AuditLog.user_id, AuditLog.action, AuditLog.created_at)
+            .where(AuditLog.user_id.in_([uuid.UUID(x) for x in str_ids]))
+            .distinct(AuditLog.user_id)
+            .order_by(AuditLog.user_id, AuditLog.created_at.desc())
+        )
+    ).all()
+
+    stats: dict[str, dict] = {}
+    for row in rows_all:
+        uid = str(row.user_id)
+        stats[uid] = {
+            "total_actions": row.total or 0,
+            "login_count": int(row.logins or 0),
+            "last_action": row.last_at,
+            "last_action_type": None,
+            "actions_7d": 0,
+        }
+
+    seven_d_map = {str(r.user_id): r.cnt for r in rows_7d}
+    for uid, cnt in seven_d_map.items():
+        if uid in stats:
+            stats[uid]["actions_7d"] = cnt
+
+    seen_last: set[str] = set()
+    for row in rows_last:
+        uid = str(row.user_id)
+        if uid not in seen_last:
+            if uid in stats:
+                stats[uid]["last_action_type"] = row.action
+            seen_last.add(uid)
+
+    return stats
+
+
+async def get_audit_log(
+    db: AsyncSession,
+    page: int = 1,
+    page_size: int = 50,
+    user_id: uuid.UUID | None = None,
+    action: str | None = None,
+) -> tuple[list, int]:
+    """Paginated audit log with optional filters."""
+    from app.models.models import AuditLog
+    from sqlalchemy import func as sqlfunc
+
+    q = select(AuditLog)
+    count_q = select(sqlfunc.count()).select_from(AuditLog)
+
+    if user_id:
+        q = q.where(AuditLog.user_id == user_id)
+        count_q = count_q.where(AuditLog.user_id == user_id)
+    if action:
+        q = q.where(AuditLog.action == action)
+        count_q = count_q.where(AuditLog.action == action)
+
+    total = (await db.execute(count_q)).scalar() or 0
+    q = q.order_by(AuditLog.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    rows = list((await db.execute(q)).scalars().all())
+    return rows, total

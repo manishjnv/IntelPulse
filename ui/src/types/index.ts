@@ -292,6 +292,48 @@ export interface User {
   avatar_url: string | null;
   last_login: string | null;
   is_active: boolean;
+  created_at?: string | null;
+}
+
+export interface UserActivityStats {
+  total_actions: number;
+  login_count: number;
+  last_action: string | null;
+  last_action_type: string | null;
+  actions_7d: number;
+}
+
+export interface UserWithActivity extends User {
+  activity: UserActivityStats;
+}
+
+export interface UserManagementStats {
+  total_users: number;
+  active_users: number;
+  admins: number;
+  analysts: number;
+  viewers: number;
+  active_7d: number;
+  never_logged_in: number;
+}
+
+export interface AuditLogEntry {
+  id: number;
+  user_id: string | null;
+  action: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  details: Record<string, unknown>;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+}
+
+export interface AuditLogListResponse {
+  logs: AuditLogEntry[];
+  total: number;
+  page: number;
+  pages: number;
 }
 
 export interface SearchFilters {

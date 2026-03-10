@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import uuid
 from typing import Annotated
 
@@ -15,7 +16,16 @@ from app.core.config import get_settings
 from app.middleware.auth import get_current_user, require_admin, require_viewer
 from app.middleware.audit import log_audit
 from app.models.models import User
-from app.schemas import UserResponse, UserUpdate, FeedStatusResponse, AuditLogResponse
+from app.schemas import (
+    UserResponse,
+    UserUpdate,
+    UserWithActivity,
+    UserActivityStats,
+    UserManagementStats,
+    FeedStatusResponse,
+    AuditLogResponse,
+    AuditLogListResponse,
+)
 from app.services import database as db_service
 from app.services.domain import get_domain_config
 
@@ -29,14 +39,76 @@ async def get_me(user: Annotated[User, Depends(get_current_user)]):
     return UserResponse.model_validate(user)
 
 
-@router.get("/users", response_model=list[UserResponse])
+@router.get("/users", response_model=list[UserWithActivity])
 async def list_users(
     user: Annotated[User, Depends(require_admin)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """List all users (admin only)."""
+    """List all users with activity stats (admin only)."""
     users = await db_service.get_users(db)
-    return [UserResponse.model_validate(u) for u in users]
+    user_ids = [u.id for u in users]
+    activity_map = await db_service.get_user_activity_stats(db, user_ids)
+
+    results = []
+    for u in users:
+        stats_raw = activity_map.get(str(u.id), {})
+        activity = UserActivityStats(
+            total_actions=stats_raw.get("total_actions", 0),
+            login_count=stats_raw.get("login_count", 0),
+            last_action=stats_raw.get("last_action"),
+            last_action_type=stats_raw.get("last_action_type"),
+            actions_7d=stats_raw.get("actions_7d", 0),
+        )
+        results.append(UserWithActivity(
+            id=u.id,
+            email=u.email,
+            name=u.name,
+            role=u.role,
+            avatar_url=u.avatar_url,
+            last_login=u.last_login,
+            is_active=u.is_active,
+            created_at=u.created_at,
+            activity=activity,
+        ))
+    return results
+
+
+@router.get("/users/stats", response_model=UserManagementStats)
+async def get_user_stats(
+    user: Annotated[User, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Get aggregate user management statistics (admin only)."""
+    from datetime import timedelta, timezone
+    from datetime import datetime as dt
+    from sqlalchemy import select, func as sqlfunc
+    from app.models.models import AuditLog
+
+    users = await db_service.get_users(db)
+    cutoff_7d = dt.now(timezone.utc) - timedelta(days=7)
+
+    # Users active in last 7 days (had a login or action)
+    active_7d_ids = set(
+        row[0]
+        for row in (
+            await db.execute(
+                select(AuditLog.user_id)
+                .where(AuditLog.created_at >= cutoff_7d)
+                .distinct()
+            )
+        ).all()
+        if row[0] is not None
+    )
+
+    return UserManagementStats(
+        total_users=len(users),
+        active_users=sum(1 for u in users if u.is_active),
+        admins=sum(1 for u in users if u.role == "admin"),
+        analysts=sum(1 for u in users if u.role == "analyst"),
+        viewers=sum(1 for u in users if u.role == "viewer"),
+        active_7d=sum(1 for u in users if u.id in active_7d_ids),
+        never_logged_in=sum(1 for u in users if u.last_login is None),
+    )
 
 
 @router.patch("/users/{user_id}", response_model=UserResponse)
@@ -46,8 +118,13 @@ async def update_user(
     user: Annotated[User, Depends(require_admin)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Update user role/status (admin only)."""
-    target = await db_service.update_user_role(db, user_id, update.role.value if update.role else None)
+    """Update user role and/or active status (admin only)."""
+    target = await db_service.update_user(
+        db,
+        user_id,
+        role=update.role.value if update.role else None,
+        is_active=update.is_active,
+    )
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -60,6 +137,27 @@ async def update_user(
         details=update.model_dump(exclude_none=True),
     )
     return UserResponse.model_validate(target)
+
+
+@router.get("/audit-log", response_model=AuditLogListResponse)
+async def get_audit_log(
+    user: Annotated[User, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    user_id: uuid.UUID | None = None,
+    action: str | None = None,
+):
+    """Paginated audit log viewer (admin only)."""
+    logs, total = await db_service.get_audit_log(
+        db, page=page, page_size=page_size, user_id=user_id, action=action
+    )
+    return AuditLogListResponse(
+        logs=[AuditLogResponse.model_validate(l) for l in logs],
+        total=total,
+        page=page,
+        pages=max(1, math.ceil(total / page_size)),
+    )
 
 
 @router.get("/feeds/status", response_model=list[FeedStatusResponse])

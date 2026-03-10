@@ -193,6 +193,36 @@ export async function getFeedStatus() {
   return fetcher<import("@/types").FeedStatus[]>("/feeds/status");
 }
 
+// ─── User Management (Admin) ────────────────────────────
+export async function getAdminUsers() {
+  return fetcher<import("@/types").UserWithActivity[]>("/users");
+}
+
+export async function getUserManagementStats() {
+  return fetcher<import("@/types").UserManagementStats>("/users/stats");
+}
+
+export async function updateAdminUser(id: string, update: { role?: string; is_active?: boolean }) {
+  return fetcher<import("@/types").User>(`/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(update),
+  });
+}
+
+export async function getAuditLog(params: {
+  page?: number;
+  page_size?: number;
+  user_id?: string;
+  action?: string;
+} = {}) {
+  const query = new URLSearchParams();
+  if (params.page) query.set("page", String(params.page));
+  if (params.page_size) query.set("page_size", String(params.page_size));
+  if (params.user_id) query.set("user_id", params.user_id);
+  if (params.action) query.set("action", params.action);
+  return fetcher<import("@/types").AuditLogListResponse>(`/audit-log?${query}`);
+}
+
 // ─── MITRE ATT&CK ──────────────────────────────────────
 export async function getAttackMatrix() {
   return fetcher<import("@/types").AttackMatrixResponse>("/techniques/matrix");

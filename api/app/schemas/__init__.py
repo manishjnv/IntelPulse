@@ -218,11 +218,35 @@ class UserResponse(BaseModel):
     avatar_url: str | None = None
     last_login: datetime | None = None
     is_active: bool
+    created_at: datetime | None = None
 
 
 class UserUpdate(BaseModel):
     role: UserRole | None = None
     is_active: bool | None = None
+
+
+class UserActivityStats(BaseModel):
+    """Per-user activity summary derived from audit_log."""
+    total_actions: int = 0
+    login_count: int = 0
+    last_action: datetime | None = None
+    last_action_type: str | None = None
+    actions_7d: int = 0
+
+
+class UserWithActivity(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    email: str
+    name: str | None = None
+    role: UserRole
+    avatar_url: str | None = None
+    last_login: datetime | None = None
+    is_active: bool
+    created_at: datetime | None = None
+    activity: UserActivityStats = Field(default_factory=UserActivityStats)
 
 
 # ─── Audit ───────────────────────────────────────────────
@@ -236,7 +260,25 @@ class AuditLogResponse(BaseModel):
     resource_id: str | None = None
     details: dict
     ip_address: str | None = None
+    user_agent: str | None = None
     created_at: datetime
+
+
+class AuditLogListResponse(BaseModel):
+    logs: list[AuditLogResponse]
+    total: int
+    page: int
+    pages: int
+
+
+class UserManagementStats(BaseModel):
+    total_users: int
+    active_users: int
+    admins: int
+    analysts: int
+    viewers: int
+    active_7d: int
+    never_logged_in: int
 
 
 # ─── Risk Scoring ────────────────────────────────────────
