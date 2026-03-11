@@ -3377,6 +3377,7 @@ function UserManagementSettings() {
   );
 }
 
+function formatTTL(seconds: number): string {
   if (seconds <= 0) return "disabled";
   if (seconds < 60) return `${seconds}s`;
   if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
