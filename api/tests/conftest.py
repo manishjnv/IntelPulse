@@ -1,4 +1,4 @@
-"""Shared test fixtures for the IntelWatch API test suite.
+"""Shared test fixtures for the IntelPulse API test suite.
 
 Provides:
   - mock_user: fake User object for auth bypass
@@ -23,7 +23,7 @@ class MockUser:
 
     def __init__(self, role: str = "admin"):
         self.id = "00000000-0000-0000-0000-000000000001"
-        self.email = "test@intelwatch.local"
+        self.email = "test@IntelPulse.local"
         self.name = "Test User"
         self.role = role
         self.is_active = True

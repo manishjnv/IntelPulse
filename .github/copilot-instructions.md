@@ -1,7 +1,7 @@
-# IntelWatch — TI Platform Context
+# IntelPulse — TI Platform Context
 
 ## Project Overview
-IntelWatch is a full-stack Threat Intelligence Platform. Mono-repo with 3 main services.
+IntelPulse is a full-stack Threat Intelligence Platform. Mono-repo with 3 main services.
 
 ## Tech Stack
 - **API**: FastAPI (Python 3.12), SQLAlchemy 2.0 async, Pydantic v2
@@ -51,11 +51,11 @@ ui/
 - **Before starting any implementation**: suggest unique improvements or ideas that could enhance the feature, UX, or competitive edge — don't wait until after implementation.
 
 ## Deployment
-- VPS: 72.61.227.64, SSH: root, project at /opt/ti-platform
+- VPS: 72.61.227.64, SSH: root, project at /opt/IntelPulse
 - CRITICAL: `docker compose up -d --build <service>` (NOT `restart` — that skips rebuild)
 - For UI cache issues: `docker compose build --no-cache ui`
 - API container Docker IP: 172.19.0.x (changes on rebuild)
-- Git remote: https://github.com/manishjnv/ti-platform.git
+- Git remote: https://github.com/manishjnv/IntelPulse.git
 
 ## Database Summary (24 tables)
 Core: `intel_items` (hypertable), `iocs`, `intel_ioc_links`, `news_items`, `detection_rules`
@@ -91,7 +91,7 @@ reports (12), search (3), settings (4), techniques (4)
   - `test_services.py` — 10 tests for scoring service
   - `test_routes.py` — 13 route smoke tests (mocked auth + DB + Redis)
 - **Run locally**: `cd api && python -m pytest tests/ -v --tb=short`
-- **Run on VPS**: `docker exec -w /app/api ti-platform-api-1 python -m pytest tests/ -v --tb=short`
+- **Run on VPS**: `docker exec -w /app/api IntelPulse-api-1 python -m pytest tests/ -v --tb=short`
 - **Current**: 109 tests, all passing
 - **Key fixtures** (conftest.py): `mock_user` (admin), `async_client` (httpx ASGI), `_mock_redis` (autouse)
 

@@ -1,5 +1,5 @@
 """Test script for NVD enrichment, junk filtering, and cross-links.
-Run inside the API container: docker exec ti-platform-api-1 python3 /tmp/test_enrichment.py
+Run inside the API container: docker exec IntelPulse-api-1 python3 /tmp/test_enrichment.py
 """
 import httpx
 import json
@@ -20,7 +20,7 @@ def get_session_cookie():
     session_id = str(uuid.uuid4())
     token = create_access_token({
         "sub": "test-admin",
-        "email": "admin@intelwatch.in",
+        "email": "admin@IntelPulse.in",
         "role": "admin",
         "name": "Admin",
         "sid": session_id,

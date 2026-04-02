@@ -1,6 +1,6 @@
 # Exhaustive Normalization, Validation, Mapping & Transformation Audit
 
-> **Scope**: Every instance of normalization, validation, mapping, transformation, coercion, and cleaning across the entire ti-platform codebase.
+> **Scope**: Every instance of normalization, validation, mapping, transformation, coercion, and cleaning across the entire IntelPulse codebase.
 >
 > **Date**: 2026-03-08
 

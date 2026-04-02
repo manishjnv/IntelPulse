@@ -1,4 +1,4 @@
-# IntelWatch — Notifications Module
+# IntelPulse — Notifications Module
 
 > Complete technical reference for the Notifications system: rule engine, system rules, threshold/correlation/feed-error evaluation, severity intelligence, batch notifications, webhook delivery, and notification management UI.
 
@@ -318,9 +318,9 @@ If `webhook_secret` is configured, the payload is signed:
 
 | Header | Value |
 |--------|-------|
-| `X-IntelWatch-Signature` | `hmac.new(secret, body, sha256).hexdigest()` |
+| `X-IntelPulse-Signature` | `hmac.new(secret, body, sha256).hexdigest()` |
 | `Content-Type` | `application/json` |
-| `User-Agent` | `IntelWatch/1.0` |
+| `User-Agent` | `IntelPulse/1.0` |
 
 Body is serialized with `json.dumps(payload, sort_keys=True)` before signing.
 

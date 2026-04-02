@@ -221,15 +221,15 @@ def send_otp_email(email: str, code: str) -> bool:
 
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"IntelWatch Login Code: {code}"
+        msg["Subject"] = f"IntelPulse Login Code: {code}"
         msg["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
         msg["To"] = email
 
-        text_body = f"""Your IntelWatch verification code is: {code}
+        text_body = f"""Your IntelPulse verification code is: {code}
 
 This code expires in 5 minutes. If you didn't request this, ignore this email.
 
-— IntelWatch Threat Intelligence Platform
+— IntelPulse Threat Intelligence Platform
 """
 
         html_body = f"""<!DOCTYPE html>
@@ -240,7 +240,7 @@ This code expires in 5 minutes. If you didn't request this, ignore this email.
     <div style="display:inline-block;padding:12px;background:rgba(59,130,246,0.1);border-radius:12px;margin-bottom:16px;">
       <span style="font-size:28px;">🛡️</span>
     </div>
-    <h1 style="color:#f9fafb;font-size:20px;margin:0 0 4px;">IntelWatch</h1>
+    <h1 style="color:#f9fafb;font-size:20px;margin:0 0 4px;">IntelPulse</h1>
     <p style="color:#9ca3af;font-size:13px;margin:0;">Threat Intelligence Platform</p>
   </div>
   <div style="padding:0 32px 32px;text-align:center;">

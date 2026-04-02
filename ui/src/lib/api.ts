@@ -673,7 +673,7 @@ export async function downloadNewsReport(
     response.headers
       .get("Content-Disposition")
       ?.split("filename=")[1]
-      ?.replace(/"/g, "") || `IntelWatch-Report.${ext}`;
+      ?.replace(/"/g, "") || `IntelPulse-Report.${ext}`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

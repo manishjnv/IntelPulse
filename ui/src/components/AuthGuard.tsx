@@ -39,7 +39,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         </div>
         <div className="flex items-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          <span className="text-sm text-muted-foreground">Loading IntelWatch...</span>
+          <span className="text-sm text-muted-foreground">Loading IntelPulse...</span>
         </div>
       </div>
     );

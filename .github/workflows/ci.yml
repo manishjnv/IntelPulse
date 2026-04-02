@@ -1,4 +1,4 @@
-name: CI / CD — IntelWatch TI Platform
+name: CI / CD — IntelPulse TI Platform
 
 on:
   push:
@@ -64,4 +64,4 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           command_timeout: 15m
-          script: /opt/ti-platform/scripts/deploy.sh
+          script: /opt/IntelPulse/scripts/deploy.sh

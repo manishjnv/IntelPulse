@@ -285,7 +285,7 @@ async def fetch_rss_feed(feed: dict) -> dict:
     try:
         async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
             headers = {
-                "User-Agent": "IntelWatch/1.0 (Cyber News Aggregator)",
+                "User-Agent": "IntelPulse/1.0 (Cyber News Aggregator)",
                 "Accept": "application/rss+xml, application/xml, text/xml, */*",
             }
             resp = await client.get(feed["url"], headers=headers)

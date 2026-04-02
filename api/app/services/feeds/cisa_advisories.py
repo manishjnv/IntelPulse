@@ -44,7 +44,7 @@ class CISAAdvisoriesConnector(BaseFeedConnector):
             headers={
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
-                "User-Agent": "IntelWatch/1.0 TI-Platform",
+                "User-Agent": "IntelPulse/1.0 IntelPulse",
             },
         )
         response.raise_for_status()

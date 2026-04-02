@@ -1,4 +1,4 @@
-# IntelWatch — ATT&CK Map Module
+# IntelPulse — ATT&CK Map Module
 
 > Complete technical reference for the MITRE ATT&CK integration: technique sync, auto-mapping, matrix heatmap, detection gaps, and technique detail pages.
 
@@ -261,7 +261,7 @@ Triggered from a button in the matrix header. Generates a JSON file compatible w
 
 ```json
 {
-  "name": "IntelWatch Coverage",
+  "name": "IntelPulse Coverage",
   "versions": {
     "attack": "15",
     "navigator": "5.1",
@@ -284,7 +284,7 @@ Triggered from a button in the matrix header. Generates a JSON file compatible w
 
 **Color mapping:** Same thresholds as cell heatmap (`max_risk >= 80` → `#ff6666`, `>= 60` → `#ff9933`, `>= 40` → `#ffcc00`, else → `#6699ff`).
 
-**Filename:** `intelwatch-attack-layer-YYYY-MM-DD.json`
+**Filename:** `IntelPulse-attack-layer-YYYY-MM-DD.json`
 
 Only techniques with `count > 0` are included. Tactic slugs are converted from kebab-case to underscore format.
 

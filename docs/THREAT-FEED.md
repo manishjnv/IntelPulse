@@ -1,4 +1,4 @@
-# IntelWatch — Threat Feed Module
+# IntelPulse — Threat Feed Module
 
 > Complete technical reference for the Threat Feed page: unified intel browsing with filters, real-time freshness indicators, quick stats, and rich item cards.
 

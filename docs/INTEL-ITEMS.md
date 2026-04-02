@@ -1,4 +1,4 @@
-# IntelWatch — Intel Items Module
+# IntelPulse — Intel Items Module
 
 > Complete technical reference for Intel Items: detail pages, AI enrichment, related items, IOC linking, export, and the unified intel data model.
 

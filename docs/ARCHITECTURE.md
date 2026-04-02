@@ -21,7 +21,7 @@
 
 ## System Overview
 
-The IntelWatch TI Platform is a **self-hosted, containerized** system that aggregates, normalizes, scores, and visualizes threat intelligence from multiple open-source feeds. It is designed as a modular monolith — each concern is cleanly separated into its own layer and can be independently scaled.
+The IntelPulse TI Platform is a **self-hosted, containerized** system that aggregates, normalizes, scores, and visualizes threat intelligence from multiple open-source feeds. It is designed as a modular monolith — each concern is cleanly separated into its own layer and can be independently scaled.
 
 **Core principles:**
 
@@ -426,7 +426,7 @@ Route Handler (thin) ──► Service Layer (business logic) ──► Data Lay
 
 ```text
 app/layout.tsx (root HTML, dark class)
-├── login/page.tsx (IntelWatch branded login — Google OAuth + Email OTP)
+├── login/page.tsx (IntelPulse branded login — Google OAuth + Email OTP)
 └── (app)/layout.tsx (AuthGuard + Sidebar + Header + HeaderStatusBar + NotificationBell + ErrorBoundary + main area)
     ├── dashboard/page.tsx
     │   ├── StatCard ×6 (with optional tooltip)
@@ -652,7 +652,7 @@ Session Management:
 VPS (2 vCPU, 4 GB RAM minimum)
     │
     ├── Docker Compose (7 services)
-    ├── Cloudflare Tunnel (Argo) → intelwatch.trendsmap.in
+    ├── Cloudflare Tunnel (Argo) → IntelPulse.trendsmap.in
     ├── Let's Encrypt via Cloudflare (automatic HTTPS)
     └── GitHub Actions CI/CD (build → push → SSH deploy)
 ```
@@ -879,7 +879,7 @@ Real-time monitoring and correlation for large-scale global events (natural disa
 | 2026-02-28 | Phase 1.3 Notifications & Alerting: notification_rules + notifications tables, 12 notification endpoints, NotificationBell component, worker eval task |
 | 2026-02-28 | Post-audit fixes: OpenSearch dedup (834K→3,944), ATT&CK keyword precision, skeleton loaders, ErrorBoundary, Tooltip system |
 | 2026-02-28 | Phase 1.2 Relationship Graph; added Codebase Metrics section |
-| 2026-02-24 | Production domain set to intelwatch.trendsmap.in; simplified login docs |
-| 2026-02-24 | Renamed to IntelWatch; added VirusTotal & Shodan API key support; login testing verified |
-| 2026-02-23 | Renamed to IntelWatch TI Platform; added auth architecture (JWT sessions, login flow, auth guard) |
+| 2026-02-24 | Production domain set to IntelPulse.trendsmap.in; simplified login docs |
+| 2026-02-24 | Renamed to IntelPulse; added VirusTotal & Shodan API key support; login testing verified |
+| 2026-02-23 | Renamed to IntelPulse TI Platform; added auth architecture (JWT sessions, login flow, auth guard) |
 | 2026-02-23 | Initial architecture document extracted from README |

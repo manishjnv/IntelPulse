@@ -85,10 +85,10 @@ function exportNavigatorLayer(data: AttackMatrixResponse) {
   );
 
   const layer = {
-    name: "IntelWatch Coverage",
+    name: "IntelPulse Coverage",
     versions: { attack: "15", navigator: "5.1", layer: "4.5" },
     domain: "enterprise-attack",
-    description: `IntelWatch threat intelligence coverage layer — ${data.total_mapped}/${data.total_techniques} techniques mapped. Exported ${new Date().toISOString().slice(0, 10)}.`,
+    description: `IntelPulse threat intelligence coverage layer — ${data.total_mapped}/${data.total_techniques} techniques mapped. Exported ${new Date().toISOString().slice(0, 10)}.`,
     filters: { platforms: ["Windows", "Linux", "macOS", "Network", "Cloud"] },
     sorting: 3,
     layout: { layout: "side", aggregateFunction: "average", showID: true, showName: true, showAggregateScores: false, countUnscored: false, expandedSubtechniques: "none" },
@@ -115,7 +115,7 @@ function exportNavigatorLayer(data: AttackMatrixResponse) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `intelwatch-attack-layer-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `IntelPulse-attack-layer-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }

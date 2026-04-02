@@ -1,4 +1,4 @@
-# IntelWatch — Geo View Module
+# IntelPulse — Geo View Module
 
 > Complete technical reference for the Geo View: geographic intelligence visualization, region-based browsing, drill-down panels, and IOC geolocation.
 

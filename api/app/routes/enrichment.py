@@ -328,7 +328,7 @@ FORMAT your response as JSON with these fields:
         logging.warning("briefing_ai_failed: building summary from raw data")
         parts = []
         stats = data.get("stats", {})
-        parts.append(f"Over the past {days} days, IntelWatch processed {stats.get('articles_processed', 0)} articles, identified {stats.get('new_cves', 0)} CVEs and tracked {stats.get('new_campaigns', 0)} active campaigns.")
+        parts.append(f"Over the past {days} days, IntelPulse processed {stats.get('articles_processed', 0)} articles, identified {stats.get('new_cves', 0)} CVEs and tracked {stats.get('new_campaigns', 0)} active campaigns.")
         if data.get("campaigns"):
             top = [c.get("campaign_name") or c.get("actor_name", "") for c in data["campaigns"][:5]]
             parts.append(f"Top active campaigns include: {', '.join(top)}.")

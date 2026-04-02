@@ -3,7 +3,7 @@ from jose import jwt
 from datetime import datetime, timedelta, timezone
 
 SECRET_KEY = "ca11ded3d44a5499adec236209a4d0ff62cd0a935c7d019b239d47d983917962"
-r = redis.Redis(host="redis", port=6379, password="IntelWatch_R3dis_2026", db=0)
+r = redis.Redis(host="redis", port=6379, password="IntelPulse_R3dis_2026", db=0)
 session_id = str(uuid.uuid4())
 token_data = {
     "sub": "admin-user-id",

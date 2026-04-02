@@ -14,7 +14,7 @@ interface MarkdownContentProps {
  */
 export default function MarkdownContent({ content, className = "" }: MarkdownContentProps) {
   return (
-    <div className={`prose-intelwatch text-sm text-muted-foreground ${className}`}>
+    <div className={`prose-IntelPulse text-sm text-muted-foreground ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

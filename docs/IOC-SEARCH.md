@@ -1,4 +1,4 @@
-# IntelWatch — IOC Search Module
+# IntelPulse — IOC Search Module
 
 > Complete technical reference for the unified IOC Search: auto-detection, OpenSearch queries, live internet lookup, AI analysis, and result rendering.
 

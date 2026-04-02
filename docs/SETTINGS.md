@@ -1,4 +1,4 @@
-# IntelWatch — Settings Module
+# IntelPulse — Settings Module
 
 > Complete technical reference for the Settings system: platform configuration, API key management, user preferences, setup wizard, and settings persistence.
 
@@ -186,7 +186,7 @@ Settings organized into 4 categories:
 
 | Key | Default | Type | Description |
 |-----|---------|------|-------------|
-| `platform_name` | `"IntelWatch"` | string | Platform display name |
+| `platform_name` | `"IntelPulse"` | string | Platform display name |
 | `timezone` | `"UTC"` | string | Default timezone |
 | `default_risk_threshold` | `70` | int | Risk score threshold for alerts |
 | `auto_refresh` | `true` | bool | Auto-refresh dashboard data |
@@ -224,7 +224,7 @@ The backend maintains a `DEFAULTS` dictionary in `routes/settings.py`:
 
 ```python
 DEFAULTS = {
-    "platform_name": "IntelWatch",
+    "platform_name": "IntelPulse",
     "timezone": "UTC",
     "default_risk_threshold": 70,
     "auto_refresh": True,

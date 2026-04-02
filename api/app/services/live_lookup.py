@@ -146,7 +146,7 @@ async def live_lookup(query: str) -> dict[str, Any]:
 
 async def _lookup_nvd_cve(client: httpx.AsyncClient, cve_id: str) -> list[dict]:
     """Fetch full CVE details from NVD."""
-    headers: dict[str, str] = {"User-Agent": "IntelWatch/1.0"}
+    headers: dict[str, str] = {"User-Agent": "IntelPulse/1.0"}
     if settings.nvd_api_key:
         headers["apiKey"] = settings.nvd_api_key
 
@@ -215,7 +215,7 @@ async def _lookup_nvd_cve(client: httpx.AsyncClient, cve_id: str) -> list[dict]:
 
 async def _lookup_nvd_keyword(client: httpx.AsyncClient, keyword: str) -> list[dict]:
     """Search NVD by keyword."""
-    headers: dict[str, str] = {"User-Agent": "IntelWatch/1.0"}
+    headers: dict[str, str] = {"User-Agent": "IntelPulse/1.0"}
     if settings.nvd_api_key:
         headers["apiKey"] = settings.nvd_api_key
 
@@ -275,7 +275,7 @@ async def _lookup_kev(client: httpx.AsyncClient, cve_id: str) -> dict | str:
     try:
         resp = await client.get(
             "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
-            headers={"User-Agent": "IntelWatch/1.0"},
+            headers={"User-Agent": "IntelPulse/1.0"},
         )
         resp.raise_for_status()
         data = resp.json()
@@ -631,7 +631,7 @@ async def _lookup_urlhaus(client: httpx.AsyncClient, url: str) -> dict | str:
         resp = await client.post(
             "https://urlhaus-api.abuse.ch/v1/url/",
             data={"url": url},
-            headers={"User-Agent": "IntelWatch/1.0"},
+            headers={"User-Agent": "IntelPulse/1.0"},
         )
         resp.raise_for_status()
         d = resp.json()
@@ -686,7 +686,7 @@ async def _lookup_otx(client: httpx.AsyncClient, keyword: str) -> list[dict]:
             params={"q": kw, "limit": 5},
             headers={
                 "X-OTX-API-KEY": settings.otx_api_key,
-                "User-Agent": "IntelWatch/1.0",
+                "User-Agent": "IntelPulse/1.0",
             },
         )
         resp.raise_for_status()

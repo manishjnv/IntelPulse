@@ -1,4 +1,4 @@
-# IntelWatch — Cases Module
+# IntelPulse — Cases Module
 
 > Complete technical reference for Case Management: case lifecycle, status transitions, linked items, bulk operations, activity timeline, comments, and export.
 

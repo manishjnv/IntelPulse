@@ -341,7 +341,7 @@ async def _call_with_fallback(
                 headers = {
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {provider.key}",
-                    "User-Agent": "IntelWatch/1.0",
+                    "User-Agent": "IntelPulse/1.0",
                 }
                 payload = {
                     "model": model_override if (model_override and i == 0) else provider.model,
@@ -609,7 +609,7 @@ async def check_ai_health() -> dict:
             async with httpx.AsyncClient(timeout=8) as client:
                 headers = {
                     "Authorization": f"Bearer {provider.key}",
-                    "User-Agent": "IntelWatch/1.0",
+                    "User-Agent": "IntelPulse/1.0",
                 }
                 # Strip /chat/completions to get the API base URL
                 base = provider.url.rstrip("/")

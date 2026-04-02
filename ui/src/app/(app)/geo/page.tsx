@@ -677,7 +677,7 @@ export default function GeoViewPage() {
                       ws["!cols"] = colWidths;
                       XLSX.utils.book_append_sheet(wb, ws, "Intel");
                       const safeName = (selectedCountry || "Region").replace(/[^a-zA-Z0-9_ -]/g, "").slice(0, 31);
-                      XLSX.writeFile(wb, `IntelWatch_${safeName}_Threats_${new Date().toISOString().slice(0, 10)}.xlsx`);
+                      XLSX.writeFile(wb, `IntelPulse_${safeName}_Threats_${new Date().toISOString().slice(0, 10)}.xlsx`);
                     }}
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
                     title="Download as Excel"
@@ -838,7 +838,7 @@ function DrillDownPanel({
     });
     ws["!cols"] = colWidths;
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
-    XLSX.writeFile(wb, `IntelWatch_${safeLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `IntelPulse_${safeLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   return (

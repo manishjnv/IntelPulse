@@ -337,7 +337,7 @@ Request → Groq primary (70B)
 | Date | Change |
 |------|--------|
 | 2026-02-27 | Added AI Enrichment section — multi-provider fallback chain (Groq, Cerebras, HuggingFace) |
-| 2026-02-24 | Production domain: intelwatch.trendsmap.in; CORS updated |
+| 2026-02-24 | Production domain: IntelPulse.trendsmap.in; CORS updated |
 | 2026-02-24 | Added VirusTotal & Shodan API key configuration |
-| 2026-02-23 | Added python-jose for JWT auth; updated for IntelWatch branding |
+| 2026-02-23 | Added python-jose for JWT auth; updated for IntelPulse branding |
 | 2026-02-23 | Initial technology stack document created |

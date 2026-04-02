@@ -24,7 +24,7 @@ class TestRootEndpoint:
     async def test_root_returns_app_name(self, async_client):
         resp = await async_client.get("/")
         data = resp.json()
-        assert "IntelWatch" in data.get("message", "")
+        assert "IntelPulse" in data.get("message", "")
 
 
 class TestHealthEndpoint:

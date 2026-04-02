@@ -1,7 +1,7 @@
 """Domain & deployment configuration service.
 
 Provides runtime domain configuration and deployment status for
-the IntelWatch platform — used by the Settings page and health checks.
+the IntelPulse platform — used by the Settings page and health checks.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ def get_domain_config() -> dict:
     is_cf_configured = bool(settings.cf_access_team_name and settings.cf_access_aud)
 
     return {
-        "platform_name": "IntelWatch - TI Platform",
+        "platform_name": "IntelPulse - TI Platform",
         "version": "1.0.0",
         "environment": settings.environment,
         "domain": {

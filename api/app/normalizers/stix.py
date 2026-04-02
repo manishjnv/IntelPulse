@@ -45,7 +45,7 @@ _SEVERITY_TO_CONFIDENCE: dict[str, int] = {
 }
 
 PLATFORM_IDENTITY_ID = "identity--" + str(
-    uuid.uuid5(uuid.NAMESPACE_URL, "ti-platform")
+    uuid.uuid5(uuid.NAMESPACE_URL, "IntelPulse")
 )
 
 

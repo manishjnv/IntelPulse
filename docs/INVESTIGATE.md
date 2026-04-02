@@ -1,4 +1,4 @@
-# IntelWatch — Investigate (Graph Explorer) Module
+# IntelPulse — Investigate (Graph Explorer) Module
 
 > Complete technical reference for the Investigation Graph: relationship building, entity exploration, graph visualization, confidence scoring, and drill-down navigation.
 

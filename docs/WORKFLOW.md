@@ -1,4 +1,4 @@
-# IntelWatch TI Platform — Workflow & Operations Guide
+# IntelPulse TI Platform — Workflow & Operations Guide
 
 > **Architecture & data model** → [ARCHITECTURE.md](ARCHITECTURE.md) · **Technology stack** → [TECHNOLOGY.md](TECHNOLOGY.md) · **Feed integrations** → [INTEGRATION.md](INTEGRATION.md)
 
@@ -21,7 +21,7 @@
 
 ```bash
 # 1. Clone and configure
-git clone https://github.com/manishjnv/ti-platform.git && cd ti-platform
+git clone https://github.com/manishjnv/IntelPulse.git && cd IntelPulse
 cp .env.example .env
 # Edit .env — set DEV_BYPASS_AUTH=true for local dev
 
@@ -71,11 +71,11 @@ cd ui && npm install && npm run dev
 ssh root@<YOUR_VPS_IP>
 
 # Run the automated setup script
-bash -s < <(curl -fsSL https://raw.githubusercontent.com/manishjnv/ti-platform/main/scripts/server-setup.sh)
+bash -s < <(curl -fsSL https://raw.githubusercontent.com/manishjnv/IntelPulse/main/scripts/server-setup.sh)
 
 # Or clone manually and run:
-git clone https://github.com/manishjnv/ti-platform.git /opt/ti-platform
-bash /opt/ti-platform/scripts/server-setup.sh
+git clone https://github.com/manishjnv/IntelPulse.git /opt/IntelPulse
+bash /opt/IntelPulse/scripts/server-setup.sh
 ```
 
 This installs Docker, creates a `deploy` user, clones the repo, generates a `SECRET_KEY`, and creates `.env`.
@@ -83,7 +83,7 @@ This installs Docker, creates a `deploy` user, clones the repo, generates a `SEC
 ### Step 2 — Configure Production `.env`
 
 ```bash
-nano /opt/ti-platform/.env
+nano /opt/IntelPulse/.env
 ```
 
 | Variable | Action |
@@ -92,9 +92,9 @@ nano /opt/ti-platform/.env
 | `SECRET_KEY` | Auto-generated — leave as-is |
 | `POSTGRES_PASSWORD` | Change to a strong random password |
 | `DEV_BYPASS_AUTH` | `false` (auto-set by setup script) |
-| `DOMAIN` | `intelwatch.trendsmap.in` |
-| `DOMAIN_UI` | `https://intelwatch.trendsmap.in` |
-| `DOMAIN_API` | `https://intelwatch-api.trendsmap.in` |
+| `DOMAIN` | `IntelPulse.trendsmap.in` |
+| `DOMAIN_UI` | `https://IntelPulse.trendsmap.in` |
+| `DOMAIN_API` | `https://IntelPulse-api.trendsmap.in` |
 | `CF_ACCESS_TEAM_NAME` | Your Cloudflare Zero Trust team name |
 | `CF_ACCESS_AUD` | Your Cloudflare Access audience tag |
 | Feed API keys | Already set from `.env.example` if copied |
@@ -102,11 +102,11 @@ nano /opt/ti-platform/.env
 ### Step 3 — First Deploy
 
 ```bash
-sudo -u deploy /opt/ti-platform/scripts/deploy.sh
+sudo -u deploy /opt/IntelPulse/scripts/deploy.sh
 
 # Verify
 curl -s http://localhost:8000/api/v1/health | jq .
-docker compose -f /opt/ti-platform/docker-compose.yml ps
+docker compose -f /opt/IntelPulse/docker-compose.yml ps
 ```
 
 ### Step 4 — Set Up Cloudflare Tunnel
@@ -114,9 +114,9 @@ docker compose -f /opt/ti-platform/docker-compose.yml ps
 Follow instructions in `cloudflare/tunnel-config.yml`:
 1. Install `cloudflared` on VPS
 2. `cloudflared tunnel login` → select `trendsmap.in` zone
-3. `cloudflared tunnel create intelwatch`
-4. Route DNS: `cloudflared tunnel route dns intelwatch intelwatch.trendsmap.in`
-5. Route DNS: `cloudflared tunnel route dns intelwatch intelwatch-api.trendsmap.in`
+3. `cloudflared tunnel create IntelPulse`
+4. Route DNS: `cloudflared tunnel route dns IntelPulse IntelPulse.trendsmap.in`
+5. Route DNS: `cloudflared tunnel route dns IntelPulse IntelPulse-api.trendsmap.in`
 6. Create `/etc/cloudflared/config.yml` (see `cloudflare/tunnel-config.yml`)
 7. `sudo cloudflared service install && sudo systemctl start cloudflared`
 
@@ -133,7 +133,7 @@ cat ~/.ssh/github_deploy.pub >> /home/deploy/.ssh/authorized_keys
 cat ~/.ssh/github_deploy   # Copy this private key
 ```
 
-**Add GitHub Secrets** at [repo settings](https://github.com/manishjnv/ti-platform/settings/secrets/actions):
+**Add GitHub Secrets** at [repo settings](https://github.com/manishjnv/IntelPulse/settings/secrets/actions):
 
 | Secret | Value |
 |--------|-------|

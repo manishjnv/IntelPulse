@@ -1,4 +1,4 @@
-# IntelWatch — Dashboard Module
+# IntelPulse — Dashboard Module
 
 > Complete technical reference for the Dashboard feature: KPI aggregation, threat insights, drill-down modals, polling, caching, and UI layout.
 

@@ -21,7 +21,7 @@ settings = get_settings()
 # ─── Default settings values ─────────────────────────────
 DEFAULTS: dict = {
     # General
-    "platform_name": "IntelWatch",
+    "platform_name": "IntelPulse",
     "timezone": "UTC",
     "default_risk_threshold": 70,
     "auto_refresh": True,

@@ -1,4 +1,4 @@
-# IntelWatch — Development Instructions
+# IntelPulse — Development Instructions
 
 ## 3D Design System
 
@@ -86,7 +86,7 @@ The **Investigate** page uses the `Telescope` icon in the sidebar for consistenc
 - **Do not remove existing UI features** — only add. If something moves, ensure it still exists somewhere accessible.
 - **For any major change**, update the relevant docs (`instruction.md`, `README.md`, or `docs/`).
 - **Responsive UI** — All pages must fit all screen sizes including mobile. See `docs/Instruction.md` § Responsive Design for breakpoints. Edge-to-edge layouts, no horizontal overflow.
-- **Develop locally** at `E:\code\ti-platform`, push to GitHub, deploy to VPS and test online.
+- **Develop locally** at `E:\code\IntelPulse`, push to GitHub, deploy to VPS and test online.
 - **Deploy flow**: `git push origin main` → SSH to VPS → `git pull` → `docker compose build ui` → `docker compose up -d ui`.
 
 ---

@@ -9,7 +9,7 @@ from sqlalchemy import text
 async def main():
     async with async_session_factory() as db:
         result = await db.execute(
-            text("SELECT id, email, role, name FROM users WHERE email='admin@intelwatch.local'")
+            text("SELECT id, email, role, name FROM users WHERE email='admin@IntelPulse.local'")
         )
         row = result.fetchone()
         if not row:

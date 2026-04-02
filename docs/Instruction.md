@@ -1,4 +1,4 @@
-# IntelWatch — Engineering & Development Standards
+# IntelPulse — Engineering & Development Standards
 
 > **Mandatory development contract.** All generated or modified code must comply with this document.
 > This is the single source of truth for all development decisions.
@@ -87,11 +87,11 @@ The system must **never fail completely** due to external API failure, timeout, 
 
 ## � Competitive USP Analysis Before Implementation (MANDATORY)
 
-> **Gate rule:** Before writing any code for a new feature, you **must** perform a competitive USP analysis. No implementation may begin without identifying differentiators that make IntelWatch's version of the feature **superior to most TI platforms in the market**.
+> **Gate rule:** Before writing any code for a new feature, you **must** perform a competitive USP analysis. No implementation may begin without identifying differentiators that make IntelPulse's version of the feature **superior to most TI platforms in the market**.
 
 ### Why This Exists
 
-Most TI platforms implement the same features the same way. IntelWatch's competitive edge comes from doing **every feature better** — with smarter defaults, deeper integrations, and capabilities competitors charge extra for or don't offer at all. This instruction ensures we never ship a "me-too" feature.
+Most TI platforms implement the same features the same way. IntelPulse's competitive edge comes from doing **every feature better** — with smarter defaults, deeper integrations, and capabilities competitors charge extra for or don't offer at all. This instruction ensures we never ship a "me-too" feature.
 
 ### Pre-Implementation USP Checklist
 
@@ -113,7 +113,7 @@ Identify how the following major TI platforms implement the same feature (or whe
 
 #### Step 2 — Identify 3-6 USPs
 
-For each new feature, propose **at minimum 3 unique selling points** that make IntelWatch's implementation distinctly better. USPs must fall into at least 2 of these categories:
+For each new feature, propose **at minimum 3 unique selling points** that make IntelPulse's implementation distinctly better. USPs must fall into at least 2 of these categories:
 
 | USP Category | Description | Example |
 | ------------ | ----------- | ------- |
@@ -247,7 +247,7 @@ All new features must be registered in `core/feature_registry`. This enables:
 - User-controlled sorting without triggering a refetch
 - Every record must display:
   - **Source timestamp** — when the source published it
-  - **First seen** — when IntelWatch first ingested it
+  - **First seen** — when IntelPulse first ingested it
   - **Last updated** — most recent update
   - **Relative time** — e.g., "2 hours ago"
 
@@ -477,7 +477,7 @@ All features must meet these measurable thresholds:
 
 ## 🚦 Rate Limiting (Own API)
 
-Protect IntelWatch's own API from abuse:
+Protect IntelPulse's own API from abuse:
 
 | Tier | Limit | Scope |
 | ---- | ----- | ----- |

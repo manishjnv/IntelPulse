@@ -9,7 +9,7 @@
 
 - [Design Philosophy](#design-philosophy)
 - [Integration Status](#integration-status)
-- [Core Enterprise CTI Platforms](#-core-enterprise-cti-platforms)
+- [Core Enterprise CTI Platforms](#-core-enterprise-cIntelPulses)
 - [Community / Global IOC Feeds](#-community--global-ioc-feeds)
 - [IP / Domain / Reputation Intel](#-ip--domain--reputation-intel)
 - [Malware & File Intel](#-malware--file-intel)
@@ -501,7 +501,7 @@ NEW_FEED_API_KEY=
 | 2026-02-28 | VT connector rewritten for free tier (IPsum + MalwareBazaar seeds → VT enrichment lookups) |
 | 2026-02-28 | OTX updated with `/pulses/activity` fallback for users without subscriptions |
 | 2026-02-28 | All 7 feeds verified live: CISA KEV, URLhaus, NVD, AbuseIPDB, OTX, VirusTotal, Shodan CVEDB |
-| 2026-02-24 | Production domain set to intelwatch.trendsmap.in |
+| 2026-02-24 | Production domain set to IntelPulse.trendsmap.in |
 | 2026-02-24 | Added VirusTotal & Shodan API key configuration; GitHub repo URL updated |
 | 2026-02-23 | Initial integration requirements document created |
 | 2026-02-23 | 5 connectors live: CISA KEV, URLhaus, NVD, AbuseIPDB, OTX |

@@ -1,4 +1,4 @@
-# IntelWatch — Analytics Module
+# IntelPulse — Analytics Module
 
 > Complete technical reference for the Analytics dashboard: stat cards, trend charts, distribution breakdowns, and composite visualizations.
 

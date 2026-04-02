@@ -1,4 +1,4 @@
-# IntelWatch — IOC Database Module
+# IntelPulse — IOC Database Module
 
 > Complete technical reference for the IOC Database: extraction, enrichment pipelines, risk scoring, sortable browsable table, and enrichment slide-over panel.
 

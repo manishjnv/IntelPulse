@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models for the IntelWatch TI Platform."""
+"""SQLAlchemy ORM models for the IntelPulse TI Platform."""
 
 from __future__ import annotations
 

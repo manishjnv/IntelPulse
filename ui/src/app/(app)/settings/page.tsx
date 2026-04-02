@@ -326,7 +326,7 @@ function GeneralSettings({ settings, onChange }: SettingsProps) {
         >
           <input
             type="text"
-            value={(settings.platform_name as string) || "IntelWatch"}
+            value={(settings.platform_name as string) || "IntelPulse"}
             onChange={(e) => onChange("platform_name", e.target.value)}
             className="w-48 h-8 px-3 rounded-md bg-muted/40 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
           />

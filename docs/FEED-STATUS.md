@@ -1,4 +1,4 @@
-# IntelWatch — Feed Status Module
+# IntelPulse — Feed Status Module
 
 > Complete technical reference for the Feed Status panel: feed health monitoring, sync state tracking, manual triggers, pipeline status, and status indicators.
 

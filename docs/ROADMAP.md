@@ -1,8 +1,8 @@
-# IntelWatch — Product Roadmap
+# IntelPulse — Product Roadmap
 
-> Feature improvement plan organized in phases. Each phase includes new features, modules, pages, and integrations to be added to the IntelWatch Threat Intelligence Platform.
+> Feature improvement plan organized in phases. Each phase includes new features, modules, pages, and integrations to be added to the IntelPulse Threat Intelligence Platform.
 >
-> Reference benchmark: [OpenCTI](https://github.com/OpenCTI-Platform/opencti) (8.9k stars, 100+ connectors, STIX2 knowledge graph)
+> Reference benchmark: [OpenCTI](https://github.com/OpenCIntelPulse/opencti) (8.9k stars, 100+ connectors, STIX2 knowledge graph)
 
 ---
 
@@ -40,7 +40,7 @@ CISA KEV, NVD, URLhaus, AbuseIPDB, AlienVault OTX, VirusTotal, Shodan
 
 ## Phase 1 — High Impact, Moderate Effort
 
-**Goal:** Add the most universally expected TI platform features that differentiate IntelWatch from a simple feed aggregator.
+**Goal:** Add the most universally expected TI platform features that differentiate IntelPulse from a simple feed aggregator.
 
 ### 1.1 MITRE ATT&CK Integration ✅ DONE (v1.1)
 - **Module:** `api/app/services/mitre.py` — fetch ATT&CK Enterprise JSON from MITRE's STIX repo
@@ -174,7 +174,7 @@ CISA KEV, NVD, URLhaus, AbuseIPDB, AlienVault OTX, VirusTotal, Shodan
 
 ## Cross-Enrichment Engine ✅ DONE (v1.8)
 
-**Goal:** Automatically link news intelligence, threat campaigns, actors, IOCs, and ATT&CK techniques across all platform surfaces — turning IntelWatch from a collection of siloed data pages into a connected intelligence graph.
+**Goal:** Automatically link news intelligence, threat campaigns, actors, IOCs, and ATT&CK techniques across all platform surfaces — turning IntelPulse from a collection of siloed data pages into a connected intelligence graph.
 
 ### 1. Dashboard Enrichment Widgets ✅
 - 3 new Card sections: **Active Campaigns** (violet, actor/campaign/CVEs/date range), **Threat Velocity** (amber, entity mention acceleration), **Sector Threat Map** (teal, horizontal bars by campaign count)
@@ -240,7 +240,7 @@ During deep code-level audit of all 8 features, 6 bugs were identified and fixed
 
 ## Phase 2 — Differentiation & Analyst Workflow
 
-**Goal:** Transform IntelWatch from a monitoring tool into an analyst workstation with investigation and collaboration features.
+**Goal:** Transform IntelPulse from a monitoring tool into an analyst workstation with investigation and collaboration features.
 
 ### 2.1 Case / Incident Management ✅ DONE
 - **Module:** `api/app/services/cases.py` — case lifecycle management
@@ -317,13 +317,13 @@ During deep code-level audit of all 8 features, 6 bugs were identified and fixed
 
 ## Phase 3 — Enterprise Grade & Interoperability
 
-**Goal:** Make IntelWatch interoperable with the broader security ecosystem and suitable for team/enterprise deployment.
+**Goal:** Make IntelPulse interoperable with the broader security ecosystem and suitable for team/enterprise deployment.
 
 ### 3.1 STIX2 Import/Export
 - **Module:** `api/app/services/stix.py` — STIX2 bundle parser and generator
 - **Features:**
   - Parse STIX2 bundles (SDOs: Indicator, Malware, Threat Actor, Campaign, Vulnerability, etc.)
-  - Map STIX objects to IntelWatch data model
+  - Map STIX objects to IntelPulse data model
   - Generate STIX2 bundles from intel items and IOCs
   - Support STIX2.1 patterns for indicators
   - Validate bundles against STIX schema
@@ -336,7 +336,7 @@ During deep code-level audit of all 8 features, 6 bugs were identified and fixed
   - Connect to external TAXII servers as a feed source
   - Poll collections for new STIX objects
   - Configure multiple TAXII sources
-  - Serve IntelWatch data as a TAXII server (optional)
+  - Serve IntelPulse data as a TAXII server (optional)
 - **Page update:** Feeds — add/configure TAXII feed sources
 - **Database:** New `taxii_sources` table (id, name, url, collection_id, api_key, poll_interval, last_poll)
 
@@ -376,7 +376,7 @@ During deep code-level audit of all 8 features, 6 bugs were identified and fixed
 - **Features:**
   - Pull events from MISP instances
   - Push intel items to MISP as events
-  - Map MISP attributes to IntelWatch IOCs
+  - Map MISP attributes to IntelPulse IOCs
   - Sync threat levels, tags, and TLP
   - Configure multiple MISP instances
 - **Page update:** Feeds — MISP feed source configuration
@@ -972,4 +972,4 @@ System
 ---
 
 *Last updated: February 2026*
-*IntelWatch v1.0 — https://intelwatch.trendsmap.in*
+*IntelPulse v1.0 — https://IntelPulse.trendsmap.in*

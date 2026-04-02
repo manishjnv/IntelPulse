@@ -118,7 +118,7 @@ async def _search_nvd(topic: str) -> list[dict]:
     results = []
 
     async with httpx.AsyncClient(timeout=15) as client:
-        headers = {"User-Agent": "IntelWatch/1.0"}
+        headers = {"User-Agent": "IntelPulse/1.0"}
         if settings.nvd_api_key:
             headers["apiKey"] = settings.nvd_api_key
 
@@ -303,7 +303,7 @@ async def _search_otx(topic: str) -> list[dict]:
                 params={"q": keywords, "limit": 5},
                 headers={
                     "X-OTX-API-KEY": settings.otx_api_key,
-                    "User-Agent": "IntelWatch/1.0",
+                    "User-Agent": "IntelPulse/1.0",
                 },
             )
             resp.raise_for_status()

@@ -1,4 +1,4 @@
-# IntelWatch — Cyber News Intelligence Module
+# IntelPulse — Cyber News Intelligence Module
 
 > Complete technical reference for the Cyber News feature: rules, logic, conditions, thresholds, and future enhancements.
 

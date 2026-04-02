@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================
-# IntelWatch TI Platform — Initial Server Setup
+# IntelPulse TI Platform — Initial Server Setup
 # =============================================
 # Run this ONCE on a fresh Ubuntu 22.04+ VPS (e.g. Hostinger KVM 2).
 # Usage: ssh root@your-vps-ip 'bash -s' < scripts/server-setup.sh
@@ -8,11 +8,11 @@
 set -euo pipefail
 
 DEPLOY_USER="deploy"
-APP_DIR="/opt/ti-platform"
-REPO_URL="https://github.com/manishjnv/ti-platform.git"
+APP_DIR="/opt/IntelPulse"
+REPO_URL="https://github.com/manishjnv/IntelPulse.git"
 
 echo "======================================="
-echo " IntelWatch — Server Setup"
+echo " IntelPulse — Server Setup"
 echo "======================================="
 
 # ── 1. System updates ─────────────────────────────────
@@ -97,8 +97,8 @@ echo " Setup Complete!"
 echo "======================================="
 echo ""
 echo " Next steps:"
-echo "   1. Edit /opt/ti-platform/.env with your production values"
-echo "   2. Run: sudo -u deploy /opt/ti-platform/scripts/deploy.sh"
+echo "   1. Edit /opt/IntelPulse/.env with your production values"
+echo "   2. Run: sudo -u deploy /opt/IntelPulse/scripts/deploy.sh"
 echo "   3. Set up Cloudflare Tunnel (see cloudflare/tunnel-config.yml)"
 echo "   4. Add GitHub Secrets for CI/CD (see README.md)"
 echo ""

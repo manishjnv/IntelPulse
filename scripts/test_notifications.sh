@@ -3,7 +3,7 @@
 set -e
 
 BASE='http://localhost:8000/api/v1'
-AUTH='cf-access-authenticated-user-email: dev@intelwatch.local'
+AUTH='cf-access-authenticated-user-email: dev@IntelPulse.local'
 PASS=0
 FAIL=0
 

@@ -138,7 +138,7 @@ def test_stix_module():
         "id": "test-123",
         "headline": "Major APT Campaign",
         "summary": "APT group targets finance sector",
-        "source": "IntelWatch",
+        "source": "IntelPulse",
         "published_at": "2025-01-15",
         "severity": "critical",
     }

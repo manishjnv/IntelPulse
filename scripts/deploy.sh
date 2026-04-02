@@ -1,20 +1,20 @@
 #!/bin/bash
 # =============================================
-# IntelWatch TI Platform — Deploy Script
+# IntelPulse TI Platform — Deploy Script
 # =============================================
 # Called by GitHub Actions CI/CD or manually.
-# Usage: /opt/ti-platform/scripts/deploy.sh
+# Usage: /opt/IntelPulse/scripts/deploy.sh
 # =============================================
 set -euo pipefail
 
-APP_DIR="/opt/ti-platform"
+APP_DIR="/opt/IntelPulse"
 COMPOSE_FILE="docker-compose.yml"
-LOG_FILE="/opt/ti-platform/deploy.log"
+LOG_FILE="/opt/IntelPulse/deploy.log"
 
 cd "$APP_DIR"
 
 echo "=======================================" | tee -a "$LOG_FILE"
-echo " Deploying IntelWatch — $(date -u '+%Y-%m-%d %H:%M:%S UTC')" | tee -a "$LOG_FILE"
+echo " Deploying IntelPulse — $(date -u '+%Y-%m-%d %H:%M:%S UTC')" | tee -a "$LOG_FILE"
 echo "=======================================" | tee -a "$LOG_FILE"
 
 # ── 1. Pull latest code ───────────────────────────────

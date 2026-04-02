@@ -1,4 +1,4 @@
-# IntelWatch — AI Configuration Guide
+# IntelPulse — AI Configuration Guide
 updated 
 > Complete step-by-step guide for administrators to configure, tune, and manage AI-powered features across the platform.
 
@@ -33,7 +33,7 @@ updated
 
 ## 1. Overview
 
-IntelWatch uses AI to power six core features:
+IntelPulse uses AI to power six core features:
 
 | Feature | Description | Token Usage | Recommended Model |
 |---------|-------------|-------------|-------------------|
@@ -110,7 +110,7 @@ Before configuring a provider, you need:
 2. Sign up / log in
 3. Navigate to **API Keys** → **Create API Key**
 4. Copy the key (starts with `gsk_`)
-5. In IntelWatch Settings → Provider tab:
+5. In IntelPulse Settings → Provider tab:
    - Select **Groq** from the Provider dropdown
    - Paste the API key
    - The URL and model auto-populate from the info panel. Use suggested values or pick from: `llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, `gemma2-9b-it`, `mixtral-8x7b-32768`
@@ -147,7 +147,7 @@ Before configuring a provider, you need:
 2. Sign up / log in
 3. Navigate to **API Keys** → **Generate Key**
 4. Copy the key
-5. Add as a **Fallback Provider** in IntelWatch (see [Fallback Chain](#4-fallback-chain))
+5. Add as a **Fallback Provider** in IntelPulse (see [Fallback Chain](#4-fallback-chain))
 6. Test the connection
 
 ---
@@ -170,7 +170,7 @@ Before configuring a provider, you need:
 2. Sign in with a Google account
 3. Click **Get API Key** → **Create API Key**
 4. Copy the key (starts with `AIza`)
-5. In IntelWatch, set the URL to `https://generativelanguage.googleapis.com/v1beta/openai/`
+5. In IntelPulse, set the URL to `https://generativelanguage.googleapis.com/v1beta/openai/`
 6. Set model to `gemini-2.0-flash`
 7. Test and Save
 
@@ -203,7 +203,7 @@ Before configuring a provider, you need:
 1. Go to [platform.openai.com](https://platform.openai.com)
 2. Navigate to **API Keys** → **Create new secret key**
 3. Copy the key (starts with `sk-`)
-4. Configure in IntelWatch with the URL and model above
+4. Configure in IntelPulse with the URL and model above
 5. Test and Save
 
 ---
@@ -238,7 +238,7 @@ Before configuring a provider, you need:
 1. Install Ollama: `curl -fsSL https://ollama.com/install.sh | sh`
 2. Pull a model: `ollama pull llama3.1:8b`
 3. Start serving: `ollama serve` (default port 11434)
-4. Configure IntelWatch with `http://<host>:11434/v1/chat/completions`
+4. Configure IntelPulse with `http://<host>:11434/v1/chat/completions`
 5. Test and Save
 
 **Tip:** Use a longer timeout (60-120s) for Ollama since local inference depends on your hardware.
@@ -262,7 +262,7 @@ Before configuring a provider, you need:
 1. Go to [huggingface.co](https://huggingface.co) → Settings → Access Tokens
 2. Create a new token with **Inference** permission
 3. Copy the key (starts with `hf_`)
-4. Configure in IntelWatch
+4. Configure in IntelPulse
 5. Test and Save
 
 ---

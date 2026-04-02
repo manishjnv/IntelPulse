@@ -1,13 +1,13 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 
-interface IntelWatchLogoProps {
+interface IntelPulseLogoProps {
   className?: string;
   /** Width/height in Tailwind class, e.g. "h-7 w-7" */
   size?: string;
 }
 
-export function IntelWatchLogo({ className, size = "h-7 w-7" }: IntelWatchLogoProps) {
+export function IntelPulseLogo({ className, size = "h-7 w-7" }: IntelPulseLogoProps) {
   return (
     <svg
       viewBox="0 0 64 64"

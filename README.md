@@ -1,4 +1,4 @@
-# IntelWatch — TI Platform
+# IntelPulse — TI Platform
 
 > **Phase-1** — Live threat feeds, IOC search, risk scoring, analytics dashboards.
 
@@ -48,7 +48,7 @@ A production-grade, self-hosted threat intelligence aggregation and analysis pla
 
 | Page | Route | Description |
 |------|-------|-------------|
-| **Login** | `/login` | IntelWatch branded login — SSO redirect or dev bypass |
+| **Login** | `/login` | IntelPulse branded login — SSO redirect or dev bypass |
 | **Dashboard** | `/dashboard` | KPI stat cards, threat level bar, severity/category donut charts, top risks table, feed status |
 | **Threat Feed** | `/threats` | Severity filter pills, risk-sorted threat list, asset type breakdown |
 | **Cyber News** | `/news` | Structured intelligence cyber news feed — category widgets, AI enrichment, relevance scoring |
@@ -74,8 +74,8 @@ A production-grade, self-hosted threat intelligence aggregation and analysis pla
 ### 1. Clone & Configure
 
 ```bash
-git clone https://github.com/manishjnv/ti-platform.git
-cd ti-platform
+git clone https://github.com/manishjnv/IntelPulse.git
+cd IntelPulse
 cp .env.example .env
 # Edit .env — set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SECRET_KEY
 ```
@@ -127,7 +127,7 @@ open http://localhost:3000   # UI — redirects to login
 | `SMTP_PORT` | OTP | SMTP port (default: `587`) |
 | `SMTP_USER` | OTP | SMTP username |
 | `SMTP_PASSWORD` | OTP | SMTP password |
-| `SMTP_FROM_EMAIL` | OTP | Sender email (default: `noreply@intelwatch.in`) |
+| `SMTP_FROM_EMAIL` | OTP | Sender email (default: `noreply@IntelPulse.in`) |
 | `EMAIL_OTP_ENABLED` | No | Enable email OTP login (default: `false`) |
 | `NVD_API_KEY` | No | NVD API key (higher rate limits) |
 | `ABUSEIPDB_API_KEY` | No | AbuseIPDB API key (required for that feed) |

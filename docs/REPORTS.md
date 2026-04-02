@@ -1,4 +1,4 @@
-# IntelWatch — Reports Module
+# IntelPulse — Reports Module
 
 > Complete technical reference for Report Management: templates, section editing, AI generation, linked items, status workflow, and multi-format export.
 

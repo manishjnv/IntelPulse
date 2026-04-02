@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     secret_key: str = "change-me"
     api_prefix: str = "/api/v1"
-    cors_origins: list[str] = ["http://localhost:3000", "https://intelwatch.in"]
+    cors_origins: list[str] = ["http://localhost:3000", "https://IntelPulse.in"]
 
     # PostgreSQL
     postgres_host: str = "localhost"
@@ -82,14 +82,14 @@ class Settings(BaseSettings):
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
-    smtp_from_email: str = "noreply@intelwatch.in"
-    smtp_from_name: str = "IntelWatch"
+    smtp_from_email: str = "noreply@IntelPulse.in"
+    smtp_from_name: str = "IntelPulse"
     email_otp_enabled: bool = False
 
     # Domain configuration
-    domain: str = "intelwatch.in"
-    domain_ui: str = "https://intelwatch.in"
-    domain_api: str = "https://intelwatch.in"
+    domain: str = "IntelPulse.in"
+    domain_ui: str = "https://IntelPulse.in"
+    domain_api: str = "https://IntelPulse.in"
 
     # Auth / Session
     jwt_algorithm: str = "HS256"

@@ -14,7 +14,7 @@ API_BASE = "http://localhost:8000/api/v1"
 
 # Create a valid session: store session_id in Redis, create JWT with matching sid
 REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
-r = redis.Redis(host=REDIS_HOST, port=6379, password="IntelWatch_R3dis_2026", db=0)
+r = redis.Redis(host=REDIS_HOST, port=6379, password="IntelPulse_R3dis_2026", db=0)
 
 session_id = str(uuid.uuid4())
 # We need first to get admin user ID from DB, but we can use a placeholder

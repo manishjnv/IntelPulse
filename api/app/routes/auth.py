@@ -293,5 +293,5 @@ async def auth_config():
     return {
         "google_configured": bool(settings.google_client_id and settings.google_client_secret),
         "email_otp_enabled": settings.email_otp_enabled,
-        "app_name": "IntelWatch - Threat Intelligence Platform",
+        "app_name": "IntelPulse - Threat Intelligence Platform",
     }

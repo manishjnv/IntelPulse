@@ -4,7 +4,7 @@ x-common-env: &common-env
   POSTGRES_DB: ti_platform
   POSTGRES_USER: ti
   POSTGRES_PASSWORD: ti_secret
-  REDIS_URL: redis://:IntelWatch_R3dis_2026@redis:6379/0
+  REDIS_URL: redis://:IntelPulse_R3dis_2026@redis:6379/0
   OPENSEARCH_URL: http://opensearch:9200
   LOG_LEVEL: INFO
   ENVIRONMENT: production
@@ -32,13 +32,13 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --requirepass IntelWatch_R3dis_2026 --protected-mode yes --rename-command REPLICAOF "" --rename-command SLAVEOF "" --rename-command DEBUG "" --rename-command CONFIG ""
+    command: redis-server --requirepass IntelPulse_R3dis_2026 --protected-mode yes --rename-command REPLICAOF "" --rename-command SLAVEOF "" --rename-command DEBUG "" --rename-command CONFIG ""
     expose:
       - "6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "IntelWatch_R3dis_2026", "--no-auth-warning", "ping"]
+      test: ["CMD", "redis-cli", "-a", "IntelPulse_R3dis_2026", "--no-auth-warning", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -77,16 +77,16 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      DOMAIN: ${DOMAIN:-intelwatch.in}
-      DOMAIN_UI: ${DOMAIN_UI:-https://intelwatch.in}
+      DOMAIN: ${DOMAIN:-IntelPulse.in}
+      DOMAIN_UI: ${DOMAIN_UI:-https://IntelPulse.in}
       DOMAIN_API: ${DOMAIN_API:-http://localhost:8000}
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-480}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@intelwatch.in}
-      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-IntelWatch}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@IntelPulse.in}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-IntelPulse}
       EMAIL_OTP_ENABLED: ${EMAIL_OTP_ENABLED:-false}
       NVD_API_KEY: ${NVD_API_KEY:-}
       ABUSEIPDB_API_KEY: ${ABUSEIPDB_API_KEY:-}

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store";
-import { IntelWatchLogo } from "@/components/IntelWatchLogo";
+import { IntelPulseLogo } from "@/components/IntelPulseLogo";
 import {
   LayoutDashboard,
   Search,
@@ -88,11 +88,11 @@ function DesktopSidebar() {
       {/* Logo */}
       <Link href="/dashboard" className="flex h-14 items-center border-b border-border/50 px-2.5 gap-2 shrink-0 hover:bg-accent/30 transition-colors">
         <div className="flex h-8 w-8 items-center justify-center shrink-0">
-          <IntelWatchLogo />
+          <IntelPulseLogo />
         </div>
         {sidebarOpen && (
           <div className="flex flex-col flex-1 min-w-0">
-            <span className="text-sm font-bold tracking-tight leading-none">IntelWatch</span>
+            <span className="text-sm font-bold tracking-tight leading-none">IntelPulse</span>
             <span className="text-[10px] text-muted-foreground leading-none mt-0.5">TI Platform</span>
           </div>
         )}
@@ -239,10 +239,10 @@ function MobileSidebar() {
         <div className="flex h-14 items-center border-b border-border/50 px-4 justify-between">
           <Link href="/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <div className="flex h-8 w-8 items-center justify-center shrink-0">
-              <IntelWatchLogo />
+              <IntelPulseLogo />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm font-bold tracking-tight leading-none">IntelWatch</span>
+              <span className="text-sm font-bold tracking-tight leading-none">IntelPulse</span>
               <span className="text-[10px] text-muted-foreground leading-none mt-0.5">TI Platform</span>
             </div>
           </Link>

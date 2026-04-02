@@ -39,12 +39,12 @@ def _build_payload(notification: dict[str, Any]) -> dict[str, Any]:
 def _build_headers(payload: dict, secret: str | None = None) -> dict[str, str]:
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "IntelWatch/1.0",
+        "User-Agent": "IntelPulse/1.0",
     }
     if secret:
         body = json.dumps(payload, sort_keys=True)
         sig = hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()
-        headers["X-IntelWatch-Signature"] = sig
+        headers["X-IntelPulse-Signature"] = sig
     return headers
 
 

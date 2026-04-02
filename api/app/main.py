@@ -1,4 +1,4 @@
-"""FastAPI application — IntelWatch TI Platform API."""
+"""FastAPI application — IntelPulse TI Platform API."""
 
 from __future__ import annotations
 
@@ -33,8 +33,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="IntelWatch - TI Platform",
-    description="IntelWatch Threat Intelligence Platform API — live threat intel feeds, IOC search, risk scoring, analytics",
+    title="IntelPulse - TI Platform",
+    description="IntelPulse Threat Intelligence Platform API — live threat intel feeds, IOC search, risk scoring, analytics",
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/api/docs" if settings.environment != "production" else None,
@@ -72,4 +72,4 @@ app.include_router(ai_settings.router, prefix=PREFIX)
 
 @app.get("/")
 async def root():
-    return {"message": "IntelWatch - TI Platform API", "version": "1.0.0"}
+    return {"message": "IntelPulse - TI Platform API", "version": "1.0.0"}

@@ -213,8 +213,8 @@ async def test_webhook(
     from app.services.webhook import deliver_webhook_async
 
     test_notif = {
-        "title": "IntelWatch Test Notification",
-        "message": "This is a test notification from IntelWatch to verify your webhook configuration.",
+        "title": "IntelPulse Test Notification",
+        "message": "This is a test notification from IntelPulse to verify your webhook configuration.",
         "severity": "info",
         "category": "test",
         "entity_type": None,
