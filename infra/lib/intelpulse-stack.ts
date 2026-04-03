@@ -11,6 +11,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { BedrockLambdasConstruct } from './bedrock-lambdas-construct';
 
 export class IntelPulseStack extends cdk.Stack {
   public readonly vpc: ec2.Vpc;
@@ -32,6 +33,7 @@ export class IntelPulseStack extends cdk.Stack {
   public readonly ecsCluster: ecs.Cluster;
   public readonly appSecret: secretsmanager.Secret;
   public readonly alb: elbv2.ApplicationLoadBalancer;
+  public readonly bedrockLambdas: BedrockLambdasConstruct;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -60,6 +62,11 @@ export class IntelPulseStack extends cdk.Stack {
     this.ecsCluster = this.createEcsCluster();
     this.alb = this.createApplicationLoadBalancer();
     this.createEcsServices();
+
+    // Task 8: Lambda action groups for Bedrock agents
+    this.bedrockLambdas = new BedrockLambdasConstruct(this, 'BedrockLambdas', {
+      appSecret: this.appSecret,
+    });
   }
 
   private createVpc(): ec2.Vpc {

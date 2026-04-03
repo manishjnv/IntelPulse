@@ -109,23 +109,23 @@
   - [x] 7.10 Add unit tests for bedrock_adapter with mocked boto3 client
   - [x] 7.11 Update .env.example with AWS_REGION, AI_API_URL=bedrock
 
-- [ ] 8. Create Lambda action groups for Bedrock agents
-  - [ ] 8.1 Create infra/lambdas/virustotal_lookup/ directory
-  - [ ] 8.2 Implement virustotal_lookup/handler.py with lambda_handler function
-  - [ ] 8.3 Add logic to retrieve VIRUSTOTAL_API_KEY from Secrets Manager
-  - [ ] 8.4 Add logic to call VirusTotal API v3 based on IOC type
-  - [ ] 8.5 Add response transformation to standardized format
-  - [ ] 8.6 Create infra/lambdas/abuseipdb_check/ directory
-  - [ ] 8.7 Implement abuseipdb_check/handler.py for AbuseIPDB API v2
-  - [ ] 8.8 Create infra/lambdas/otx_lookup/ directory
-  - [ ] 8.9 Implement otx_lookup/handler.py for AlienVault OTX API
-  - [ ] 8.10 Create infra/lambdas/shodan_lookup/ directory
-  - [ ] 8.11 Implement shodan_lookup/handler.py for Shodan API
-  - [ ] 8.12 Create requirements.txt for each Lambda (requests, boto3)
-  - [ ] 8.13 Create CDK constructs to deploy all 4 Lambda functions
-  - [ ] 8.14 Configure Lambda IAM role with secretsmanager:GetSecretValue permission
-  - [ ] 8.15 Set Lambda timeout to 30s, memory to 256 MB
-  - [ ] 8.16 Test each Lambda independently with sample events
+- [x] 8. Create Lambda action groups for Bedrock agents
+  - [x] 8.1 Create infra/lambdas/virustotal_lookup/ directory
+  - [x] 8.2 Implement virustotal_lookup/handler.py with lambda_handler function
+  - [x] 8.3 Add logic to retrieve VIRUSTOTAL_API_KEY from Secrets Manager
+  - [x] 8.4 Add logic to call VirusTotal API v3 based on IOC type
+  - [x] 8.5 Add response transformation to standardized format
+  - [x] 8.6 Create infra/lambdas/abuseipdb_check/ directory
+  - [x] 8.7 Implement abuseipdb_check/handler.py for AbuseIPDB API v2
+  - [x] 8.8 Create infra/lambdas/otx_lookup/ directory
+  - [x] 8.9 Implement otx_lookup/handler.py for AlienVault OTX API
+  - [x] 8.10 Create infra/lambdas/shodan_lookup/ directory
+  - [x] 8.11 Implement shodan_lookup/handler.py for Shodan API
+  - [x] 8.12 Create requirements.txt for each Lambda (requests, boto3)
+  - [x] 8.13 Create CDK constructs to deploy all 4 Lambda functions
+  - [x] 8.14 Configure Lambda IAM role with secretsmanager:GetSecretValue permission
+  - [x] 8.15 Set Lambda timeout to 30s, memory to 256 MB
+  - [x] 8.16 Test each Lambda independently with sample events
 
 - [ ] 9. Create Bedrock agents
   - [ ] 9.1 Upload MITRE ATT&CK STIX bundle (enterprise-attack.json) to S3
