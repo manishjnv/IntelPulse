@@ -34,7 +34,22 @@ async def get_current_user(
     """Extract user from JWT session cookie.
 
     Validates the token signature, expiry, and Redis session state.
+    In demo mode, bypasses authentication and returns a demo user.
     """
+
+    # ── Demo Mode: Auto-authenticate as demo user ──
+    if settings.demo_mode:
+        logger.info("Demo mode active - bypassing authentication")
+        user = await get_or_create_user(
+            db,
+            email=settings.demo_user_email,
+            name=settings.demo_user_name,
+        )
+        # Ensure demo user has admin role for full access
+        if user.role != "admin":
+            user.role = "admin"
+            await db.commit()
+        return user
 
     # ── Check JWT session cookie ──
     token = request.cookies.get(COOKIE_NAME)
