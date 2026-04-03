@@ -1,10 +1,11 @@
 """AI summarization service — uses OpenAI-compatible API with multi-provider fallback.
 
-Supports: Groq, Cerebras, Google Gemini, OpenAI, Open-WebUI, etc.
+Supports: Groq, Cerebras, Google Gemini, OpenAI, Open-WebUI, Amazon Bedrock, etc.
 
 Features:
   - Async HTTP calls with automatic fallback on rate-limit (429)
   - Multi-provider chain: Groq → Cerebras → Groq alt models
+  - Amazon Bedrock support (auto-detected when AI_API_URL="bedrock" or empty on AWS)
   - Redis caching for summaries
   - Timeout fallback
   - Custom system prompts per use-case
@@ -38,6 +39,44 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 _DAILY_KEY_PREFIX = "ai_daily_usage"
+
+
+# ── Bedrock Detection ─────────────────────────────────────
+
+def _should_use_bedrock() -> bool:
+    """Detect if we should use Bedrock instead of HTTP providers.
+    
+    Returns True if:
+    - AI_API_URL is explicitly set to "bedrock"
+    - AI_API_URL is empty/not set AND we're running on AWS (AWS_REGION is set)
+    """
+    api_url = settings.ai_api_url.lower().strip()
+    
+    # Explicit bedrock mode
+    if api_url == "bedrock":
+        return True
+    
+    # Auto-detect AWS environment (empty AI_API_URL + AWS_REGION set)
+    if not api_url or api_url == "https://api.groq.com/openai/v1/chat/completions":
+        # Check if AWS_REGION is set (indicates AWS deployment)
+        if settings.aws_region and settings.aws_region != "us-east-1":
+            return True
+        # Also check if we're in production with no API key (AWS deployment)
+        if settings.environment == "production" and not settings.ai_api_key:
+            return True
+    
+    return False
+
+
+_USE_BEDROCK = _should_use_bedrock()
+
+if _USE_BEDROCK:
+    try:
+        from app.services.bedrock_adapter import get_bedrock_adapter
+        logger.info("bedrock_mode_enabled", reason="ai_api_url_is_bedrock_or_aws_environment")
+    except ImportError as e:
+        logger.warning("bedrock_import_failed", error=str(e), fallback="http_providers")
+        _USE_BEDROCK = False
 
 
 # ── DB-backed AI Settings Cache ───────────────────────────
@@ -492,6 +531,7 @@ async def chat_completion(
     """Generic chat completion with automatic provider fallback.
 
     Tries each provider in the fallback chain on rate-limit (429).
+    Uses Bedrock if AI_API_URL="bedrock" or running on AWS.
     Returns content string or None if all providers are exhausted.
     """
     if feature:
@@ -501,6 +541,23 @@ async def chat_completion(
         if not await check_daily_limit(feature):
             logger.info("ai_daily_limit_reached", feature=feature)
             return None
+
+    # Use Bedrock if enabled
+    if _USE_BEDROCK:
+        try:
+            adapter = get_bedrock_adapter()
+            result = await adapter.ai_analyze(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+            if result and feature:
+                await increment_daily_usage(feature)
+            return result
+        except Exception as e:
+            logger.error("bedrock_fallback_to_http", error=str(e))
+            # Fall through to HTTP providers
 
     chain = await _get_chain_async()
     if not chain:
@@ -543,9 +600,28 @@ async def chat_completion_json(
     """Chat completion that parses and validates JSON response.
 
     Strips markdown fences, parses JSON, validates required keys are present.
+    Uses Bedrock if AI_API_URL="bedrock" or running on AWS.
     On parse failure, retries once with a corrective prompt asking the LLM
     to fix its output. Returns parsed dict or None.
     """
+    # Use Bedrock if enabled
+    if _USE_BEDROCK:
+        try:
+            adapter = get_bedrock_adapter()
+            result = await adapter.ai_analyze_structured(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                required_keys=required_keys,
+            )
+            if result and feature:
+                await increment_daily_usage(feature)
+            return result
+        except Exception as e:
+            logger.error("bedrock_json_fallback_to_http", error=str(e))
+            # Fall through to HTTP providers
+
     raw = await chat_completion(
         system_prompt=system_prompt,
         user_prompt=user_prompt,

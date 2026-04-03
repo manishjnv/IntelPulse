@@ -83,6 +83,9 @@ class Settings(BaseSettings):
     ai_timeout: int = 30
     ai_enabled: bool = True
 
+    # AWS Bedrock (for AWS deployment)
+    aws_region: str = "us-east-1"
+
     # AI fallback providers (free tiers for rate-limit resilience)
     cerebras_api_key: str = ""   # Cerebras — fast inference, free tier
     hf_api_key: str = ""         # HuggingFace Inference API — free tier
