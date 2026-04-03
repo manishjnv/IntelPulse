@@ -97,17 +97,17 @@
 ## Phase 2: Bedrock Agent Core (Tasks 7-12)
 
 - [ ] 7. Create Bedrock adapter - replace llama3
-  - [ ] 7.1 Create api/services/bedrock_adapter.py file
-  - [ ] 7.2 Implement BedrockAdapter class with boto3 bedrock-runtime client
-  - [ ] 7.3 Implement ai_analyze() method for text responses
-  - [ ] 7.4 Implement ai_analyze_structured() method for JSON responses
-  - [ ] 7.5 Implement _parse_json_response() helper to extract JSON from code blocks
-  - [ ] 7.6 Add error handling for Bedrock API errors
-  - [ ] 7.7 Update api/services/ai.py to import and use bedrock_adapter
-  - [ ] 7.8 Add environment variable detection: if AI_API_URL is "bedrock" or empty, use Bedrock
-  - [ ] 7.9 Maintain backward compatibility with llama3 for local dev
-  - [ ] 7.10 Add unit tests for bedrock_adapter with mocked boto3 client
-  - [ ] 7.11 Update .env.example with AWS_REGION, AI_API_URL=bedrock
+  - [x] 7.1 Create api/services/bedrock_adapter.py file
+  - [x] 7.2 Implement BedrockAdapter class with boto3 bedrock-runtime client
+  - [x] 7.3 Implement ai_analyze() method for text responses
+  - [x] 7.4 Implement ai_analyze_structured() method for JSON responses
+  - [x] 7.5 Implement _parse_json_response() helper to extract JSON from code blocks
+  - [x] 7.6 Add error handling for Bedrock API errors
+  - [x] 7.7 Update api/services/ai.py to import and use bedrock_adapter
+  - [x] 7.8 Add environment variable detection: if AI_API_URL is "bedrock" or empty, use Bedrock
+  - [x] 7.9 Maintain backward compatibility with llama3 for local dev
+  - [x] 7.10 Add unit tests for bedrock_adapter with mocked boto3 client
+  - [x] 7.11 Update .env.example with AWS_REGION, AI_API_URL=bedrock
 
 - [ ] 8. Create Lambda action groups for Bedrock agents
   - [ ] 8.1 Create infra/lambdas/virustotal_lookup/ directory
