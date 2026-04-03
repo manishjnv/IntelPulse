@@ -1,9 +1,10 @@
 # Session 5 Summary - Simplified Bedrock Demo
 
 **Date:** 2026-04-03  
-**Duration:** ~30 minutes  
+**Duration:** ~60 minutes  
 **Branch:** aws-migration  
 **Approach:** Simplified demo (no CDK, no agents)  
+**Status:** Ready for deployment on EC2  
 
 ---
 
@@ -15,6 +16,42 @@
 **To:** Simple EC2 demo with direct Bedrock SDK integration  
 
 **Why:** Focus on demonstrating working Bedrock integration quickly and reliably.
+
+---
+
+## EC2 Instance Configuration (Added in Session)
+
+### Existing Instance Used
+
+**Instance Details:**
+
+- Instance ID: i-08e16a37688d50004
+- Public IP: 13.222.13.45
+- Instance Type: t3.small
+- Region: us-east-1
+- State: running
+
+### Configuration Applied
+
+**1. Security Group (sg-09e8a4e51d8267dae)**
+
+- ✅ Added ingress rule: TCP port 8000 from 0.0.0.0/0
+- ✅ Existing rule: TCP port 22 (SSH) from 0.0.0.0/0
+
+**2. IAM Role Created**
+
+- ✅ Role Name: BedrockAccessRole
+- ✅ Trust Policy: EC2 service
+- ✅ Policy: BedrockInvokeModelPolicy
+- ✅ Permissions: bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream
+- ✅ Resources: Claude 3.5 Sonnet and Haiku models
+- ✅ Instance Profile: Created and attached to EC2
+
+**3. Files Created**
+
+- `trust-policy.json` - IAM trust policy for EC2
+- `bedrock-policy.json` - Bedrock permissions policy
+- `DEPLOY_TO_EXISTING_EC2.md` - Deployment guide for existing instance
 
 ---
 
@@ -301,43 +338,51 @@ cat api/app/services/bedrock_adapter.py | head -50
 
 ### Documentation
 
-2. `EC2_DEMO_SETUP.md` - Complete setup guide (600+ lines)
+1. `EC2_DEMO_SETUP.md` - Complete setup guide (600+ lines)
 2. `DEMO_README.md` - Quick start guide (400+ lines)
 3. `DEMO_SUMMARY.md` - Architecture overview (500+ lines)
-4. `SESSION_5_SUMMARY.md` - This file
+4. `DEPLOY_TO_EXISTING_EC2.md` - Existing instance deployment (350+ lines)
+5. `QUICK_START.md` - 5-minute quick start (100+ lines)
+6. `SESSION_5_SUMMARY.md` - This file
 
 ### Scripts
 
-6. `start-demo.sh` - Setup automation (200+ lines)
+1. `start-demo.sh` - Setup automation (200+ lines)
 2. `test_bedrock_demo.py` - Test suite (150+ lines)
 
 ### Configuration
 
-8. `docker-compose.demo.yml` - Minimal Docker setup
+1. `docker-compose.demo.yml` - Minimal Docker setup
+2. `trust-policy.json` - IAM trust policy for EC2
+3. `bedrock-policy.json` - Bedrock permissions policy
 
 ### Modified
 
-9. `api/app/main.py` - Added demo router
+1. `api/app/main.py` - Added demo router
 
-**Total: 9 files, ~2,500 lines of code and documentation**
+**Total: 13 files, ~3,200 lines of code and documentation**
 
 ---
 
-## Git Commit
+## Git Commits
 
 ```
+commit 610edcb
+docs: add deployment guide for existing EC2 instance
+
+commit 754b0cb
+docs: add quick start guide
+
+commit 8d625a7
+docs: add session 5 summary
+
 commit e1e96bd
 feat: add simplified Bedrock demo for EC2 deployment
-
-- Created demo API endpoint at /api/v1/demo/analyze
-- Direct Bedrock SDK integration (no agents, no action groups)
-- Comprehensive EC2 setup documentation
-- Quick start scripts and test suite
-- Minimal Docker Compose configuration
 ```
 
 **Branch:** aws-migration  
 **Status:** Ready for EC2 deployment  
+**EC2 Configured:** i-08e16a37688d50004 (13.222.13.45)  
 
 ---
 
@@ -365,7 +410,10 @@ feat: add simplified Bedrock demo for EC2 deployment
 ✅ Setup scripts created  
 ✅ Test suite implemented  
 ✅ Docker Compose configuration ready  
+✅ EC2 instance configured with IAM role  
+✅ Security group updated for API access  
 ✅ All changes committed to git  
+✅ Ready for deployment  
 
 ---
 
@@ -476,3 +524,81 @@ The demo shows:
 - ✅ Simple, reliable infrastructure
 
 Perfect for AWS Codethon demonstration!
+
+---
+
+## Deployment Status
+
+### Infrastructure Ready ✅
+
+**EC2 Instance:**
+
+- Instance ID: i-08e16a37688d50004
+- Public IP: 13.222.13.45
+- Instance Type: t3.small
+- Region: us-east-1
+- State: running
+
+**IAM Configuration:**
+
+- Role: BedrockAccessRole
+- Policy: BedrockInvokeModelPolicy
+- Permissions: bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream
+- Models: Claude 3.5 Sonnet, Claude 3.5 Haiku
+- Status: Attached to EC2 instance
+
+**Security Group:**
+
+- Group ID: sg-09e8a4e51d8267dae
+- Inbound Rules:
+  - TCP 22 (SSH) from 0.0.0.0/0
+  - TCP 8000 (API) from 0.0.0.0/0
+
+**Code Repository:**
+
+- Repo: <https://github.com/manishjnv/IntelPulse.git>
+- Branch: aws-migration
+- Status: All changes pushed
+
+### Next Session Tasks
+
+1. **SSH to EC2:** `ssh -i key.pem ubuntu@13.222.13.45`
+2. **Install Docker** (if not already installed)
+3. **Clone repo:** `git clone https://github.com/manishjnv/IntelPulse.git`
+4. **Checkout branch:** `git checkout aws-migration`
+5. **Run setup:** `./start-demo.sh`
+6. **Test endpoint:** `curl http://localhost:8000/api/v1/demo/health`
+7. **Demo presentation:** Follow script in DEPLOY_TO_EXISTING_EC2.md
+
+### Estimated Time to Deploy
+
+- SSH and verify: 2 minutes
+- Install dependencies: 5 minutes (if needed)
+- Clone repo: 1 minute
+- Run setup script: 10-15 minutes (Docker build)
+- Test and verify: 3 minutes
+
+**Total: ~20-25 minutes**
+
+### Demo Endpoints
+
+Once deployed:
+
+- **Health Check:** `http://13.222.13.45:8000/api/v1/demo/health`
+- **API Docs:** `http://13.222.13.45:8000/api/docs`
+- **Analyze Endpoint:** `POST http://13.222.13.45:8000/api/v1/demo/analyze`
+
+### Test Command
+
+```bash
+curl -X POST http://13.222.13.45:8000/api/v1/demo/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ioc": "malicious-domain.com",
+    "ioc_type": "domain"
+  }' | jq
+```
+
+---
+
+**Session Complete! Ready for deployment in next session.** 🚀
