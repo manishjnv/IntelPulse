@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "name": "Test Sync",
+  "description": "Auto-generates or updates tests when Python files are saved",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "api/**/*.py",
+      "worker/**/*.py"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Check if tests exist for the saved file. If not, generate pytest tests following existing patterns in api/tests/. If tests exist, update them to cover any new or changed functions. Use async test patterns with httpx.AsyncClient for API route tests."
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Documentation Update",
+  "description": "Updates API docs when route files change",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "api/routes/**/*.py"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Check if the API route changes affect the documentation in docs/. If new endpoints were added, update the API Reference section in README.md. Keep the existing table format."
+  }
+}
