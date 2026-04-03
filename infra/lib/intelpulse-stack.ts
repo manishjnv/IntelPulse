@@ -4,6 +4,10 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as elasticache from 'aws-cdk-lib/aws-elasticache';
 import * as opensearch from 'aws-cdk-lib/aws-opensearchservice';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
+import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -25,6 +29,9 @@ export class IntelPulseStack extends cdk.Stack {
     ui: ecr.Repository;
     worker: ecr.Repository;
   };
+  public readonly ecsCluster: ecs.Cluster;
+  public readonly appSecret: secretsmanager.Secret;
+  public readonly alb: elbv2.ApplicationLoadBalancer;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -49,6 +56,10 @@ export class IntelPulseStack extends cdk.Stack {
     this.ecrRepositories = this.createEcrRepositories();
 
     // Task 6: ECS Fargate cluster and services
+    this.appSecret = this.createSecretsManagerSecret();
+    this.ecsCluster = this.createEcsCluster();
+    this.alb = this.createApplicationLoadBalancer();
+    this.createEcsServices();
   }
 
   private createVpc(): ec2.Vpc {
@@ -529,5 +540,444 @@ export class IntelPulseStack extends cdk.Stack {
       ui: uiRepo,
       worker: workerRepo,
     };
+  }
+
+  private createSecretsManagerSecret(): secretsmanager.Secret {
+    // Create Secrets Manager secret with placeholder values
+    // These should be updated after deployment with actual values
+    const secret = new secretsmanager.Secret(this, 'AppSecret', {
+      secretName: 'intelpulse/production',
+      description: 'IntelPulse application secrets',
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({
+          ENVIRONMENT: 'production',
+          LOG_LEVEL: 'INFO',
+          SECRET_KEY: 'REPLACE_WITH_RANDOM_32_CHAR_STRING',
+          DOMAIN: 'intelpulse.tech',
+          DOMAIN_UI: 'https://intelpulse.tech',
+          DOMAIN_API: 'https://intelpulse.tech/api',
+          POSTGRES_DB: 'intelpulse',
+          POSTGRES_USER: 'intelpulse',
+          OPENSEARCH_USER: 'admin',
+          OPENSEARCH_VERIFY_CERTS: 'false',
+          DEV_BYPASS_AUTH: 'false',
+          JWT_EXPIRE_MINUTES: '480',
+          AI_API_URL: 'bedrock',
+          AI_MODEL: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+          AI_TIMEOUT: '30',
+          AI_ENABLED: 'true',
+          NEXT_PUBLIC_APP_NAME: 'IntelPulse',
+          NVD_API_KEY: 'REPLACE_ME',
+          ABUSEIPDB_API_KEY: 'REPLACE_ME',
+          OTX_API_KEY: 'REPLACE_ME',
+          VIRUSTOTAL_API_KEY: 'REPLACE_ME',
+          SHODAN_API_KEY: 'REPLACE_ME',
+          GOOGLE_CLIENT_ID: 'REPLACE_ME',
+        }),
+        generateStringKey: 'POSTGRES_PASSWORD',
+      },
+    });
+
+    // Output secret ARN
+    new cdk.CfnOutput(this, 'AppSecretArn', {
+      value: secret.secretArn,
+      description: 'Secrets Manager Secret ARN',
+      exportName: 'IntelPulse-AppSecretArn',
+    });
+
+    return secret;
+  }
+
+  private createEcsCluster(): ecs.Cluster {
+    const cluster = new ecs.Cluster(this, 'EcsCluster', {
+      clusterName: 'intelpulse-production',
+      vpc: this.vpc,
+      containerInsights: true,
+    });
+
+    // Output cluster name
+    new cdk.CfnOutput(this, 'EcsClusterName', {
+      value: cluster.clusterName,
+      description: 'ECS Cluster Name',
+      exportName: 'IntelPulse-EcsClusterName',
+    });
+
+    return cluster;
+  }
+
+  private createApplicationLoadBalancer(): elbv2.ApplicationLoadBalancer {
+    // Create ALB in public subnets
+    const alb = new elbv2.ApplicationLoadBalancer(this, 'ApplicationLoadBalancer', {
+      vpc: this.vpc,
+      internetFacing: true,
+      loadBalancerName: 'intelpulse-alb',
+      securityGroup: this.securityGroups.alb,
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PUBLIC,
+      },
+    });
+
+    // Output ALB DNS name
+    new cdk.CfnOutput(this, 'AlbDnsName', {
+      value: alb.loadBalancerDnsName,
+      description: 'Application Load Balancer DNS Name',
+      exportName: 'IntelPulse-AlbDnsName',
+    });
+
+    return alb;
+  }
+
+  private createEcsServices(): void {
+    // Create IAM task execution role
+    const taskExecutionRole = new iam.Role(this, 'EcsTaskExecutionRole', {
+      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+      description: 'ECS Task Execution Role for IntelPulse',
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy'),
+      ],
+    });
+
+    // Add permission to read secrets
+    this.appSecret.grantRead(taskExecutionRole);
+
+    // Create IAM task role for API with Bedrock permissions
+    const apiTaskRole = new iam.Role(this, 'ApiTaskRole', {
+      assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+      description: 'ECS Task Role for API service with Bedrock permissions',
+    });
+
+    // Add Bedrock permissions
+    apiTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'bedrock:InvokeModel',
+          'bedrock:InvokeAgent',
+          'bedrock:InvokeModelWithResponseStream',
+        ],
+        resources: ['*'],
+      })
+    );
+
+    // Add Secrets Manager read permission
+    this.appSecret.grantRead(apiTaskRole);
+
+    // Create CloudWatch log groups
+    const apiLogGroup = new logs.LogGroup(this, 'ApiLogGroup', {
+      logGroupName: '/ecs/intelpulse-api',
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const uiLogGroup = new logs.LogGroup(this, 'UiLogGroup', {
+      logGroupName: '/ecs/intelpulse-ui',
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const workerLogGroup = new logs.LogGroup(this, 'WorkerLogGroup', {
+      logGroupName: '/ecs/intelpulse-worker',
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const schedulerLogGroup = new logs.LogGroup(this, 'SchedulerLogGroup', {
+      logGroupName: '/ecs/intelpulse-scheduler',
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Create task definitions
+    const apiTaskDefinition = new ecs.FargateTaskDefinition(this, 'ApiTaskDefinition', {
+      family: 'intelpulse-api',
+      cpu: 512,
+      memoryLimitMiB: 1024,
+      executionRole: taskExecutionRole,
+      taskRole: apiTaskRole,
+    });
+
+    const uiTaskDefinition = new ecs.FargateTaskDefinition(this, 'UiTaskDefinition', {
+      family: 'intelpulse-ui',
+      cpu: 256,
+      memoryLimitMiB: 512,
+      executionRole: taskExecutionRole,
+    });
+
+    const workerTaskDefinition = new ecs.FargateTaskDefinition(this, 'WorkerTaskDefinition', {
+      family: 'intelpulse-worker',
+      cpu: 256,
+      memoryLimitMiB: 512,
+      executionRole: taskExecutionRole,
+    });
+
+    const schedulerTaskDefinition = new ecs.FargateTaskDefinition(this, 'SchedulerTaskDefinition', {
+      family: 'intelpulse-scheduler',
+      cpu: 256,
+      memoryLimitMiB: 512,
+      executionRole: taskExecutionRole,
+    });
+
+    // Build environment variables with dynamic values
+    const commonEnv = {
+      AWS_REGION: this.region,
+      POSTGRES_HOST: this.timescaleDbInstance.instancePrivateIp,
+      POSTGRES_PORT: '5432',
+      REDIS_URL: `redis://${this.redisCluster.attrRedisEndpointAddress}:${this.redisCluster.attrRedisEndpointPort}/0`,
+      OPENSEARCH_URL: `https://${this.opensearchDomain.domainEndpoint}`,
+    };
+
+    // Add API container
+    apiTaskDefinition.addContainer('api', {
+      containerName: 'api',
+      image: ecs.ContainerImage.fromEcrRepository(this.ecrRepositories.api, 'latest'),
+      portMappings: [{ containerPort: 8000, protocol: ecs.Protocol.TCP }],
+      environment: {
+        ...commonEnv,
+        NEXT_PUBLIC_API_URL: 'https://intelpulse.tech/api',
+      },
+      secrets: {
+        SECRET_KEY: ecs.Secret.fromSecretsManager(this.appSecret, 'SECRET_KEY'),
+        POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(this.appSecret, 'POSTGRES_PASSWORD'),
+        POSTGRES_DB: ecs.Secret.fromSecretsManager(this.appSecret, 'POSTGRES_DB'),
+        POSTGRES_USER: ecs.Secret.fromSecretsManager(this.appSecret, 'POSTGRES_USER'),
+        OPENSEARCH_USER: ecs.Secret.fromSecretsManager(this.appSecret, 'OPENSEARCH_USER'),
+        NVD_API_KEY: ecs.Secret.fromSecretsManager(this.appSecret, 'NVD_API_KEY'),
+        ABUSEIPDB_API_KEY: ecs.Secret.fromSecretsManager(this.appSecret, 'ABUSEIPDB_API_KEY'),
+        OTX_API_KEY: ecs.Secret.fromSecretsManager(this.appSecret, 'OTX_API_KEY'),
+        VIRUSTOTAL_API_KEY: ecs.Secret.fromSecretsManager(this.appSecret, 'VIRUSTOTAL_API_KEY'),
+        SHODAN_API_KEY: ecs.Secret.fromSecretsManager(this.appSecret, 'SHODAN_API_KEY'),
+        GOOGLE_CLIENT_ID: ecs.Secret.fromSecretsManager(this.appSecret, 'GOOGLE_CLIENT_ID'),
+      },
+      logging: ecs.LogDrivers.awsLogs({
+        streamPrefix: 'api',
+        logGroup: apiLogGroup,
+      }),
+      healthCheck: {
+        command: ['CMD-SHELL', 'curl -f http://localhost:8000/api/v1/health || exit 1'],
+        interval: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(5),
+        retries: 3,
+        startPeriod: cdk.Duration.seconds(60),
+      },
+    });
+
+    // Add UI container
+    uiTaskDefinition.addContainer('ui', {
+      containerName: 'ui',
+      image: ecs.ContainerImage.fromEcrRepository(this.ecrRepositories.ui, 'latest'),
+      portMappings: [{ containerPort: 3000, protocol: ecs.Protocol.TCP }],
+      environment: {
+        BACKEND_URL: `http://${this.alb.loadBalancerDnsName}/api`,
+        NEXT_PUBLIC_API_URL: 'https://intelpulse.tech/api',
+      },
+      logging: ecs.LogDrivers.awsLogs({
+        streamPrefix: 'ui',
+        logGroup: uiLogGroup,
+      }),
+      healthCheck: {
+        command: ['CMD-SHELL', 'curl -f http://localhost:3000 || exit 1'],
+        interval: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(5),
+        retries: 3,
+        startPeriod: cdk.Duration.seconds(60),
+      },
+    });
+
+    // Add Worker container
+    workerTaskDefinition.addContainer('worker', {
+      containerName: 'worker',
+      image: ecs.ContainerImage.fromEcrRepository(this.ecrRepositories.worker, 'latest'),
+      environment: commonEnv,
+      secrets: {
+        SECRET_KEY: ecs.Secret.fromSecretsManager(this.appSecret, 'SECRET_KEY'),
+        POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(this.appSecret, 'POSTGRES_PASSWORD'),
+        POSTGRES_DB: ecs.Secret.fromSecretsManager(this.appSecret, 'POSTGRES_DB'),
+        POSTGRES_USER: ecs.Secret.fromSecretsManager(this.appSecret, 'POSTGRES_USER'),
+        OPENSEARCH_USER: ecs.Secret.fromSecretsManager(this.appSecret, 'OPENSEARCH_USER'),
+        NVD_API_KEY: ecs.Secret.fromSecretsManager(this.appSecret, 'NVD_API_KEY'),
+        ABUSEIPDB_API_KEY: ecs.Secret.fromSecretsManager(this.appSecret, 'ABUSEIPDB_API_KEY'),
+        OTX_API_KEY: ecs.Secret.fromSecretsManager(this.appSecret, 'OTX_API_KEY'),
+        VIRUSTOTAL_API_KEY: ecs.Secret.fromSecretsManager(this.appSecret, 'VIRUSTOTAL_API_KEY'),
+        SHODAN_API_KEY: ecs.Secret.fromSecretsManager(this.appSecret, 'SHODAN_API_KEY'),
+      },
+      logging: ecs.LogDrivers.awsLogs({
+        streamPrefix: 'worker',
+        logGroup: workerLogGroup,
+      }),
+    });
+
+    // Add Scheduler container
+    schedulerTaskDefinition.addContainer('scheduler', {
+      containerName: 'scheduler',
+      image: ecs.ContainerImage.fromEcrRepository(this.ecrRepositories.worker, 'latest'),
+      command: ['python', '-m', 'worker.scheduler'],
+      environment: commonEnv,
+      secrets: {
+        SECRET_KEY: ecs.Secret.fromSecretsManager(this.appSecret, 'SECRET_KEY'),
+        POSTGRES_PASSWORD: ecs.Secret.fromSecretsManager(this.appSecret, 'POSTGRES_PASSWORD'),
+        POSTGRES_DB: ecs.Secret.fromSecretsManager(this.appSecret, 'POSTGRES_DB'),
+        POSTGRES_USER: ecs.Secret.fromSecretsManager(this.appSecret, 'POSTGRES_USER'),
+        OPENSEARCH_USER: ecs.Secret.fromSecretsManager(this.appSecret, 'OPENSEARCH_USER'),
+      },
+      logging: ecs.LogDrivers.awsLogs({
+        streamPrefix: 'scheduler',
+        logGroup: schedulerLogGroup,
+      }),
+    });
+
+    // Create target groups
+    const apiTargetGroup = new elbv2.ApplicationTargetGroup(this, 'ApiTargetGroup', {
+      vpc: this.vpc,
+      port: 8000,
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      targetType: elbv2.TargetType.IP,
+      healthCheck: {
+        path: '/api/v1/health',
+        interval: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(5),
+        healthyThresholdCount: 2,
+        unhealthyThresholdCount: 3,
+      },
+      deregistrationDelay: cdk.Duration.seconds(30),
+    });
+
+    const uiTargetGroup = new elbv2.ApplicationTargetGroup(this, 'UiTargetGroup', {
+      vpc: this.vpc,
+      port: 3000,
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      targetType: elbv2.TargetType.IP,
+      healthCheck: {
+        path: '/',
+        interval: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(5),
+        healthyThresholdCount: 2,
+        unhealthyThresholdCount: 3,
+      },
+      deregistrationDelay: cdk.Duration.seconds(30),
+    });
+
+    // Create HTTP listener with redirect to HTTPS
+    const httpListener = this.alb.addListener('HttpListener', {
+      port: 80,
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      defaultAction: elbv2.ListenerAction.forward([uiTargetGroup]),
+    });
+
+    // Add listener rules for HTTP
+    httpListener.addTargetGroups('ApiRuleHttp', {
+      priority: 10,
+      conditions: [elbv2.ListenerCondition.pathPatterns(['/api/*'])],
+      targetGroups: [apiTargetGroup],
+    });
+
+    // Note: HTTPS listener should be added after ACM certificate is issued
+    // To add HTTPS listener:
+    // 1. Request ACM certificate for intelpulse.tech
+    // 2. Complete DNS validation
+    // 3. Add certificate ARN to the listener:
+    //
+    // const httpsListener = this.alb.addListener('HttpsListener', {
+    //   port: 443,
+    //   protocol: elbv2.ApplicationProtocol.HTTPS,
+    //   certificates: [
+    //     elbv2.ListenerCertificate.fromArn('arn:aws:acm:us-east-1:604275788592:certificate/CERTIFICATE_ID')
+    //   ],
+    //   defaultAction: elbv2.ListenerAction.forward([uiTargetGroup]),
+    // });
+    //
+    // httpsListener.addTargetGroups('ApiRule', {
+    //   priority: 10,
+    //   conditions: [elbv2.ListenerCondition.pathPatterns(['/api/*'])],
+    //   targetGroups: [apiTargetGroup],
+    // });
+    //
+    // Then update HTTP listener to redirect:
+    // httpListener.addAction('HttpsRedirect', {
+    //   action: elbv2.ListenerAction.redirect({
+    //     protocol: 'HTTPS',
+    //     port: '443',
+    //     permanent: true,
+    //   }),
+    // });
+
+    // Create Fargate services
+    const apiService = new ecs.FargateService(this, 'ApiService', {
+      cluster: this.ecsCluster,
+      taskDefinition: apiTaskDefinition,
+      serviceName: 'intelpulse-api',
+      desiredCount: 1,
+      securityGroups: [this.securityGroups.ecs],
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+      },
+      assignPublicIp: false,
+      healthCheckGracePeriod: cdk.Duration.seconds(60),
+    });
+
+    apiService.attachToApplicationTargetGroup(apiTargetGroup);
+
+    // Add auto-scaling for API service
+    const apiScaling = apiService.autoScaleTaskCount({
+      minCapacity: 1,
+      maxCapacity: 4,
+    });
+
+    apiScaling.scaleOnCpuUtilization('ApiCpuScaling', {
+      targetUtilizationPercent: 70,
+      scaleInCooldown: cdk.Duration.seconds(60),
+      scaleOutCooldown: cdk.Duration.seconds(60),
+    });
+
+    const uiService = new ecs.FargateService(this, 'UiService', {
+      cluster: this.ecsCluster,
+      taskDefinition: uiTaskDefinition,
+      serviceName: 'intelpulse-ui',
+      desiredCount: 1,
+      securityGroups: [this.securityGroups.ecs],
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+      },
+      assignPublicIp: false,
+      healthCheckGracePeriod: cdk.Duration.seconds(60),
+    });
+
+    uiService.attachToApplicationTargetGroup(uiTargetGroup);
+
+    new ecs.FargateService(this, 'WorkerService', {
+      cluster: this.ecsCluster,
+      taskDefinition: workerTaskDefinition,
+      serviceName: 'intelpulse-worker',
+      desiredCount: 1,
+      securityGroups: [this.securityGroups.ecs],
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+      },
+      assignPublicIp: false,
+    });
+
+    new ecs.FargateService(this, 'SchedulerService', {
+      cluster: this.ecsCluster,
+      taskDefinition: schedulerTaskDefinition,
+      serviceName: 'intelpulse-scheduler',
+      desiredCount: 1,
+      securityGroups: [this.securityGroups.ecs],
+      vpcSubnets: {
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+      },
+      assignPublicIp: false,
+    });
+
+    // Output service names
+    new cdk.CfnOutput(this, 'ApiServiceName', {
+      value: apiService.serviceName,
+      description: 'API Service Name',
+      exportName: 'IntelPulse-ApiServiceName',
+    });
+
+    new cdk.CfnOutput(this, 'UiServiceName', {
+      value: uiService.serviceName,
+      description: 'UI Service Name',
+      exportName: 'IntelPulse-UiServiceName',
+    });
   }
 }
