@@ -5,6 +5,7 @@ This directory contains the AWS CDK infrastructure code for the IntelPulse threa
 ## Overview
 
 The CDK stack provisions the following AWS resources:
+
 - VPC with 2 AZs, public/private subnets, NAT Gateway
 - EC2 instance for TimescaleDB (PostgreSQL 16)
 - ElastiCache Redis 7 cluster
@@ -16,7 +17,7 @@ The CDK stack provisions the following AWS resources:
 
 ## Configuration
 
-- **Region**: ap-south-1 (Mumbai)
+- **Region**: us-east-1 (US East - N. Virginia)
 - **Stack Name**: IntelPulseStack
 - **Tags**: Project=IntelPulse, Environment=production, ManagedBy=CDK
 
@@ -41,7 +42,7 @@ The CDK stack provisions the following AWS resources:
 Before first deployment, bootstrap the CDK in your AWS account:
 
 ```bash
-npx cdk bootstrap aws://ACCOUNT-ID/ap-south-1
+npx cdk bootstrap aws://ACCOUNT-ID/us-east-1
 ```
 
 ## Deployment

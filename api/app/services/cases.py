@@ -116,6 +116,9 @@ async def list_cases(
     if tag:
         query = query.where(literal(tag) == func.any(Case.tags))
     if search:
+        # Validate search length to prevent DoS
+        if len(search) > 200:
+            search = search[:200]
         escaped = search.replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
         query = query.where(

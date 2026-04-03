@@ -9,5 +9,7 @@
   "then": {
     "type": "askAgent",
     "prompt": "Scan the codebase for: 1) Hardcoded credentials or API keys in source files, 2) SQL injection risks in database queries, 3) Missing input validation on API endpoints, 4) Unsafe eval() or exec() usage, 5) CORS misconfigurations. Report issues by severity (CRITICAL/HIGH/MEDIUM/LOW) with file locations and fix suggestions."
-  }
+  },
+  "workspaceFolderName": "ti-platform",
+  "shortName": "security-scan"
 }

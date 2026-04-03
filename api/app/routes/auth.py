@@ -50,7 +50,7 @@ def _set_session_cookie(response: Response, token: str) -> None:
         value=token,
         httponly=True,
         secure=True,
-        samesite="lax",
+        samesite="strict",  # Stricter CSRF protection
         max_age=COOKIE_MAX_AGE,
         path="/",
     )
@@ -116,7 +116,7 @@ async def google_callback(
         value=token,
         httponly=True,
         secure=True,
-        samesite="lax",
+        samesite="strict",  # Stricter CSRF protection
         max_age=COOKIE_MAX_AGE,
         path="/",
     )
@@ -156,7 +156,7 @@ async def otp_send(body: OTPSendRequest):
         )
 
     email = body.email.strip().lower()
-    if not email or "@" not in email:
+    if not email or "@" not in email or len(email) > 254:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid email address",
@@ -191,7 +191,7 @@ async def otp_verify(
     if not await verify_otp(email, code):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired code",
+            detail="Authentication failed",  # Generic message to prevent email enumeration
         )
 
     user = await get_or_create_user(db, email)

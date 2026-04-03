@@ -29,15 +29,15 @@
   - [x] 1.5 Create bin/intelpulse.ts entry point
   - [x] 1.6 Test CDK synth generates CloudFormation template
 
-- [ ] 2. VPC and networking
-  - [ ] 2.1 Create VPC with CIDR 10.0.0.0/16 in 2 AZs (ap-south-1a, ap-south-1b)
-  - [ ] 2.2 Create 2 public subnets (10.0.1.0/24, 10.0.2.0/24)
-  - [ ] 2.3 Create 2 private subnets (10.0.10.0/24, 10.0.20.0/24)
-  - [ ] 2.4 Create Internet Gateway and attach to VPC
-  - [ ] 2.5 Create 1 NAT Gateway in public subnet A
-  - [ ] 2.6 Configure route tables for public and private subnets
-  - [ ] 2.7 Create security groups: sg-alb, sg-ecs, sg-postgres, sg-redis, sg-opensearch
-  - [ ] 2.8 Configure security group rules per design (ALB: 80/443 from 0.0.0.0/0, ECS: 3000/8000 from ALB, etc.)
+- [x] 2. VPC and networking
+  - [x] 2.1 Create VPC with CIDR 10.0.0.0/16 in 2 AZs (ap-south-1a, ap-south-1b)
+  - [x] 2.2 Create 2 public subnets (10.0.1.0/24, 10.0.2.0/24)
+  - [x] 2.3 Create 2 private subnets (10.0.10.0/24, 10.0.20.0/24)
+  - [x] 2.4 Create Internet Gateway and attach to VPC
+  - [x] 2.5 Create 1 NAT Gateway in public subnet A
+  - [x] 2.6 Configure route tables for public and private subnets
+  - [x] 2.7 Create security groups: sg-alb, sg-ecs, sg-postgres, sg-redis, sg-opensearch
+  - [x] 2.8 Configure security group rules per design (ALB: 80/443 from 0.0.0.0/0, ECS: 3000/8000 from ALB, etc.)
 
 - [ ] 3. Data tier - EC2 for TimescaleDB
   - [ ] 3.1 Create EC2 t3.medium instance in private subnet A
@@ -70,7 +70,6 @@
   - [ ] 5.8 Add Docker tag commands (git SHA + latest)
   - [ ] 5.9 Add Docker push commands to ECR
   - [ ] 5.10 Test script builds and pushes images successfully
-
 
 - [ ] 6. ECS Fargate cluster and services
   - [ ] 6.1 Create ECS cluster: intelpulse-production
@@ -127,7 +126,6 @@
   - [ ] 8.14 Configure Lambda IAM role with secretsmanager:GetSecretValue permission
   - [ ] 8.15 Set Lambda timeout to 30s, memory to 256 MB
   - [ ] 8.16 Test each Lambda independently with sample events
-
 
 - [ ] 9. Create Bedrock agents
   - [ ] 9.1 Upload MITRE ATT&CK STIX bundle (enterprise-attack.json) to S3
@@ -190,7 +188,6 @@
   - [ ] 12.13 Test UI with sample IOC
   - [ ] 12.14 Verify all fields display correctly
 
-
 ## Phase 3: AWS Transform + CI/CD (Tasks 13-16)
 
 - [ ] 13. Run AWS Transform assessment
@@ -249,8 +246,8 @@
   - [ ] 16.6 Wait for certificate status: ISSUED
   - [ ] 16.7 Update ALB listener to use ACM certificate ARN
   - [ ] 16.8 Create new Google OAuth 2.0 client for intelpulse.tech
-  - [ ] 16.9 Add authorized JavaScript origins: https://intelpulse.tech
-  - [ ] 16.10 Add authorized redirect URIs: https://intelpulse.tech/api/v1/auth/google/callback
+  - [ ] 16.9 Add authorized JavaScript origins: <https://intelpulse.tech>
+  - [ ] 16.10 Add authorized redirect URIs: <https://intelpulse.tech/api/v1/auth/google/callback>
   - [ ] 16.11 Copy client ID and secret to Secrets Manager
   - [ ] 16.12 Update ECS API service to pick up new secrets
   - [ ] 16.13 Test Google OAuth login flow

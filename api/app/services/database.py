@@ -736,11 +736,11 @@ async def _get_campaign_detail(db: AsyncSession, *, name: str, limit: int = 20) 
         WHERE n.ai_enriched = TRUE
           AND (n.campaign_name ILIKE :name
                OR :name = ANY(n.threat_actors)
-               OR n.headline ILIKE :pattern)
+               OR n.headline ILIKE '%' || :name || '%')
         ORDER BY n.published_at DESC
         LIMIT :lim
     """)
-    news_rows = (await db.execute(news_q, {"name": name, "pattern": f"%{name}%", "lim": limit})).mappings().all()
+    news_rows = (await db.execute(news_q, {"name": name, "lim": limit})).mappings().all()
 
     items = []
     all_cves: list[str] = []

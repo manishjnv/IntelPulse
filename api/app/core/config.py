@@ -23,6 +23,20 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     cors_origins: list[str] = ["http://localhost:3000", "https://IntelPulse.in"]
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Validate production secrets
+        if self.environment == "production":
+            if self.secret_key in ("change-me", "dev-secret-key-not-for-production", "dev-only-fallback-not-for-production"):
+                raise ValueError("Production SECRET_KEY must be set to a secure value!")
+            if len(self.secret_key) < 32:
+                raise ValueError("SECRET_KEY must be at least 32 characters long!")
+            if self.postgres_password in ("changeme", "ti_secret", "change-me-strong-password"):
+                raise ValueError("Production POSTGRES_PASSWORD must be set to a secure value!")
+            # Validate CORS origins don't include wildcards with credentials
+            if "*" in self.cors_origins:
+                raise ValueError("CORS origins cannot include wildcards in production!")
+
     # PostgreSQL
     postgres_host: str = "localhost"
     postgres_port: int = 5432

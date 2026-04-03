@@ -8,13 +8,14 @@ from jose import jwt
 import httpx
 from datetime import datetime, timedelta, timezone
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "ca11ded3d44a5499adec236209a4d0ff62cd0a935c7d019b239d47d983917962")
+SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-fallback-not-for-production")
 ALGORITHM = "HS256"
 API_BASE = "http://localhost:8000/api/v1"
 
 # Create a valid session: store session_id in Redis, create JWT with matching sid
 REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
-r = redis.Redis(host=REDIS_HOST, port=6379, password="IntelPulse_R3dis_2026", db=0)
+REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", "dev-only-fallback")
+r = redis.Redis(host=REDIS_HOST, port=6379, password=REDIS_PASSWORD, db=0)
 
 session_id = str(uuid.uuid4())
 # We need first to get admin user ID from DB, but we can use a placeholder
