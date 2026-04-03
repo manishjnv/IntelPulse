@@ -1,14 +1,33 @@
 # Tasks: AWS Infrastructure Migration
 
+**Last Updated**: 2026-04-03
+**Current Status**: Phase 1 (Infrastructure) - Task 1 complete, starting Task 2
+**Next Phase**: Continue Phase 1 - VPC and networking (Task 2)
+
+---
+
+## Phase 0: Preparation & Security (Completed)
+
+- [x] 0.1 Security hardening - Config validation
+  - [x] 0.1.1 Add production secret validation to api/app/core/config.py
+  - [x] 0.1.2 Validate SECRET_KEY is not default values in production
+  - [x] 0.1.3 Validate SECRET_KEY is at least 32 characters
+  - [x] 0.1.4 Validate POSTGRES_PASSWORD is not default values
+  - [x] 0.1.5 Validate CORS origins don't include wildcards in production
+  - [x] 0.1.6 Create comprehensive test suite in api/tests/test_config.py
+  - [x] 0.1.7 Document changes in SESSION_HANDOFF.md
+
+---
+
 ## Phase 1: AWS Infrastructure (Tasks 1-6)
 
-- [ ] 1. Create CDK project scaffold
-  - [ ] 1.1 Initialize CDK TypeScript project in infra/ directory
-  - [ ] 1.2 Create IntelPulseStack class with basic structure
-  - [ ] 1.3 Configure stack props: region ap-south-1, tags (Project=IntelPulse, Environment=production)
-  - [ ] 1.4 Add CDK dependencies: @aws-cdk/aws-ec2, @aws-cdk/aws-ecs, @aws-cdk/aws-elasticloadbalancingv2
-  - [ ] 1.5 Create bin/intelpulse.ts entry point
-  - [ ] 1.6 Test CDK synth generates CloudFormation template
+- [x] 1. Create CDK project scaffold
+  - [x] 1.1 Initialize CDK TypeScript project in infra/ directory
+  - [x] 1.2 Create IntelPulseStack class with basic structure
+  - [x] 1.3 Configure stack props: region ap-south-1, tags (Project=IntelPulse, Environment=production)
+  - [x] 1.4 Add CDK dependencies: @aws-cdk/aws-ec2, @aws-cdk/aws-ecs, @aws-cdk/aws-elasticloadbalancingv2
+  - [x] 1.5 Create bin/intelpulse.ts entry point
+  - [x] 1.6 Test CDK synth generates CloudFormation template
 
 - [ ] 2. VPC and networking
   - [ ] 2.1 Create VPC with CIDR 10.0.0.0/16 in 2 AZs (ap-south-1a, ap-south-1b)
