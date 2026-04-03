@@ -12,6 +12,7 @@ import { Construct } from 'constructs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { BedrockLambdasConstruct } from './bedrock-lambdas-construct';
+import { BedrockAgentsConstruct } from './bedrock-agents-construct';
 
 export class IntelPulseStack extends cdk.Stack {
   public readonly vpc: ec2.Vpc;
@@ -34,6 +35,7 @@ export class IntelPulseStack extends cdk.Stack {
   public readonly appSecret: secretsmanager.Secret;
   public readonly alb: elbv2.ApplicationLoadBalancer;
   public readonly bedrockLambdas: BedrockLambdasConstruct;
+  public readonly bedrockAgents: BedrockAgentsConstruct;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -66,6 +68,16 @@ export class IntelPulseStack extends cdk.Stack {
     // Task 8: Lambda action groups for Bedrock agents
     this.bedrockLambdas = new BedrockLambdasConstruct(this, 'BedrockLambdas', {
       appSecret: this.appSecret,
+    });
+
+    // Task 9: Create Bedrock agents
+    this.bedrockAgents = new BedrockAgentsConstruct(this, 'BedrockAgents', {
+      lambdaFunctions: {
+        virusTotalLookup: this.bedrockLambdas.virusTotalLookup,
+        abuseIpDbCheck: this.bedrockLambdas.abuseIpDbCheck,
+        otxLookup: this.bedrockLambdas.otxLookup,
+        shodanLookup: this.bedrockLambdas.shodanLookup,
+      },
     });
   }
 
@@ -320,7 +332,7 @@ export class IntelPulseStack extends cdk.Stack {
       },
       instanceType: ec2.InstanceType.of(
         ec2.InstanceClass.T3,
-        ec2.InstanceSize.MEDIUM
+        ec2.InstanceSize.MICRO
       ),
       machineImage: ami,
       securityGroup: this.securityGroups.postgres,
