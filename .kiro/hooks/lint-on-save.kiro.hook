@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "name": "Lint Python on Save",
+  "description": "Runs ruff linter when Python files are saved to catch style and quality issues early",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/*.py"
+    ]
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "ruff check --fix .",
+    "timeout": 30
+  }
+}

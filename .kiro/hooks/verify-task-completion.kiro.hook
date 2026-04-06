@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Verify Task Completion",
+  "description": "After completing a spec task, reminds to run tests and verify the implementation meets acceptance criteria",
+  "version": "1",
+  "when": {
+    "type": "postTaskExecution"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "After completing this task, verify: 1) All acceptance criteria from the spec are met, 2) No regressions in existing functionality, 3) Code follows the coding standards in .kiro/steering/coding-standards.md, 4) Run relevant tests if available"
+  }
+}
