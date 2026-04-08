@@ -1,11 +1,11 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 
 /**
  * AuthGuard — bypassed for demo deployment.
- * All pages are accessible without authentication.
+ * Wraps children in Suspense boundary for useSearchParams compatibility.
  */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return <Suspense>{children}</Suspense>;
 }
