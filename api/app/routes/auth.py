@@ -247,6 +247,18 @@ async def check_session(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Check if the current session is valid. Returns user info if authenticated."""
+
+    # Open access mode — auto-create admin session
+    if settings.demo_mode:
+        user = await get_or_create_user(db, settings.demo_user_email, settings.demo_user_name)
+        if user.role != "admin":
+            user.role = "admin"
+            await db.commit()
+        return {
+            "status": "authenticated",
+            "user": UserResponse.model_validate(user).model_dump(),
+        }
+
     token = request.cookies.get(COOKIE_NAME)
     if not token:
         raise HTTPException(
