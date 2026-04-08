@@ -149,44 +149,44 @@ export default function IntelDetailPage() {
           </Button>
           {reportMenuOpen && (
             <>
-            <div className="fixed inset-0 z-[199]" onClick={() => setReportMenuOpen(false)} />
-            <div className="absolute right-0 top-full mt-1 w-64 border border-border rounded-lg bg-white dark:bg-[hsl(222,47%,8%)] shadow-2xl z-[200] p-1 max-h-60 overflow-y-auto">
-              {userReports.length === 0 ? (
-                <p className="text-xs text-muted-foreground p-2">No draft reports. Create one first.</p>
-              ) : (
-                userReports.map((r) => (
-                  <button
-                    key={r.id}
-                    className="w-full text-left px-3 py-1.5 text-sm rounded hover:bg-gray-100 dark:hover:bg-accent/50 truncate"
-                    onClick={async () => {
-                      setAddingToReport(true);
-                      setReportMenuOpen(false);
-                      try {
-                        await api.addReportItem(r.id, {
-                          item_type: "intel",
-                          item_id: item!.id,
-                          item_title: item!.title,
-                          item_metadata: {
-                            severity: item!.severity,
-                            risk_score: item!.risk_score,
-                            source_name: item!.source_name,
-                            feed_type: item!.feed_type,
-                            cve_ids: item!.cve_ids,
-                          },
-                        });
-                        setReportActionMsg(`Added to "${r.title}"`);
-                      } catch {
-                        setReportActionMsg("Already linked or error");
-                      }
-                      setAddingToReport(false);
-                      setTimeout(() => setReportActionMsg(null), 3000);
-                    }}
-                  >
-                    {r.title}
-                  </button>
-                ))
-              )}
-            </div>
+              <div className="fixed inset-0 z-[199]" onClick={() => setReportMenuOpen(false)} />
+              <div className="absolute right-0 top-full mt-1 w-64 border border-border rounded-lg bg-white dark:bg-[hsl(222,47%,8%)] shadow-2xl z-[200] p-1 max-h-60 overflow-y-auto">
+                {userReports.length === 0 ? (
+                  <p className="text-xs text-muted-foreground p-2">No draft reports. Create one first.</p>
+                ) : (
+                  userReports.map((r) => (
+                    <button
+                      key={r.id}
+                      className="w-full text-left px-3 py-1.5 text-sm rounded hover:bg-gray-100 dark:hover:bg-accent/50 truncate"
+                      onClick={async () => {
+                        setAddingToReport(true);
+                        setReportMenuOpen(false);
+                        try {
+                          await api.addReportItem(r.id, {
+                            item_type: "intel",
+                            item_id: item!.id,
+                            item_title: item!.title,
+                            item_metadata: {
+                              severity: item!.severity,
+                              risk_score: item!.risk_score,
+                              source_name: item!.source_name,
+                              feed_type: item!.feed_type,
+                              cve_ids: item!.cve_ids,
+                            },
+                          });
+                          setReportActionMsg(`Added to "${r.title}"`);
+                        } catch {
+                          setReportActionMsg("Already linked or error");
+                        }
+                        setAddingToReport(false);
+                        setTimeout(() => setReportActionMsg(null), 3000);
+                      }}
+                    >
+                      {r.title}
+                    </button>
+                  ))
+                )}
+              </div>
             </>
           )}
           {reportActionMsg && (
@@ -266,8 +266,8 @@ export default function IntelDetailPage() {
                       ? level === "weaponized"
                         ? "bg-red-500"
                         : level === "poc"
-                        ? "bg-orange-500"
-                        : "bg-green-500"
+                          ? "bg-orange-500"
+                          : "bg-green-500"
                       : "bg-muted"
                   )}
                 />
@@ -314,7 +314,7 @@ export default function IntelDetailPage() {
       )}
       {enrichmentLoading && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[1,2,3,4].map(i => (
+          {[1, 2, 3, 4].map(i => (
             <div key={i} className="rounded-lg border bg-card p-3 animate-pulse">
               <div className="h-3 bg-muted rounded w-20 mb-2" />
               <div className="h-6 bg-muted rounded w-12" />
@@ -453,13 +453,13 @@ export default function IntelDetailPage() {
                 {enrichment.threat_actors.map((ta, i) => {
                   const motivationIcon =
                     ta.motivation === "financial" ? "💰" :
-                    ta.motivation === "espionage" ? "🕵️" :
-                    ta.motivation === "hacktivism" ? "✊" :
-                    ta.motivation === "destruction" ? "💥" : "❓";
+                      ta.motivation === "espionage" ? "🕵️" :
+                        ta.motivation === "hacktivism" ? "✊" :
+                          ta.motivation === "destruction" ? "💥" : "❓";
                   const confidenceColor =
                     ta.confidence === "high" ? "text-red-400 border-red-400/40 bg-red-400/10" :
-                    ta.confidence === "medium" ? "text-yellow-400 border-yellow-400/40 bg-yellow-400/10" :
-                    "text-muted-foreground border-border/40 bg-muted/10";
+                      ta.confidence === "medium" ? "text-yellow-400 border-yellow-400/40 bg-yellow-400/10" :
+                        "text-muted-foreground border-border/40 bg-muted/10";
                   return (
                     <div key={i} className="rounded-lg border border-red-500/20 bg-card overflow-hidden">
                       {/* Actor header */}
@@ -529,12 +529,12 @@ export default function IntelDetailPage() {
                   {enrichment.notable_campaigns.map((c, i) => {
                     const severityLevel =
                       c.impact?.toLowerCase().includes("critical") || c.impact?.toLowerCase().includes("major") ? "critical" :
-                      c.impact?.toLowerCase().includes("significant") || c.impact?.toLowerCase().includes("high") ? "high" :
-                      "medium";
+                        c.impact?.toLowerCase().includes("significant") || c.impact?.toLowerCase().includes("high") ? "high" :
+                          "medium";
                     const dotColor =
                       severityLevel === "critical" ? "bg-red-500 shadow-red-500/50" :
-                      severityLevel === "high" ? "bg-orange-500 shadow-orange-500/50" :
-                      "bg-yellow-500 shadow-yellow-500/50";
+                        severityLevel === "high" ? "bg-orange-500 shadow-orange-500/50" :
+                          "bg-yellow-500 shadow-yellow-500/50";
                     return (
                       <div key={i} className="relative">
                         <div className={cn("absolute -left-[25px] top-1.5 h-3 w-3 rounded-full shadow-sm", dotColor)} />
@@ -931,7 +931,7 @@ export default function IntelDetailPage() {
                   if (item.published_at) {
                     events.push({ date: item.published_at, title: "Published", description: `Published by ${item.source_name}`, type: "publication", source: "system" });
                   }
-                  events.push({ date: item.ingested_at, title: "Ingested by IntelWatch", description: "First seen by TI Platform", type: "update", source: "system" });
+                  events.push({ date: item.ingested_at, title: "Ingested by IntelPulse", description: "First seen by Enterprise Threat Intelligence Platform", type: "update", source: "system" });
                   if (item.ai_summary_at) {
                     events.push({ date: item.ai_summary_at, title: "AI Analysis Complete", description: "Automated threat intelligence analysis", type: "advisory", source: "system" });
                   }
@@ -1421,12 +1421,12 @@ function IOCDetailRow({ ioc }: { ioc: api.IntelLinkedIOC }) {
   const [copied, setCopied] = useState(false);
   const riskColor =
     ioc.risk_score >= 80 ? "text-red-400" :
-    ioc.risk_score >= 60 ? "text-orange-400" :
-    ioc.risk_score >= 40 ? "text-yellow-400" : "text-green-400";
+      ioc.risk_score >= 60 ? "text-orange-400" :
+        ioc.risk_score >= 40 ? "text-yellow-400" : "text-green-400";
   const riskBgClass =
     ioc.risk_score >= 80 ? "bg-red-500/10" :
-    ioc.risk_score >= 60 ? "bg-orange-500/10" :
-    ioc.risk_score >= 40 ? "bg-yellow-500/10" : "bg-green-500/10";
+      ioc.risk_score >= 60 ? "bg-orange-500/10" :
+        ioc.risk_score >= 40 ? "bg-yellow-500/10" : "bg-green-500/10";
 
   const handleCopy = () => {
     navigator.clipboard.writeText(ioc.value);

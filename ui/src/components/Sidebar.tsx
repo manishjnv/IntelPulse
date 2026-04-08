@@ -93,7 +93,7 @@ function DesktopSidebar() {
         {sidebarOpen && (
           <div className="flex flex-col flex-1 min-w-0">
             <span className="text-sm font-bold tracking-tight leading-none">IntelPulse</span>
-            <span className="text-[10px] text-muted-foreground leading-none mt-0.5">TI Platform</span>
+            <span className="text-[10px] text-muted-foreground leading-none mt-0.5">Enterprise Threat Intelligence Platform</span>
           </div>
         )}
       </Link>
@@ -243,7 +243,7 @@ function MobileSidebar() {
             </div>
             <div className="flex flex-col">
               <span className="text-sm font-bold tracking-tight leading-none">IntelPulse</span>
-              <span className="text-[10px] text-muted-foreground leading-none mt-0.5">TI Platform</span>
+              <span className="text-[10px] text-muted-foreground leading-none mt-0.5">Enterprise Threat Intelligence Platform</span>
             </div>
           </Link>
           <button

@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models for the IntelPulse TI Platform."""
+"""SQLAlchemy ORM models for the IntelPulse Enterprise Threat Intelligence Platform."""
 
 from __future__ import annotations
 

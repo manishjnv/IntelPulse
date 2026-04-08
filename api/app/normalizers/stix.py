@@ -71,14 +71,14 @@ def _dt_iso(dt: datetime | str | None) -> str:
 # ── Identity (the platform itself) ──────────────────────
 
 def platform_identity() -> dict:
-    """Return the STIX Identity SDO representing this TI platform."""
+    """Return the STIX Identity SDO representing this Threat Intelligence platform."""
     return {
         "type": "identity",
         "spec_version": STIX_SPEC_VERSION,
         "id": PLATFORM_IDENTITY_ID,
         "created": "2025-01-01T00:00:00.000Z",
         "modified": _now_iso(),
-        "name": "TI Platform",
+        "name": "IntelPulse - Enterprise Threat Intelligence Platform",
         "identity_class": "system",
     }
 

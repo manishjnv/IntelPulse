@@ -117,7 +117,7 @@ def ioc_to_sigma(
 
     config = _IOC_LOGSOURCE[ioc_type]
     level = SEVERITY_TO_LEVEL.get(severity, "medium")
-    rule_title = title or f"TI Platform - Malicious {ioc_type.upper()} Indicator"
+    rule_title = title or f"IntelPulse - Malicious {ioc_type.upper()} Indicator"
 
     lines = [
         f"title: {_yaml_str(rule_title)}",
@@ -132,7 +132,7 @@ def ioc_to_sigma(
             lines.append(f"    - {_yaml_str(ref)}")
 
     lines.append(f"date: {datetime.now(timezone.utc).strftime('%Y/%m/%d')}")
-    lines.append("author: TI Platform (auto-generated)")
+    lines.append("author: IntelPulse (auto-generated)")
 
     # Tags
     sigma_tags = tags or []

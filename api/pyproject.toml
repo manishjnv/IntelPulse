@@ -1,7 +1,7 @@
 [project]
 name = "IntelPulse-ti-api"
 version = "1.0.0"
-description = "IntelPulse TI Platform - FastAPI Backend"
+description = "IntelPulse Enterprise Threat Intelligence Platform - FastAPI Backend"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",

@@ -6,7 +6,7 @@ import { DemoBanner } from "@/components/DemoBanner";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "IntelPulse - TI Platform",
+  title: "IntelPulse - Enterprise Threat Intelligence Platform",
   description: "IntelPulse — Threat Intelligence Platform with live feeds, IOC search, risk scoring",
   icons: {
     icon: "/favicon.svg",

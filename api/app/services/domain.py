@@ -18,7 +18,7 @@ def get_domain_config() -> dict:
     is_cf_configured = bool(settings.cf_access_team_name and settings.cf_access_aud)
 
     return {
-        "platform_name": "IntelPulse - TI Platform",
+        "platform_name": "IntelPulse - Enterprise Threat Intelligence Platform",
         "version": "1.0.0",
         "environment": settings.environment,
         "domain": {
