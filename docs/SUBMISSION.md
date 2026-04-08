@@ -12,11 +12,11 @@
 
 | Method | URL | Notes |
 |--------|-----|-------|
-| **Application (UI)** | <http://13.222.13.45:3000> | Full dashboard |
-| **API Documentation** | <http://13.222.13.45:8000/api/docs> | Swagger UI |
-| **API Root** | <http://13.222.13.45:8000> | Version info |
-| **Demo Health** | <http://13.222.13.45:8000/api/v1/demo/health> | Bedrock status |
-| **Demo Analysis** | `POST http://13.222.13.45:8000/api/v1/demo/analyze` | AI threat analysis |
+| **Application (UI)** | <http://3.87.235.189:3000> | Full dashboard |
+| **API Documentation** | <http://3.87.235.189:8000/api/docs> | Swagger UI |
+| **API Root** | <http://3.87.235.189:8000> | Version info |
+| **Demo Health** | <http://3.87.235.189:8000/api/v1/demo/health> | Bedrock status |
+| **Demo Analysis** | `POST http://3.87.235.189:8000/api/v1/demo/analyze` | AI threat analysis |
 
 ---
 
@@ -24,7 +24,7 @@
 
 | Deliverable | Status | Location |
 |-------------|--------|----------|
-| Working Application | ✅ | <http://13.222.13.45:3000> |
+| Working Application | ✅ | <http://3.87.235.189:3000> |
 | Source Code Repository | ✅ | <https://github.com/manishjnv/IntelPulse> (branch: `aws-migration`) |
 | Amazon Q Usage Report | ✅ | `docs/AMAZON_Q_USAGE_REPORT.md` |
 | Productivity Metrics | ✅ | `docs/PRODUCTIVITY_METRICS.md` |
@@ -65,7 +65,7 @@ Amazon Bedrock powers the AI layer with direct SDK integration:
 ### Demo Endpoint
 
 ```bash
-curl -X POST http://13.222.13.45:8000/api/v1/demo/analyze \
+curl -X POST http://3.87.235.189:8000/api/v1/demo/analyze \
   -H "Content-Type: application/json" \
   -d '{"ioc": "45.142.212.61", "ioc_type": "ip"}'
 ```
@@ -193,10 +193,10 @@ docker compose up -d --build
 
 ```bash
 # Health check
-curl http://13.222.13.45:8000/api/v1/demo/health
+curl http://3.87.235.189:8000/api/v1/demo/health
 
 # Analyze a threat
-curl -X POST http://13.222.13.45:8000/api/v1/demo/analyze \
+curl -X POST http://3.87.235.189:8000/api/v1/demo/analyze \
   -H "Content-Type: application/json" \
   -d '{"ioc": "malicious-domain.com", "ioc_type": "domain"}'
 ```

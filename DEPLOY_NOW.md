@@ -1,6 +1,6 @@
 # Deploy IntelPulse Bedrock Demo - Step by Step
 
-**EC2 IP:** 13.222.13.45  
+**EC2 IP:** 3.87.235.189  
 **Time Required:** ~20 minutes  
 
 ---
@@ -10,7 +10,7 @@
 Open your terminal and run:
 
 ```bash
-ssh -i your-key.pem ubuntu@13.222.13.45
+ssh -i your-key.pem ubuntu@3.87.235.189
 ```
 
 Replace `your-key.pem` with your actual SSH key file.
@@ -18,7 +18,7 @@ Replace `your-key.pem` with your actual SSH key file.
 If you get "Permission denied", try:
 
 ```bash
-ssh -i your-key.pem ec2-user@13.222.13.45
+ssh -i your-key.pem ec2-user@3.87.235.189
 ```
 
 ---
@@ -49,7 +49,7 @@ sudo usermod -aG docker ubuntu
 
 # Log out and back in
 exit
-ssh -i your-key.pem ubuntu@13.222.13.45
+ssh -i your-key.pem ubuntu@3.87.235.189
 ```
 
 ---
@@ -158,10 +158,10 @@ Open a NEW terminal on your local machine (not on EC2):
 
 ```bash
 # Health check
-curl http://13.222.13.45:8000/api/v1/demo/health
+curl http://3.87.235.189:8000/api/v1/demo/health
 
 # Analyze threat
-curl -X POST http://13.222.13.45:8000/api/v1/demo/analyze \
+curl -X POST http://3.87.235.189:8000/api/v1/demo/analyze \
   -H "Content-Type: application/json" \
   -d '{
     "ioc": "45.142.212.61",
@@ -176,7 +176,7 @@ curl -X POST http://13.222.13.45:8000/api/v1/demo/analyze \
 Open in your browser:
 
 ```
-http://13.222.13.45:8000/api/docs
+http://3.87.235.189:8000/api/docs
 ```
 
 You should see the Swagger UI with the demo endpoints.
@@ -253,7 +253,7 @@ sudo usermod -aG docker $USER
 
 # Log out and back in
 exit
-ssh -i your-key.pem ubuntu@13.222.13.45
+ssh -i your-key.pem ubuntu@3.87.235.189
 ```
 
 ### Problem: "Bedrock permission denied"
@@ -325,12 +325,12 @@ docker-compose -f docker-compose.demo.yml ps
 
 ### 2. Show API Docs (30 seconds)
 
-Browser: `http://13.222.13.45:8000/api/docs`
+Browser: `http://3.87.235.189:8000/api/docs`
 
 ### 3. Live Analysis (2 minutes)
 
 ```bash
-curl -X POST http://13.222.13.45:8000/api/v1/demo/analyze \
+curl -X POST http://3.87.235.189:8000/api/v1/demo/analyze \
   -H "Content-Type: application/json" \
   -d '{
     "ioc": "malicious-example.com",
@@ -383,10 +383,10 @@ Creating intelpulse_api_1      ... done
 ```
 ✅ Demo is ready!
 
-📚 API Documentation: http://13.222.13.45:8000/api/docs
+📚 API Documentation: http://3.87.235.189:8000/api/docs
 
 🧪 Test the demo endpoint:
-   curl -X POST http://13.222.13.45:8000/api/v1/demo/analyze \
+   curl -X POST http://3.87.235.189:8000/api/v1/demo/analyze \
      -H 'Content-Type: application/json' \
      -d '{"ioc": "malicious-domain.com", "ioc_type": "domain"}'
 ```
@@ -407,4 +407,4 @@ Creating intelpulse_api_1      ... done
 
 **Ready? Start with Step 1!** 🚀
 
-Open your terminal and SSH to: `13.222.13.45`
+Open your terminal and SSH to: `3.87.235.189`

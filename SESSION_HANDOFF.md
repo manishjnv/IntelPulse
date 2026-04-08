@@ -33,7 +33,7 @@
 **Instance Details:**
 
 - Instance ID: i-08e16a37688d50004
-- Public IP: 13.222.13.45
+- Public IP: 3.87.235.189
 - Instance Type: t3.small
 - Region: us-east-1
 
@@ -82,7 +82,7 @@
 ### 1. SSH to EC2 Instance
 
 ```bash
-ssh -i your-key.pem ubuntu@13.222.13.45
+ssh -i your-key.pem ubuntu@3.87.235.189
 ```
 
 ### 2. Check Prerequisites
@@ -119,17 +119,17 @@ chmod +x start-demo.sh
 curl http://localhost:8000/api/v1/demo/health
 
 # From local machine
-curl http://13.222.13.45:8000/api/v1/demo/health
+curl http://3.87.235.189:8000/api/v1/demo/health
 
 # Test analysis
-curl -X POST http://13.222.13.45:8000/api/v1/demo/analyze \
+curl -X POST http://3.87.235.189:8000/api/v1/demo/analyze \
   -H "Content-Type: application/json" \
   -d '{"ioc": "malicious-domain.com", "ioc_type": "domain"}' | jq
 ```
 
 ### 5. View API Documentation
 
-Browser: `http://13.222.13.45:8000/api/docs`
+Browser: `http://3.87.235.189:8000/api/docs`
 
 ---
 
@@ -181,12 +181,12 @@ docker-compose -f docker-compose.demo.yml ps
 
 ### 2. Show API Docs (30 seconds)
 
-Browser: `http://13.222.13.45:8000/api/docs`
+Browser: `http://3.87.235.189:8000/api/docs`
 
 ### 3. Live Analysis (2 minutes)
 
 ```bash
-curl -X POST http://13.222.13.45:8000/api/v1/demo/analyze \
+curl -X POST http://3.87.235.189:8000/api/v1/demo/analyze \
   -H "Content-Type: application/json" \
   -d '{"ioc": "malicious-example.com", "ioc_type": "domain"}' | jq
 ```
@@ -255,7 +255,7 @@ docker-compose -f docker-compose.demo.yml down
 ```
 Continue IntelPulse Bedrock demo deployment.
 
-EC2: i-08e16a37688d50004 (13.222.13.45)
+EC2: i-08e16a37688d50004 (3.87.235.189)
 Status: IAM role configured, ready to deploy
 Repo: https://github.com/manishjnv/IntelPulse.git (aws-migration branch)
 
@@ -285,7 +285,7 @@ See DEPLOY_TO_EXISTING_EC2.md for complete instructions.
 
 - **Repository:** <https://github.com/manishjnv/IntelPulse.git>
 - **Branch:** aws-migration
-- **EC2 IP:** 13.222.13.45
+- **EC2 IP:** 3.87.235.189
 - **Region:** us-east-1
 
 ---

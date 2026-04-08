@@ -20,9 +20,9 @@
 
 | Access | URL |
 |--------|-----|
-| Application (Dashboard) | <http://13.222.13.45:3000> |
-| API Documentation (Swagger) | <http://13.222.13.45:8000/api/docs> |
-| Bedrock Health Check | <http://13.222.13.45:8000/api/v1/demo/health> |
+| Application (Dashboard) | <http://3.87.235.189:3000> |
+| API Documentation (Swagger) | <http://3.87.235.189:8000/api/docs> |
+| Bedrock Health Check | <http://3.87.235.189:8000/api/v1/demo/health> |
 | Source Code | <https://github.com/manishjnv/IntelPulse> (branch: `aws-migration`) |
 
 ---
@@ -133,7 +133,7 @@ Every major feature in IntelPulse is backed by Amazon Bedrock AI:
 ### Demo Endpoint
 
 ```bash
-curl -X POST http://13.222.13.45:8000/api/v1/demo/analyze \
+curl -X POST http://3.87.235.189:8000/api/v1/demo/analyze \
   -H "Content-Type: application/json" \
   -d '{"ioc": "45.142.212.61", "ioc_type": "ip"}'
 ```
@@ -264,7 +264,7 @@ IntelPulse/
 
 | Deliverable | Status | Location |
 |-------------|--------|----------|
-| Working Application | ✅ | <http://13.222.13.45:3000> |
+| Working Application | ✅ | <http://3.87.235.189:3000> |
 | Source Code Repository | ✅ | <https://github.com/manishjnv/IntelPulse> |
 | Amazon Q Usage Report | ✅ | `docs/AMAZON_Q_USAGE_REPORT.md` |
 | Productivity Metrics | ✅ | `docs/PRODUCTIVITY_METRICS.md` |

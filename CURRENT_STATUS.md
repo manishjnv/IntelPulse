@@ -2,7 +2,7 @@
 
 **Last Updated**: 2026-04-06
 **Branch**: aws-migration
-**Instance**: i-08e16a37688d50004 (13.222.13.45, us-east-1)
+**Instance**: i-08e16a37688d50004 (3.87.235.189, us-east-1)
 
 ---
 
@@ -22,10 +22,10 @@
 
 | URL | Status |
 |-----|--------|
-| <http://13.222.13.45:3000> | ✅ UI accessible |
-| <http://13.222.13.45:8000> | ✅ API accessible |
-| <http://13.222.13.45:8000/api/docs> | ✅ Swagger UI working |
-| <http://13.222.13.45:8000/api/v1/demo/health> | ✅ Health endpoint working |
+| <http://3.87.235.189:3000> | ✅ UI accessible |
+| <http://3.87.235.189:8000> | ✅ API accessible |
+| <http://3.87.235.189:8000/api/docs> | ✅ Swagger UI working |
+| <http://3.87.235.189:8000/api/v1/demo/health> | ✅ Health endpoint working |
 
 ---
 

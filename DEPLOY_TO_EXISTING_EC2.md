@@ -1,7 +1,7 @@
 # Deploy to Existing EC2 Instance
 
 **Instance ID:** i-08e16a37688d50004  
-**Public IP:** 13.222.13.45  
+**Public IP:** 3.87.235.189  
 **Instance Type:** t3.small  
 
 ---
@@ -20,10 +20,10 @@ I've already configured:
 
 ```bash
 # Replace with your key file
-ssh -i your-key.pem ubuntu@13.222.13.45
+ssh -i your-key.pem ubuntu@3.87.235.189
 
 # Or if using Amazon Linux:
-# ssh -i your-key.pem ec2-user@13.222.13.45
+# ssh -i your-key.pem ec2-user@3.87.235.189
 ```
 
 ---
@@ -63,7 +63,7 @@ sudo usermod -aG docker ec2-user
 
 # Log out and back in for docker group
 exit
-ssh -i your-key.pem ubuntu@13.222.13.45
+ssh -i your-key.pem ubuntu@3.87.235.189
 ```
 
 ### If Git is NOT installed
@@ -146,10 +146,10 @@ curl -X POST http://localhost:8000/api/v1/demo/analyze \
 
 ```bash
 # Health check
-curl http://13.222.13.45:8000/api/v1/demo/health
+curl http://3.87.235.189:8000/api/v1/demo/health
 
 # Analyze threat
-curl -X POST http://13.222.13.45:8000/api/v1/demo/analyze \
+curl -X POST http://3.87.235.189:8000/api/v1/demo/analyze \
   -H "Content-Type: application/json" \
   -d '{
     "ioc": "45.142.212.61",
@@ -160,7 +160,7 @@ curl -X POST http://13.222.13.45:8000/api/v1/demo/analyze \
 ### View API docs in browser
 
 ```
-http://13.222.13.45:8000/api/docs
+http://3.87.235.189:8000/api/docs
 ```
 
 ---
@@ -271,12 +271,12 @@ docker-compose -f docker-compose.demo.yml ps
 
 ### 2. Show API Docs (30 seconds)
 
-Browser: `http://13.222.13.45:8000/api/docs`
+Browser: `http://3.87.235.189:8000/api/docs`
 
 ### 3. Live Analysis (2 minutes)
 
 ```bash
-curl -X POST http://13.222.13.45:8000/api/v1/demo/analyze \
+curl -X POST http://3.87.235.189:8000/api/v1/demo/analyze \
   -H "Content-Type: application/json" \
   -d '{
     "ioc": "malicious-example.com",
@@ -300,7 +300,7 @@ Point out:
 ## What's Configured
 
 ✅ **EC2 Instance:** i-08e16a37688d50004 (t3.small)  
-✅ **Public IP:** 13.222.13.45  
+✅ **Public IP:** 3.87.235.189  
 ✅ **Security Group:** Port 22 (SSH) + Port 8000 (API)  
 ✅ **IAM Role:** BedrockAccessRole with InvokeModel permissions  
 ✅ **Region:** us-east-1  
@@ -309,7 +309,7 @@ Point out:
 
 ## Next Steps
 
-1. **SSH to instance:** `ssh -i your-key.pem ubuntu@13.222.13.45`
+1. **SSH to instance:** `ssh -i your-key.pem ubuntu@3.87.235.189`
 2. **Clone repo:** `git clone https://github.com/manishjnv/IntelPulse.git`
 3. **Run setup:** `cd IntelPulse && git checkout aws-migration && ./start-demo.sh`
 4. **Test:** `curl http://localhost:8000/api/v1/demo/health`

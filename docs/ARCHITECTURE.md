@@ -13,13 +13,13 @@ IntelPulse is a production-grade threat intelligence platform that aggregates IO
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Users / SOC Analysts                      │
-│                    http://13.222.13.45:3000                       │
+│                    http://3.87.235.189:3000                       │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ HTTP
                            ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │                    EC2 Instance (t3.small)                        │
-│                    13.222.13.45 / us-east-1                       │
+│                    3.87.235.189 / us-east-1                       │
 │                                                                   │
 │  ┌───────────────────┐          ┌───────────────────┐            │
 │  │  Next.js UI :3000 │          │  FastAPI API :8000 │            │
@@ -268,8 +268,8 @@ Requirements (12) → Design (1,320 lines) → Tasks (15) → Implementation
 
 | Access | URL |
 |--------|-----|
-| UI Dashboard | <http://13.222.13.45:3000> |
-| API Documentation | <http://13.222.13.45:8000/api/docs> |
-| API Root | <http://13.222.13.45:8000> |
-| Demo Health | <http://13.222.13.45:8000/api/v1/demo/health> |
-| Demo Analysis | `POST http://13.222.13.45:8000/api/v1/demo/analyze` |
+| UI Dashboard | <http://3.87.235.189:3000> |
+| API Documentation | <http://3.87.235.189:8000/api/docs> |
+| API Root | <http://3.87.235.189:8000> |
+| Demo Health | <http://3.87.235.189:8000/api/v1/demo/health> |
+| Demo Analysis | `POST http://3.87.235.189:8000/api/v1/demo/analyze` |

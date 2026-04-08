@@ -26,7 +26,7 @@
 **Instance Details:**
 
 - Instance ID: i-08e16a37688d50004
-- Public IP: 13.222.13.45
+- Public IP: 3.87.235.189
 - Instance Type: t3.small
 - Region: us-east-1
 - State: running
@@ -382,7 +382,7 @@ feat: add simplified Bedrock demo for EC2 deployment
 
 **Branch:** aws-migration  
 **Status:** Ready for EC2 deployment  
-**EC2 Configured:** i-08e16a37688d50004 (13.222.13.45)  
+**EC2 Configured:** i-08e16a37688d50004 (3.87.235.189)  
 
 ---
 
@@ -534,7 +534,7 @@ Perfect for AWS Codethon demonstration!
 **EC2 Instance:**
 
 - Instance ID: i-08e16a37688d50004
-- Public IP: 13.222.13.45
+- Public IP: 3.87.235.189
 - Instance Type: t3.small
 - Region: us-east-1
 - State: running
@@ -562,7 +562,7 @@ Perfect for AWS Codethon demonstration!
 
 ### Next Session Tasks
 
-1. **SSH to EC2:** `ssh -i key.pem ubuntu@13.222.13.45`
+1. **SSH to EC2:** `ssh -i key.pem ubuntu@3.87.235.189`
 2. **Install Docker** (if not already installed)
 3. **Clone repo:** `git clone https://github.com/manishjnv/IntelPulse.git`
 4. **Checkout branch:** `git checkout aws-migration`
@@ -584,14 +584,14 @@ Perfect for AWS Codethon demonstration!
 
 Once deployed:
 
-- **Health Check:** `http://13.222.13.45:8000/api/v1/demo/health`
-- **API Docs:** `http://13.222.13.45:8000/api/docs`
-- **Analyze Endpoint:** `POST http://13.222.13.45:8000/api/v1/demo/analyze`
+- **Health Check:** `http://3.87.235.189:8000/api/v1/demo/health`
+- **API Docs:** `http://3.87.235.189:8000/api/docs`
+- **Analyze Endpoint:** `POST http://3.87.235.189:8000/api/v1/demo/analyze`
 
 ### Test Command
 
 ```bash
-curl -X POST http://13.222.13.45:8000/api/v1/demo/analyze \
+curl -X POST http://3.87.235.189:8000/api/v1/demo/analyze \
   -H "Content-Type: application/json" \
   -d '{
     "ioc": "malicious-domain.com",
