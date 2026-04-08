@@ -93,11 +93,15 @@ def ingest_feed(feed_name: str) -> dict:
         stored = len(stored_items)
         logger.info("store_complete", feed=feed_name, stored=stored)
 
-        # 5. Index in OpenSearch (only newly stored items — avoids duplication)
-        ensure_index()
-        os_docs = _prepare_os_docs(stored_items) if stored_items else []
-        index_result = bulk_index_items(os_docs) if os_docs else {"indexed": 0}
-        logger.info("index_complete", feed=feed_name, indexed=index_result.get("indexed", 0))
+        # 5. Index in OpenSearch (optional — gracefully skip if unavailable)
+        index_result = {"indexed": 0}
+        try:
+            ensure_index()
+            os_docs = _prepare_os_docs(stored_items) if stored_items else []
+            index_result = bulk_index_items(os_docs) if os_docs else {"indexed": 0}
+            logger.info("index_complete", feed=feed_name, indexed=index_result.get("indexed", 0))
+        except Exception as os_err:
+            logger.warning("opensearch_skip", feed=feed_name, error=str(os_err)[:200])
 
         # 6. Update state
         # Some connectors (e.g. VT) track their own cursor for rotation
