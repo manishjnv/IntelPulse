@@ -45,8 +45,8 @@ app = FastAPI(
 
 # Security Headers & Rate Limiting
 if settings.environment == "production":
-    # Trusted host middleware to prevent host header attacks
-    allowed_hosts = ["intelpulse.tech", "www.intelpulse.tech", "*.intelpulse.tech"]
+    # Trusted host middleware — allow domain and direct IP access
+    allowed_hosts = ["intelpulse.tech", "www.intelpulse.tech", "*.intelpulse.tech", "localhost", "*"]
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
 # Rate limiting
