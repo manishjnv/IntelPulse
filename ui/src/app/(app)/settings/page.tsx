@@ -105,7 +105,7 @@ const SECTIONS: SettingSection[] = [
     id: "ai",
     title: "AI Configuration",
     icon: <Brain className="h-4 w-4" />,
-    description: "Providers, models, limits, and prompts",
+    description: "Amazon Bedrock multi-agent AI — providers, models, and threat analysis pipeline",
   },
   {
     id: "users",
@@ -182,20 +182,20 @@ export default function SettingsPage() {
             </span>
           )}
           {activeSection !== "ai" && (
-          <button
-            onClick={handleSave}
-            disabled={saving || loading}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
-          >
-            {saving ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : saved ? (
-              <Check className="h-3.5 w-3.5" />
-            ) : (
-              <Save className="h-3.5 w-3.5" />
-            )}
-            {saving ? "Saving..." : saved ? "Saved!" : "Save Changes"}
-          </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || loading}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {saving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : saved ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : (
+                <Save className="h-3.5 w-3.5" />
+              )}
+              {saving ? "Saving..." : saved ? "Saved!" : "Save Changes"}
+            </button>
           )}
         </div>
       </div>
@@ -207,11 +207,10 @@ export default function SettingsPage() {
             <button
               key={s.id}
               onClick={() => setActiveSection(s.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-xs transition-colors text-left ${
-                activeSection === s.id
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-              }`}
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-xs transition-colors text-left ${activeSection === s.id
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                }`}
             >
               {s.icon}
               <div>
@@ -293,14 +292,12 @@ function ToggleSwitch({
   return (
     <button
       onClick={() => onChange(!checked)}
-      className={`w-9 h-5 rounded-full transition-colors relative ${
-        checked ? "bg-primary" : "bg-muted"
-      }`}
+      className={`w-9 h-5 rounded-full transition-colors relative ${checked ? "bg-primary" : "bg-muted"
+        }`}
     >
       <div
-        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-          checked ? "translate-x-4" : "translate-x-0.5"
-        }`}
+        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"
+          }`}
       />
     </button>
   );
@@ -834,14 +831,12 @@ function NotificationSettings() {
                 <div className="flex items-center gap-1.5 shrink-0 ml-3">
                   <button
                     onClick={() => handleToggle(rule.id)}
-                    className={`w-9 h-5 rounded-full transition-colors relative ${
-                      rule.is_active ? "bg-primary" : "bg-muted"
-                    }`}
+                    className={`w-9 h-5 rounded-full transition-colors relative ${rule.is_active ? "bg-primary" : "bg-muted"
+                      }`}
                   >
                     <div
-                      className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                        rule.is_active ? "translate-x-4" : "translate-x-0.5"
-                      }`}
+                      className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${rule.is_active ? "translate-x-4" : "translate-x-0.5"
+                        }`}
                     />
                   </button>
                   {!rule.is_system && (
@@ -1292,11 +1287,10 @@ function OrgProfileSettings({
                 <button
                   key={s}
                   onClick={() => toggleItem("org_sectors", orgSectors, s)}
-                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
-                    orgSectors.includes(s)
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-border/40 text-muted-foreground hover:bg-muted/30"
-                  }`}
+                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${orgSectors.includes(s)
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border/40 text-muted-foreground hover:bg-muted/30"
+                    }`}
                 >
                   {s}
                 </button>
@@ -1312,11 +1306,10 @@ function OrgProfileSettings({
                 <button
                   key={r}
                   onClick={() => toggleItem("org_regions", orgRegions, r)}
-                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
-                    orgRegions.includes(r)
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-border/40 text-muted-foreground hover:bg-muted/30"
-                  }`}
+                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${orgRegions.includes(r)
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border/40 text-muted-foreground hover:bg-muted/30"
+                    }`}
                 >
                   {r}
                 </button>
@@ -1332,11 +1325,10 @@ function OrgProfileSettings({
                 <button
                   key={c}
                   onClick={() => toggleItem("org_compliance", orgCompliance, c)}
-                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
-                    orgCompliance.includes(c)
-                      ? "bg-amber-500 text-white border-amber-500"
-                      : "border-border/40 text-muted-foreground hover:bg-muted/30"
-                  }`}
+                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${orgCompliance.includes(c)
+                    ? "bg-amber-500 text-white border-amber-500"
+                    : "border-border/40 text-muted-foreground hover:bg-muted/30"
+                    }`}
                 >
                   {c}
                 </button>
@@ -1352,11 +1344,10 @@ function OrgProfileSettings({
                 <button
                   key={c}
                   onClick={() => toggleItem("org_criticality", orgCriticality, c)}
-                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
-                    orgCriticality.includes(c)
-                      ? "bg-red-500/80 text-white border-red-500"
-                      : "border-border/40 text-muted-foreground hover:bg-muted/30"
-                  }`}
+                  className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${orgCriticality.includes(c)
+                    ? "bg-red-500/80 text-white border-red-500"
+                    : "border-border/40 text-muted-foreground hover:bg-muted/30"
+                    }`}
                 >
                   {c}
                 </button>
@@ -1428,9 +1419,8 @@ function OrgProfileSettings({
             {orgAssets.length > 0 && (
               <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
                 {orgAssets.map((a, i) => (
-                  <span key={i} className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded ${
-                    a.type === "ip" ? "bg-orange-500/10 text-orange-400" : a.type === "domain" ? "bg-purple-500/10 text-purple-400" : "bg-blue-500/10 text-blue-400"
-                  }`}>
+                  <span key={i} className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded ${a.type === "ip" ? "bg-orange-500/10 text-orange-400" : a.type === "domain" ? "bg-purple-500/10 text-purple-400" : "bg-blue-500/10 text-blue-400"
+                    }`}>
                     {a.type === "ip" ? <Globe className="h-2.5 w-2.5" /> : a.type === "domain" ? <Globe className="h-2.5 w-2.5" /> : <Server className="h-2.5 w-2.5" />}
                     {a.name}{a.version ? ` v${a.version}` : ""}
                     <button onClick={() => removeAsset(i)} className="hover:text-red-400 ml-0.5">×</button>
@@ -1454,9 +1444,8 @@ function OrgProfileSettings({
               {exposure && (
                 <>
                   <div className="flex items-center gap-2">
-                    <span className={`text-lg font-bold ${
-                      exposure.exposure_score >= 70 ? "text-red-400" : exposure.exposure_score >= 40 ? "text-amber-400" : "text-green-400"
-                    }`}>
+                    <span className={`text-lg font-bold ${exposure.exposure_score >= 70 ? "text-red-400" : exposure.exposure_score >= 40 ? "text-amber-400" : "text-green-400"
+                      }`}>
                       {exposure.exposure_score}/100
                     </span>
                     <span className="text-xs text-muted-foreground">
@@ -1502,9 +1491,8 @@ function OrgProfileSettings({
                     <div className="space-y-1 max-h-40 overflow-y-auto">
                       {exposure.targeting_campaigns.slice(0, 8).map((c: any, i: number) => (
                         <div key={i} className="flex items-center gap-2 text-[10px] p-1.5 rounded bg-muted/20">
-                          <span className={`px-1.5 py-0.5 rounded font-semibold ${
-                            c.severity === "critical" ? "bg-red-500/10 text-red-400" : c.severity === "high" ? "bg-orange-500/10 text-orange-400" : "bg-yellow-500/10 text-yellow-400"
-                          }`}>{c.severity}</span>
+                          <span className={`px-1.5 py-0.5 rounded font-semibold ${c.severity === "critical" ? "bg-red-500/10 text-red-400" : c.severity === "high" ? "bg-orange-500/10 text-orange-400" : "bg-yellow-500/10 text-yellow-400"
+                            }`}>{c.severity}</span>
                           <span className="font-medium">{c.campaign_name}</span>
                           {c.actor_name && <span className="text-red-400">by {c.actor_name}</span>}
                         </div>
@@ -1615,40 +1603,40 @@ const AI_FEATURES = [
  */
 const MODEL_RECOMMENDATIONS: Record<string, Record<string, { model: string; reason: string }>> = {
   gemini: {
-    intel_summary:     { model: "gemini-2.0-flash-lite", reason: "Short output, high volume — Lite is 10x cheaper & faster" },
-    intel_enrichment:  { model: "gemini-2.5-flash",      reason: "Complex JSON extraction — Flash with thinking balances quality & speed" },
-    news_enrichment:   { model: "gemini-2.5-flash",      reason: "30+ field extraction + rules — Flash handles structured output best" },
-    live_lookup:       { model: "gemini-2.0-flash-lite", reason: "Interactive speed critical — Lite responds fastest" },
-    report_gen:        { model: "gemini-2.5-pro",        reason: "Long-form narrative — Pro's deep reasoning produces coherent reports" },
-    briefing_gen:      { model: "gemini-2.5-pro",        reason: "Multi-item synthesis — Pro excels at complex analytical summaries" },
-    kql_generation:    { model: "gemini-2.5-pro",        reason: "KQL query construction — Pro's deep reasoning produces valid, comprehensive Sentinel queries" },
+    intel_summary: { model: "gemini-2.0-flash-lite", reason: "Short output, high volume — Lite is 10x cheaper & faster" },
+    intel_enrichment: { model: "gemini-2.5-flash", reason: "Complex JSON extraction — Flash with thinking balances quality & speed" },
+    news_enrichment: { model: "gemini-2.5-flash", reason: "30+ field extraction + rules — Flash handles structured output best" },
+    live_lookup: { model: "gemini-2.0-flash-lite", reason: "Interactive speed critical — Lite responds fastest" },
+    report_gen: { model: "gemini-2.5-pro", reason: "Long-form narrative — Pro's deep reasoning produces coherent reports" },
+    briefing_gen: { model: "gemini-2.5-pro", reason: "Multi-item synthesis — Pro excels at complex analytical summaries" },
+    kql_generation: { model: "gemini-2.5-pro", reason: "KQL query construction — Pro's deep reasoning produces valid, comprehensive Sentinel queries" },
   },
   groq: {
-    intel_summary:     { model: "llama-3.1-8b-instant",      reason: "Short output — 8B is fast & free for simple summaries" },
-    intel_enrichment:  { model: "llama-3.3-70b-versatile",   reason: "Complex extraction — 70B model needed for structured JSON" },
-    news_enrichment:   { model: "llama-3.3-70b-versatile",   reason: "Multi-field extraction — 70B handles 30+ fields reliably" },
-    live_lookup:       { model: "llama-3.1-8b-instant",      reason: "Fast interactive response — 8B is sufficient for IOC analysis" },
-    report_gen:        { model: "llama-3.3-70b-versatile",   reason: "Long-form generation — 70B for coherent multi-paragraph output" },
-    briefing_gen:      { model: "llama-3.3-70b-versatile",   reason: "Multi-item synthesis — needs strong reasoning capabilities" },
-    kql_generation:    { model: "llama-3.3-70b-versatile",   reason: "KQL generation — 70B needed for valid query syntax and security logic" },
+    intel_summary: { model: "llama-3.1-8b-instant", reason: "Short output — 8B is fast & free for simple summaries" },
+    intel_enrichment: { model: "llama-3.3-70b-versatile", reason: "Complex extraction — 70B model needed for structured JSON" },
+    news_enrichment: { model: "llama-3.3-70b-versatile", reason: "Multi-field extraction — 70B handles 30+ fields reliably" },
+    live_lookup: { model: "llama-3.1-8b-instant", reason: "Fast interactive response — 8B is sufficient for IOC analysis" },
+    report_gen: { model: "llama-3.3-70b-versatile", reason: "Long-form generation — 70B for coherent multi-paragraph output" },
+    briefing_gen: { model: "llama-3.3-70b-versatile", reason: "Multi-item synthesis — needs strong reasoning capabilities" },
+    kql_generation: { model: "llama-3.3-70b-versatile", reason: "KQL generation — 70B needed for valid query syntax and security logic" },
   },
   openai: {
-    intel_summary:     { model: "gpt-4o-mini",  reason: "Short output — Mini is cost-effective for simple summaries" },
-    intel_enrichment:  { model: "gpt-4o",       reason: "Complex extraction — full GPT-4o for structured JSON quality" },
-    news_enrichment:   { model: "gpt-4o",       reason: "Multi-field extraction — GPT-4o handles complex schemas best" },
-    live_lookup:       { model: "gpt-4o-mini",  reason: "Interactive speed — Mini responds faster at lower cost" },
-    report_gen:        { model: "gpt-4o",       reason: "Long-form narrative — GPT-4o for coherent reports" },
-    briefing_gen:      { model: "gpt-4o",       reason: "Multi-item synthesis — needs full model reasoning" },
-    kql_generation:    { model: "gpt-4o",       reason: "KQL generation — GPT-4o for precise query syntax and security domain knowledge" },
+    intel_summary: { model: "gpt-4o-mini", reason: "Short output — Mini is cost-effective for simple summaries" },
+    intel_enrichment: { model: "gpt-4o", reason: "Complex extraction — full GPT-4o for structured JSON quality" },
+    news_enrichment: { model: "gpt-4o", reason: "Multi-field extraction — GPT-4o handles complex schemas best" },
+    live_lookup: { model: "gpt-4o-mini", reason: "Interactive speed — Mini responds faster at lower cost" },
+    report_gen: { model: "gpt-4o", reason: "Long-form narrative — GPT-4o for coherent reports" },
+    briefing_gen: { model: "gpt-4o", reason: "Multi-item synthesis — needs full model reasoning" },
+    kql_generation: { model: "gpt-4o", reason: "KQL generation — GPT-4o for precise query syntax and security domain knowledge" },
   },
   anthropic: {
-    intel_summary:     { model: "claude-3-5-haiku-20241022",   reason: "Short output — Haiku is fast & cheap for summaries" },
-    intel_enrichment:  { model: "claude-sonnet-4-20250514",    reason: "Complex extraction — Sonnet for structured JSON quality" },
-    news_enrichment:   { model: "claude-sonnet-4-20250514",    reason: "Multi-field extraction — Sonnet handles complex schemas" },
-    live_lookup:       { model: "claude-3-5-haiku-20241022",   reason: "Interactive speed — Haiku is fastest Claude model" },
-    report_gen:        { model: "claude-sonnet-4-20250514",    reason: "Long-form narrative — Sonnet for coherent reports" },
-    briefing_gen:      { model: "claude-sonnet-4-20250514",    reason: "Multi-item synthesis — needs strong reasoning" },
-    kql_generation:    { model: "claude-sonnet-4-20250514",    reason: "KQL generation — Sonnet for precise query construction and security reasoning" },
+    intel_summary: { model: "claude-3-5-haiku-20241022", reason: "Short output — Haiku is fast & cheap for summaries" },
+    intel_enrichment: { model: "claude-sonnet-4-20250514", reason: "Complex extraction — Sonnet for structured JSON quality" },
+    news_enrichment: { model: "claude-sonnet-4-20250514", reason: "Multi-field extraction — Sonnet handles complex schemas" },
+    live_lookup: { model: "claude-3-5-haiku-20241022", reason: "Interactive speed — Haiku is fastest Claude model" },
+    report_gen: { model: "claude-sonnet-4-20250514", reason: "Long-form narrative — Sonnet for coherent reports" },
+    briefing_gen: { model: "claude-sonnet-4-20250514", reason: "Multi-item synthesis — needs strong reasoning" },
+    kql_generation: { model: "claude-sonnet-4-20250514", reason: "KQL generation — Sonnet for precise query construction and security reasoning" },
   },
 };
 
@@ -1659,6 +1647,7 @@ const PROVIDER_OPTIONS = [
   { value: "gemini", label: "Google Gemini" },
   { value: "openai", label: "OpenAI" },
   { value: "anthropic", label: "Anthropic" },
+  { value: "bedrock", label: "Amazon Bedrock" },
   { value: "ollama", label: "Ollama (Local)" },
   { value: "custom", label: "Custom OpenAI-compatible" },
 ];
@@ -1694,6 +1683,11 @@ const PROVIDER_INFO: Record<string, { freeLimit: string; models: string[]; note:
     models: ["claude-sonnet-4-20250514", "claude-3-5-haiku-20241022"],
     note: "Strong analysis quality. Paid API, no free tier.",
   },
+  bedrock: {
+    freeLimit: "Pay-per-use: ~$0.25-$3 per 1M tokens (IAM role auth, no API key needed)",
+    models: ["amazon.nova-lite-v1:0", "amazon.nova-micro-v1:0", "amazon.nova-pro-v1:0", "anthropic.claude-3-haiku-20240307-v1:0", "anthropic.claude-3-5-sonnet-20241022-v2:0"],
+    note: "AWS managed AI. Multi-agent orchestration via Bedrock Agent Core. IAM role authentication — no API keys. Supports Claude, Nova, and Llama models.",
+  },
   ollama: {
     freeLimit: "Local: Unlimited (runs on your hardware)",
     models: ["llama3.1:8b", "llama3.1:70b", "mistral:7b", "phi3:medium"],
@@ -1712,6 +1706,7 @@ const PROVIDER_DEFAULTS: Record<string, { url: string; model: string }> = {
   gemini: { url: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-2.5-flash" },
   openai: { url: "https://api.openai.com/v1/", model: "gpt-4o-mini" },
   anthropic: { url: "https://api.anthropic.com/v1/", model: "claude-sonnet-4-20250514" },
+  bedrock: { url: "bedrock", model: "amazon.nova-lite-v1:0" },
   ollama: { url: "http://localhost:11434/v1/", model: "llama3.1:8b" },
   huggingface: { url: "https://api-inference.huggingface.co/v1/", model: "mistralai/Mistral-7B-Instruct-v0.3" },
 };
@@ -1993,11 +1988,10 @@ function AIConfigSettings() {
             <button
               onClick={handleResetDefaults}
               disabled={resetting}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50 ${
-                showResetConfirm
-                  ? "bg-red-500/15 text-red-400 hover:bg-red-500/25 border border-red-500/30"
-                  : "bg-muted hover:bg-muted/80 text-muted-foreground"
-              }`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50 ${showResetConfirm
+                ? "bg-red-500/15 text-red-400 hover:bg-red-500/25 border border-red-500/30"
+                : "bg-muted hover:bg-muted/80 text-muted-foreground"
+                }`}
             >
               {resetting ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
               {resetting ? "Resetting..." : showResetConfirm ? "Confirm Reset?" : "Reset to Defaults"}
@@ -2020,11 +2014,10 @@ function AIConfigSettings() {
           <button
             key={s.id}
             onClick={() => setActiveSubSection(s.id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] transition-colors ${
-              activeSubSection === s.id
-                ? "bg-primary/10 text-primary font-medium"
-                : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-            }`}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] transition-colors ${activeSubSection === s.id
+              ? "bg-primary/10 text-primary font-medium"
+              : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+              }`}
           >
             {s.icon} {s.label}
           </button>
@@ -2150,15 +2143,13 @@ function AIConfigSettings() {
                                   update("primary_model", [...current, m].join(", "));
                                 }
                               }}
-                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono border transition-colors ${
-                                selected
-                                  ? "bg-primary/15 border-primary/40 text-primary"
-                                  : "bg-muted/30 border-border/50 text-muted-foreground hover:border-primary/30 hover:text-foreground"
-                              }`}
+                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono border transition-colors ${selected
+                                ? "bg-primary/15 border-primary/40 text-primary"
+                                : "bg-muted/30 border-border/50 text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                                }`}
                             >
-                              <span className={`inline-block w-2.5 h-2.5 rounded-sm border ${
-                                selected ? "bg-primary border-primary" : "border-muted-foreground/40"
-                              } flex items-center justify-center`}>
+                              <span className={`inline-block w-2.5 h-2.5 rounded-sm border ${selected ? "bg-primary border-primary" : "border-muted-foreground/40"
+                                } flex items-center justify-center`}>
                                 {selected && <Check className="h-2 w-2 text-primary-foreground" />}
                               </span>
                               {m}
@@ -2300,15 +2291,13 @@ function AIConfigSettings() {
                                       updateFallback(idx, "model", [...current, m].join(", "));
                                     }
                                   }}
-                                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono border transition-colors ${
-                                    fbSelected
-                                      ? "bg-primary/15 border-primary/40 text-primary"
-                                      : "bg-muted/30 border-border/50 text-muted-foreground hover:border-primary/30 hover:text-foreground"
-                                  }`}
+                                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono border transition-colors ${fbSelected
+                                    ? "bg-primary/15 border-primary/40 text-primary"
+                                    : "bg-muted/30 border-border/50 text-muted-foreground hover:border-primary/30 hover:text-foreground"
+                                    }`}
                                 >
-                                  <span className={`inline-block w-2.5 h-2.5 rounded-sm border ${
-                                    fbSelected ? "bg-primary border-primary" : "border-muted-foreground/40"
-                                  } flex items-center justify-center`}>
+                                  <span className={`inline-block w-2.5 h-2.5 rounded-sm border ${fbSelected ? "bg-primary border-primary" : "border-muted-foreground/40"
+                                    } flex items-center justify-center`}>
                                     {fbSelected && <Check className="h-2 w-2 text-primary-foreground" />}
                                   </span>
                                   {m}
@@ -2394,8 +2383,8 @@ function AIConfigSettings() {
               const tierColor = f.taskType === "simple"
                 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                 : f.taskType === "extraction"
-                ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
-                : "bg-purple-500/10 text-purple-400 border-purple-500/20";
+                  ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
+                  : "bg-purple-500/10 text-purple-400 border-purple-500/20";
               const tierLabel = f.taskType === "simple" ? "Lite" : f.taskType === "extraction" ? "Flash" : "Pro";
 
               return (
@@ -3147,9 +3136,8 @@ function UserManagementSettings() {
                   return (
                     <div
                       key={u.id}
-                      className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
-                        u.is_active ? "bg-muted/10 border-border/20 hover:border-border/40" : "bg-muted/5 border-border/10 opacity-60"
-                      }`}
+                      className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${u.is_active ? "bg-muted/10 border-border/20 hover:border-border/40" : "bg-muted/5 border-border/10 opacity-60"
+                        }`}
                     >
                       {/* Avatar initials */}
                       <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
@@ -3213,11 +3201,10 @@ function UserManagementSettings() {
                       <button
                         disabled={isSelf || isSavingActive}
                         onClick={() => handleToggleActive(u.id, u.is_active)}
-                        className={`flex items-center gap-1 h-7 px-2.5 rounded-md border text-[10px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                          u.is_active
-                            ? "border-emerald-500/30 text-emerald-400 hover:bg-red-500/5 hover:text-red-400 hover:border-red-500/30"
-                            : "border-red-500/30 text-red-400 hover:bg-emerald-500/5 hover:text-emerald-400 hover:border-emerald-500/30"
-                        }`}
+                        className={`flex items-center gap-1 h-7 px-2.5 rounded-md border text-[10px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${u.is_active
+                          ? "border-emerald-500/30 text-emerald-400 hover:bg-red-500/5 hover:text-red-400 hover:border-red-500/30"
+                          : "border-red-500/30 text-red-400 hover:bg-emerald-500/5 hover:text-emerald-400 hover:border-emerald-500/30"
+                          }`}
                         title={isSelf ? "Cannot suspend yourself" : u.is_active ? "Suspend user" : "Reactivate user"}
                       >
                         {isSavingActive ? (
@@ -3311,13 +3298,12 @@ function UserManagementSettings() {
                       >
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${
-                              log.action === "login" ? "bg-emerald-500/10 text-emerald-400" :
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${log.action === "login" ? "bg-emerald-500/10 text-emerald-400" :
                               log.action === "logout" ? "bg-slate-500/10 text-slate-400" :
-                              log.action.includes("delete") ? "bg-red-500/10 text-red-400" :
-                              log.action.includes("create") || log.action.includes("trigger") ? "bg-blue-500/10 text-blue-400" :
-                              "bg-amber-500/10 text-amber-400"
-                            }`}>
+                                log.action.includes("delete") ? "bg-red-500/10 text-red-400" :
+                                  log.action.includes("create") || log.action.includes("trigger") ? "bg-blue-500/10 text-blue-400" :
+                                    "bg-amber-500/10 text-amber-400"
+                              }`}>
                               {actionLabel}
                             </span>
                             {log.resource_type && (

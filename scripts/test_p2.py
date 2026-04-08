@@ -25,7 +25,7 @@ session_id = str(uuid.uuid4())
 # Create JWT token
 token_data = {
     "sub": "admin-user-id",  # This gets overridden by get_or_create_user lookup
-    "email": "manishjnvk@gmail.com",
+    "email": "admin@intelpulse.tech",
     "role": "admin",
     "name": "Admin",
     "sid": session_id,

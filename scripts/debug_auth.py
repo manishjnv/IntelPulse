@@ -8,7 +8,7 @@ r = redis.Redis(host="redis", port=6379, password=REDIS_PASSWORD, db=0)
 session_id = str(uuid.uuid4())
 token_data = {
     "sub": "admin-user-id",
-    "email": "manishjnvk@gmail.com",
+    "email": "admin@intelpulse.tech",
     "role": "admin",
     "name": "Admin",
     "sid": session_id,

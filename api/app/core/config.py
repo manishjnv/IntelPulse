@@ -112,10 +112,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 480  # 8 hours
 
-    # Demo Mode (for codethon/reviewer access)
+    # Open Access Mode (bypasses login — auto-creates admin session for platform access)
     demo_mode: bool = False
-    demo_user_email: str = "demo@intelpulse.tech"
-    demo_user_name: str = "Demo User"
+    demo_user_email: str = "admin@intelpulse.tech"
+    demo_user_name: str = "Admin"
 
     # Cache TTLs (seconds)
     cache_ttl_search: int = 300

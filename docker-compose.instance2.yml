@@ -52,6 +52,7 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       LOG_LEVEL: INFO
       DEV_BYPASS_AUTH: "true"
+      DEMO_MODE: "true"
     depends_on:
       postgres:
         condition: service_healthy

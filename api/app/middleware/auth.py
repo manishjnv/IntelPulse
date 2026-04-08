@@ -37,9 +37,8 @@ async def get_current_user(
     In demo mode, bypasses authentication and returns a demo user.
     """
 
-    # ── Demo Mode: Auto-authenticate as demo user ──
+    # ── Open Access Mode: Auto-authenticate as admin ──
     if settings.demo_mode:
-        logger.info("Demo mode active - bypassing authentication")
         user = await get_or_create_user(
             db,
             email=settings.demo_user_email,
