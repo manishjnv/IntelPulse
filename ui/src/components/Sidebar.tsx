@@ -103,7 +103,7 @@ function DesktopSidebar() {
         {NAV_SECTIONS.map((section) => (
           <div key={section.label}>
             {sidebarOpen && (
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 px-2 mb-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/90 px-2 mb-1">
                 {section.label}
               </p>
             )}
@@ -122,10 +122,10 @@ function DesktopSidebar() {
                       !sidebarOpen && "justify-center px-0",
                       active
                         ? "bg-primary/10 text-primary shadow-sm"
-                        : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                        : "text-foreground/85 hover:bg-accent/50 hover:text-foreground"
                     )}
                   >
-                    <Icon className={cn("h-4 w-4 shrink-0", active && "text-primary")} />
+                    <Icon className={cn("h-4 w-4 shrink-0", active ? "text-primary" : "text-foreground/70")} />
                     {sidebarOpen && <span className="truncate">{item.label}</span>}
                   </Link>
                 );
@@ -259,7 +259,7 @@ function MobileSidebar() {
         <nav className="flex-1 overflow-y-auto py-3 px-3 space-y-5">
           {NAV_SECTIONS.map((section) => (
             <div key={section.label}>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 px-2 mb-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/90 px-2 mb-1.5">
                 {section.label}
               </p>
               <div className="space-y-0.5">
@@ -275,10 +275,10 @@ function MobileSidebar() {
                         "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
                         active
                           ? "bg-primary/10 text-primary shadow-sm"
-                          : "text-muted-foreground hover:bg-accent/50 hover:text-foreground active:bg-accent"
+                          : "text-foreground/85 hover:bg-accent/50 hover:text-foreground active:bg-accent"
                       )}
                     >
-                      <Icon className={cn("h-4.5 w-4.5 shrink-0", active && "text-primary")} />
+                      <Icon className={cn("h-4.5 w-4.5 shrink-0", active ? "text-primary" : "text-foreground/70")} />
                       <span>{item.label}</span>
                     </Link>
                   );

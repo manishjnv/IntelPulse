@@ -568,7 +568,7 @@ function NewsCardGrid({
             )}
           </p>
           {item.summary && (
-            <p className="text-[11px] text-muted-foreground/70 mt-1.5 line-clamp-2 leading-relaxed">
+            <p className="text-[11px] text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">
               {item.summary}
             </p>
           )}
@@ -645,7 +645,7 @@ function NewsCardList({
             )}
           </p>
           {item.summary && (
-            <p className="text-xs text-muted-foreground/80 mt-2 line-clamp-2 leading-relaxed">
+            <p className="text-xs text-muted-foreground mt-2 line-clamp-2 leading-relaxed">
               {item.summary}
             </p>
           )}
@@ -2443,7 +2443,7 @@ export default function CyberNewsPage() {
                   "relative flex items-center justify-center gap-2 flex-1 px-4 py-2 rounded-md text-xs font-semibold transition-all duration-200",
                   isActive
                     ? `${tab.bg} ${tab.color} shadow-sm border ${tab.border}`
-                    : "text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent/20",
+                    : "text-foreground/80 hover:text-foreground hover:bg-accent/30",
                 )}
               >
                 <Icon className={cn("h-4 w-4", isActive ? tab.color : "")} />
@@ -2453,7 +2453,7 @@ export default function CyberNewsPage() {
                     "text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[24px] text-center",
                     isActive
                       ? `${tab.bg} ${tab.color} border ${tab.border}`
-                      : "bg-muted/40 text-muted-foreground/70",
+                      : "bg-muted/60 text-foreground/90",
                   )}>
                     {count}
                   </span>
