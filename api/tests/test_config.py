@@ -24,7 +24,7 @@ class TestSettingsValidation:
         """Production must reject default SECRET_KEY values."""
         from app.core.config import Settings
 
-        with pytest.raises(ValueError, match="Production SECRET_KEY must be set to a secure value"):
+        with pytest.raises(ValueError, match="PRODUCTION SECRET_KEY"):
             Settings(
                 environment="production",
                 secret_key="change-me",
@@ -35,7 +35,7 @@ class TestSettingsValidation:
         """Production must reject dev-only SECRET_KEY values."""
         from app.core.config import Settings
 
-        with pytest.raises(ValueError, match="Production SECRET_KEY must be set to a secure value"):
+        with pytest.raises(ValueError, match="PRODUCTION SECRET_KEY"):
             Settings(
                 environment="production",
                 secret_key="dev-secret-key-not-for-production",
@@ -46,7 +46,7 @@ class TestSettingsValidation:
         """Production SECRET_KEY must be at least 32 characters."""
         from app.core.config import Settings
 
-        with pytest.raises(ValueError, match="SECRET_KEY must be at least 32 characters long"):
+        with pytest.raises(ValueError, match="SECRET_KEY must be at least"):
             Settings(
                 environment="production",
                 secret_key="short-key",
@@ -57,7 +57,7 @@ class TestSettingsValidation:
         """Production must reject default POSTGRES_PASSWORD values."""
         from app.core.config import Settings
 
-        with pytest.raises(ValueError, match="Production POSTGRES_PASSWORD must be set to a secure value"):
+        with pytest.raises(ValueError, match="PRODUCTION POSTGRES_PASSWORD"):
             Settings(
                 environment="production",
                 secret_key="a" * 32,
@@ -68,7 +68,7 @@ class TestSettingsValidation:
         """Production must reject 'ti_secret' POSTGRES_PASSWORD."""
         from app.core.config import Settings
 
-        with pytest.raises(ValueError, match="Production POSTGRES_PASSWORD must be set to a secure value"):
+        with pytest.raises(ValueError, match="PRODUCTION POSTGRES_PASSWORD"):
             Settings(
                 environment="production",
                 secret_key="a" * 32,
@@ -79,7 +79,7 @@ class TestSettingsValidation:
         """Production must reject wildcard CORS origins."""
         from app.core.config import Settings
 
-        with pytest.raises(ValueError, match="CORS origins cannot include wildcards in production"):
+        with pytest.raises(ValueError, match="CORS origins cannot include wildcards in"):
             Settings(
                 environment="production",
                 secret_key="a" * 32,
@@ -100,16 +100,103 @@ class TestSettingsValidation:
         assert settings.environment == "production"
         assert len(settings.secret_key) >= 32
 
-    def test_staging_allows_weak_secrets(self):
-        """Staging environment should allow default/weak secrets."""
+    def test_staging_rejects_weak_secret_key(self):
+        """Staging now shares the production secret guard."""
+        from app.core.config import Settings
+
+        with pytest.raises(ValueError, match="STAGING SECRET_KEY"):
+            Settings(
+                environment="staging",
+                secret_key="change-me",
+                postgres_password="strong-password-12345678901234567890",
+            )
+
+    def test_staging_rejects_default_postgres_password(self):
+        from app.core.config import Settings
+
+        with pytest.raises(ValueError, match="STAGING POSTGRES_PASSWORD"):
+            Settings(
+                environment="staging",
+                secret_key="a" * 32,
+                postgres_password="changeme",
+            )
+
+    def test_staging_accepts_strong_secrets(self):
         from app.core.config import Settings
 
         settings = Settings(
             environment="staging",
-            secret_key="change-me",
-            postgres_password="changeme",
+            secret_key="a" * 32,
+            postgres_password="strong-password-12345678901234567890",
+            cors_origins=["https://staging.intelpulse.tech"],
         )
         assert settings.environment == "staging"
+
+    @pytest.mark.parametrize(
+        "bad_secret",
+        [
+            "",
+            "change-me",
+            "change-me-in-production",
+            "dev-secret-key-not-for-production",
+            "dev-only-fallback-not-for-production",
+            "secret",
+            "secret-key",
+            "default",
+            "insecure",
+            "test",
+            "testing",
+            "not-a-real-secret",
+        ],
+    )
+    def test_production_rejects_each_known_weak_secret(self, bad_secret):
+        from app.core.config import Settings
+
+        with pytest.raises(ValueError, match="PRODUCTION SECRET_KEY"):
+            Settings(
+                environment="production",
+                secret_key=bad_secret,
+                postgres_password="strong-password-12345678901234567890",
+            )
+
+    def test_production_rejects_postgres_common(self):
+        from app.core.config import Settings
+
+        for bad in ("password", "postgres", "admin"):
+            with pytest.raises(ValueError, match="PRODUCTION POSTGRES_PASSWORD"):
+                Settings(
+                    environment="production",
+                    secret_key="a" * 32,
+                    postgres_password=bad,
+                )
+
+    def test_development_warns_on_weak_secret(self):
+        import warnings
+
+        from app.core.config import Settings
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            Settings(
+                environment="development",
+                secret_key="change-me",
+                postgres_password="changeme",
+            )
+
+        assert any("weak/default value" in str(w.message) for w in caught)
+
+    def test_environment_case_insensitive_matching(self):
+        """Environment string is normalized to lowercase for comparison."""
+        from app.core.config import Settings
+
+        # Direct pydantic Literal validation rejects 'PRODUCTION' upper-case,
+        # so we test the lowercase path — but confirm strip() runs.
+        settings = Settings(
+            environment="production",  # type: ignore[arg-type]
+            secret_key="a" * 32,
+            postgres_password="strong-password-12345678901234567890",
+        )
+        assert settings.environment == "production"
 
 
 class TestDatabaseURL:

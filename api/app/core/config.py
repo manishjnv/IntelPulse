@@ -2,10 +2,45 @@
 
 from __future__ import annotations
 
+import warnings
 from functools import lru_cache
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Known-weak SECRET_KEY values. Any of these in a non-dev environment
+# means the app boots with a forgeable JWT signing key — refuse to start.
+_WEAK_SECRET_KEYS: frozenset[str] = frozenset(
+    {
+        "",
+        "change-me",
+        "change-me-in-production",
+        "changeme",
+        "dev-secret-key-not-for-production",
+        "dev-only-fallback-not-for-production",
+        "secret",
+        "secret-key",
+        "default",
+        "insecure",
+        "not-a-real-secret",
+        "test",
+        "testing",
+    }
+)
+
+_WEAK_POSTGRES_PASSWORDS: frozenset[str] = frozenset(
+    {
+        "",
+        "changeme",
+        "ti_secret",
+        "change-me-strong-password",
+        "password",
+        "postgres",
+        "admin",
+    }
+)
+
+_MIN_SECRET_KEY_LEN = 32
 
 
 class Settings(BaseSettings):
@@ -25,17 +60,39 @@ class Settings(BaseSettings):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # Validate production secrets
-        if self.environment == "production":
-            if self.secret_key in ("change-me", "dev-secret-key-not-for-production", "dev-only-fallback-not-for-production"):
-                raise ValueError("Production SECRET_KEY must be set to a secure value!")
-            if len(self.secret_key) < 32:
-                raise ValueError("SECRET_KEY must be at least 32 characters long!")
-            if self.postgres_password in ("changeme", "ti_secret", "change-me-strong-password"):
-                raise ValueError("Production POSTGRES_PASSWORD must be set to a secure value!")
+        env = (self.environment or "").strip().lower()
+        secret_is_weak = (
+            self.secret_key in _WEAK_SECRET_KEYS
+            or len(self.secret_key) < _MIN_SECRET_KEY_LEN
+        )
+        if env in ("production", "staging"):
+            env_label = env.upper()
+            if self.secret_key in _WEAK_SECRET_KEYS:
+                raise ValueError(
+                    f"{env_label} SECRET_KEY must be set to a secure value "
+                    f"(not a known-weak default)!"
+                )
+            if len(self.secret_key) < _MIN_SECRET_KEY_LEN:
+                raise ValueError(
+                    f"{env_label} SECRET_KEY must be at least "
+                    f"{_MIN_SECRET_KEY_LEN} characters long!"
+                )
+            if self.postgres_password in _WEAK_POSTGRES_PASSWORDS:
+                raise ValueError(
+                    f"{env_label} POSTGRES_PASSWORD must be set to a secure value!"
+                )
             # Validate CORS origins don't include wildcards with credentials
             if "*" in self.cors_origins:
-                raise ValueError("CORS origins cannot include wildcards in production!")
+                raise ValueError(
+                    f"CORS origins cannot include wildcards in {env}!"
+                )
+        elif secret_is_weak:
+            warnings.warn(
+                f"SECRET_KEY is using a weak/default value in "
+                f"environment={env!r}. Set SECRET_KEY to a strong random "
+                f"{_MIN_SECRET_KEY_LEN}+ character string via env var.",
+                stacklevel=2,
+            )
 
     # PostgreSQL
     postgres_host: str = "localhost"
