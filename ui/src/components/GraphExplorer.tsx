@@ -162,6 +162,7 @@ export function GraphExplorer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number; tx: number; ty: number } | null>(null);
   const [animTick, setAnimTick] = useState(0);
+  const [filterQuery, setFilterQuery] = useState("");
 
   // Measure container width responsively
   useEffect(() => {
@@ -295,6 +296,27 @@ export function GraphExplorer({
     return mx;
   }, [degreeMap]);
 
+  // Search filter — dims everything not matching OR connected to a match.
+  // Empty query = no filter. Matches are substring, case-insensitive against
+  // the node label + id (so a CVE number or partial IP still finds things).
+  const filterMatch = useMemo(() => {
+    const q = filterQuery.trim().toLowerCase();
+    if (!q) return null;
+    const direct = new Set<string>();
+    data.nodes.forEach((n) => {
+      const hay = `${n.label} ${n.id}`.toLowerCase();
+      if (hay.includes(q)) direct.add(n.id);
+    });
+    // Expand to one-hop neighbours so context is preserved — a matched
+    // IOC alone with no edges would be lonely.
+    const neighbours = new Set<string>(direct);
+    data.edges.forEach((e) => {
+      if (direct.has(e.source)) neighbours.add(e.target);
+      if (direct.has(e.target)) neighbours.add(e.source);
+    });
+    return { direct, neighbours };
+  }, [filterQuery, data.nodes, data.edges]);
+
   const activeNode = hoveredNode || selectedNodeId;
 
   const svgW = isFullscreen ? "100vw" : width;
@@ -359,6 +381,35 @@ export function GraphExplorer({
             <span className="capitalize text-slate-400">{type}</span>
           </div>
         ))}
+      </div>
+
+      {/* Top-left, second row: in-graph search filter */}
+      <div className="absolute top-[52px] left-3 z-20 bg-[#0f172a]/90 backdrop-blur-sm border border-[#1e293b] rounded-xl px-2 py-1 flex items-center gap-1.5">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" className="shrink-0">
+          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+        </svg>
+        <input
+          value={filterQuery}
+          onChange={(e) => setFilterQuery(e.target.value)}
+          placeholder="Filter graph (CVE, IOC, name…)"
+          className="bg-transparent outline-none border-none text-[11px] text-slate-200 placeholder:text-slate-500 w-44"
+        />
+        {filterQuery && (
+          <button
+            onClick={() => setFilterQuery("")}
+            className="p-0.5 rounded hover:bg-slate-700/50 text-slate-500 hover:text-slate-300"
+            title="Clear filter"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+        {filterMatch && (
+          <span className="text-[9px] text-yellow-300 tabular-nums pl-0.5 border-l border-slate-700 ml-0.5">
+            {filterMatch.direct.size}
+          </span>
+        )}
       </div>
 
       {/* Top-right: Controls */}
@@ -442,7 +493,13 @@ export function GraphExplorer({
             const isSelected =
               selectedNodeId === edge.source || selectedNodeId === edge.target;
             const color = EDGE_COLORS[edge.type] || "#475569";
-            const dimmed = activeNode && !isActive;
+            // An edge is part of the filter scope if either endpoint is a
+            // direct match or a one-hop neighbour of a match.
+            const filterKept =
+              !filterMatch ||
+              (filterMatch.neighbours.has(edge.source) &&
+                filterMatch.neighbours.has(edge.target));
+            const dimmed = (activeNode && !isActive) || !filterKept;
 
             // Animated particle
             const particleT = ((animTick * 3 + parseInt(edge.id.slice(-4), 16)) % 200) / 200;
@@ -526,7 +583,11 @@ export function GraphExplorer({
             const isSelected = selectedNodeId === node.id;
             const isHighlighted = isHovered || isSelected;
             const isConnected = connectedTo.has(node.id);
-            const dimmed = activeNode !== null && !isHighlighted && !isConnected && node.id !== activeNode;
+            const filterKept = !filterMatch || filterMatch.neighbours.has(node.id);
+            const isFilterMatch = filterMatch?.direct.has(node.id) ?? false;
+            const dimmed =
+              (activeNode !== null && !isHighlighted && !isConnected && node.id !== activeNode) ||
+              !filterKept;
 
             return (
               <g
@@ -565,6 +626,18 @@ export function GraphExplorer({
                   fillOpacity={isHighlighted ? 0.2 : 0.08}
                   className="pointer-events-none"
                 />
+                {/* Search-match halo — only when a filter query is active */}
+                {isFilterMatch && (
+                  <circle
+                    r={r + 10}
+                    fill="none"
+                    stroke="#fde047"
+                    strokeWidth={1.5}
+                    strokeOpacity={0.9}
+                    strokeDasharray="4 2"
+                    className="animate-pulse pointer-events-none"
+                  />
+                )}
                 {/* Severity ring */}
                 {ring && (
                   <circle
