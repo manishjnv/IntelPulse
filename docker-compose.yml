@@ -20,6 +20,12 @@ x-common-env: &common-env
   DEMO_MODE: ${DEMO_MODE:-false}
   DEMO_USER_EMAIL: ${DEMO_USER_EMAIL:-admin@intelpulse.tech}
   DEMO_USER_NAME: ${DEMO_USER_NAME:-Admin}
+  # Multi-agent Bedrock path — when true, enrich_news_item routes through the
+  # Supervisor agent + IOC-Analyst + Risk-Scorer + virustotal_lookup action
+  # group Lambda instead of single-shot invoke_model. Off by default.
+  AI_USE_AGENTS: ${AI_USE_AGENTS:-false}
+  BEDROCK_SUPERVISOR_AGENT_ID: ${BEDROCK_SUPERVISOR_AGENT_ID:-FQBSERZQMP}
+  BEDROCK_SUPERVISOR_ALIAS_ID: ${BEDROCK_SUPERVISOR_ALIAS_ID:-HLSRFAFL42}
 
 services:
   # ── Data stores ──────────────────────────────────────────────
