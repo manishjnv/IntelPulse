@@ -7,6 +7,7 @@ import { Loading } from "@/components/Loading";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type { DetectionRule, DetectionCoverage } from "@/types";
+import { HowItWorks } from "@/components/HowItWorks";
 import {
   ShieldCheck,
   RefreshCw,
@@ -175,6 +176,8 @@ export default function DetectionsPage() {
           Sync from News
         </button>
       </div>
+
+      <HowItWorks page="detections" />
 
       {/* Coverage Stats */}
       {coverage && (

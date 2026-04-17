@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loading } from "@/components/Loading";
 import { GraphExplorer } from "@/components/GraphExplorer";
+import { HowItWorks } from "@/components/HowItWorks";
 import { cn, severityColor } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type {
@@ -162,6 +163,8 @@ export default function InvestigatePage() {
           </div>
         )}
       </div>
+
+      <HowItWorks page="investigate" />
 
       {/* Search Bar */}
       <Card className="border-border/50">

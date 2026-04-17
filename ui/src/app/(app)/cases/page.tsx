@@ -35,6 +35,7 @@ import type {
   Assignee,
 } from "@/types";
 import { ALLOWED_TRANSITIONS } from "@/types";
+import { HowItWorks } from "@/components/HowItWorks";
 import {
   Briefcase,
   Plus,
@@ -680,6 +681,8 @@ function CasesPageInner() {
           </Button>
         </div>
       </div>
+
+      <HowItWorks page="cases" />
 
       {/* Stats */}
       {stats && (

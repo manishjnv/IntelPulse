@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { getExportUrl, getIntelBatchEnrichment } from "@/lib/api";
+import { HowItWorks } from "@/components/HowItWorks";
 import type { IntelBatchEnrichment } from "@/types";
 import {
   List,
@@ -162,6 +163,8 @@ export default function IntelFeedPage() {
           </Button>
         </div>
       </div>
+
+      <HowItWorks page="intel" />
 
       {/* Filters */}
       {showFilters && (

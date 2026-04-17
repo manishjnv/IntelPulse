@@ -216,7 +216,7 @@ export default function DashboardPage() {
 
       </div>
 
-      <HowItWorks context="dashboard" />
+      <HowItWorks page="dashboard" />
 
       {/* KPI Stats Row — each stat is clickable */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">

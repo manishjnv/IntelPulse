@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Pagination } from "@/components/Pagination";
+import { HowItWorks } from "@/components/HowItWorks";
 
 interface Notification {
   id: string;
@@ -211,6 +212,8 @@ export default function NotificationsPage() {
           )}
         </div>
       </div>
+
+      <HowItWorks page="notifications" />
 
       {/* Stats cards */}
       {stats && (

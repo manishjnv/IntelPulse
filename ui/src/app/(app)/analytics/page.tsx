@@ -8,6 +8,7 @@ import { Loading } from "@/components/Loading";
 import { StatCard } from "@/components/StatCard";
 import { DonutChart, HorizontalBarChart, TrendLineChart } from "@/components/charts";
 import { RankedDataList } from "@/components/RankedDataList";
+import { HowItWorks } from "@/components/HowItWorks";
 import {
   BarChart3,
   TrendingUp,
@@ -183,6 +184,8 @@ export default function AnalyticsPage() {
           Deep analysis across all ingested intelligence
         </p>
       </div>
+
+      <HowItWorks page="analytics" />
 
       {/* ═══════ STATS ROW 1  ═══════ */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

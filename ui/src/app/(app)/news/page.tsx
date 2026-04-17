@@ -2426,7 +2426,7 @@ export default function CyberNewsPage() {
           onSortBy={(sort) => { setSortKey(sort); setPage(1); }}
         />
 
-        <HowItWorks context="news" />
+        <HowItWorks page="news" />
 
         {/* ── Subtopic Tabs ─────────────────────────── */}
         <div className="flex items-center gap-0 bg-card/60 border border-border/40 rounded-lg p-0.5">

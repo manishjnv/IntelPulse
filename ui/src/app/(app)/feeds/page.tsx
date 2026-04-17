@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loading } from "@/components/Loading";
 import * as api from "@/lib/api";
 import type { NewsFeedStatus, NewsPipelineStatus } from "@/types";
+import { HowItWorks } from "@/components/HowItWorks";
 import {
   Rss,
   CheckCircle2,
@@ -185,6 +186,8 @@ export default function FeedStatusPage() {
           Refresh
         </button>
       </div>
+
+      <HowItWorks page="feeds" />
 
       {/* Tab Switcher */}
       <div className="flex gap-1 p-1 rounded-lg bg-muted/60 w-fit">

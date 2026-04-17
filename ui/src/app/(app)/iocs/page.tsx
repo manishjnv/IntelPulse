@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loading } from "@/components/Loading";
 import { Pagination } from "@/components/Pagination";
 import { DonutChart } from "@/components/charts";
+import { HowItWorks } from "@/components/HowItWorks";
 import {
   Database,
   Search,
@@ -439,6 +440,8 @@ export default function IOCDatabasePage() {
           </div>
         )}
       </div>
+
+      <HowItWorks page="iocs" />
 
       {/* ── Stat Cards (compact, clickable) ───────────── */}
       {stats && (

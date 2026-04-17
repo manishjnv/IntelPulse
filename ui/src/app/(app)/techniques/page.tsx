@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loading } from "@/components/Loading";
 import { ATTACKMatrix } from "@/components/ATTACKMatrix";
+import { HowItWorks } from "@/components/HowItWorks";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type {
@@ -258,6 +259,8 @@ export default function TechniquesPage() {
           <ExternalLink className="h-3 w-3" /> ATT&CK Framework
         </a>
       </div>
+
+      <HowItWorks page="techniques" />
 
       {/* Stats Cards — Coverage Ring + Stats Row */}
       {matrixData && (

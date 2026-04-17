@@ -20,6 +20,7 @@ import {
   type AiAnalysis,
 } from "@/lib/api";
 import { StructuredIntelCards, type StructuredIntelData } from "@/components/StructuredIntelCards";
+import { HowItWorks } from "@/components/HowItWorks";
 import {
   Search as SearchIcon,
   Loader2,
@@ -330,6 +331,8 @@ export default function SearchPage() {
           </div>
         )}
       </div>
+
+      <HowItWorks page="search" />
 
       {/* Search bar + chart toggle + search button */}
       <div className="flex gap-2">

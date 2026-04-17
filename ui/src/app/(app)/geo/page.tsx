@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loading } from "@/components/Loading";
 import { DonutChart, HorizontalBarChart } from "@/components/charts";
+import { HowItWorks } from "@/components/HowItWorks";
 import {
   Globe,
   MapPin,
@@ -266,6 +267,8 @@ export default function GeoViewPage() {
           </div>
         )}
       </div>
+
+      <HowItWorks page="geo" />
 
       {/* ── Stats Row ──────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">

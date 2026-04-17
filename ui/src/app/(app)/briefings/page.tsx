@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import * as api from "@/lib/api";
 import { escapeHtml } from "@/lib/safe-html";
 import type { ThreatBriefingSummary } from "@/types";
+import { HowItWorks } from "@/components/HowItWorks";
 import {
   ScrollText,
   Loader2,
@@ -157,6 +158,8 @@ export default function BriefingsPage() {
           Generate Weekly Briefing
         </button>
       </div>
+
+      <HowItWorks page="briefings" />
 
       {/* Briefings List */}
       {briefings.length === 0 ? (

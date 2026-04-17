@@ -50,6 +50,7 @@ import type { UserWithActivity, UserManagementStats, AuditLogEntry } from "@/typ
 import * as api from "@/lib/api";
 import { useAppStore } from "@/store";
 import type { AISettings, FallbackProvider } from "@/types";
+import { HowItWorks } from "@/components/HowItWorks";
 
 interface SettingSection {
   id: string;
@@ -199,6 +200,8 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      <HowItWorks page="settings" />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Sidebar nav */}

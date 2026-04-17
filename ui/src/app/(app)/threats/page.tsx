@@ -429,7 +429,7 @@ export default function ThreatsPage() {
         </div>
       </div>
 
-      <HowItWorks context="threats" />
+      <HowItWorks page="threats" />
 
       {/* ─── Stats Bar ─── */}
       <QuickStatsBar stats={stats} onFilter={handleStatsFilter} />

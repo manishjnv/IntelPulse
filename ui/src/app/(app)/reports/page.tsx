@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatCard } from "@/components/StatCard";
 import type { Report, ReportStatus, ReportType } from "@/types";
+import { HowItWorks } from "@/components/HowItWorks";
 import {
   FileText,
   Plus,
@@ -152,6 +153,8 @@ export default function ReportsPage() {
           </Button>
         </div>
       </div>
+
+      <HowItWorks page="reports" />
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
