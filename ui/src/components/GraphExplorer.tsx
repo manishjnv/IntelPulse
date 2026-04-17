@@ -403,6 +403,84 @@ export function GraphExplorer({
   }, [buildSerialisedSVG]);
 
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [pathMode, setPathMode] = useState(false);
+  const [pathSource, setPathSource] = useState<string | null>(null);
+  const [pathTarget, setPathTarget] = useState<string | null>(null);
+
+  // BFS shortest path within the currently-loaded graph. Returns ordered
+  // list of node IDs from source → target inclusive, or null if no path.
+  const pathIds = useMemo((): string[] | null => {
+    if (!pathSource || !pathTarget || pathSource === pathTarget) return null;
+    const adj = new Map<string, string[]>();
+    data.edges.forEach((e) => {
+      if (!adj.has(e.source)) adj.set(e.source, []);
+      if (!adj.has(e.target)) adj.set(e.target, []);
+      adj.get(e.source)!.push(e.target);
+      adj.get(e.target)!.push(e.source);
+    });
+    const prev = new Map<string, string | null>();
+    prev.set(pathSource, null);
+    const queue: string[] = [pathSource];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      if (cur === pathTarget) break;
+      for (const n of adj.get(cur) || []) {
+        if (!prev.has(n)) {
+          prev.set(n, cur);
+          queue.push(n);
+        }
+      }
+    }
+    if (!prev.has(pathTarget)) return null;
+    const out: string[] = [];
+    let step: string | null = pathTarget;
+    while (step !== null) {
+      out.unshift(step);
+      step = prev.get(step) ?? null;
+    }
+    return out;
+  }, [pathSource, pathTarget, data.edges]);
+
+  const pathNodeSet = useMemo(() => new Set(pathIds ?? []), [pathIds]);
+  const pathEdgeSet = useMemo(() => {
+    if (!pathIds || pathIds.length < 2) return new Set<string>();
+    const s = new Set<string>();
+    for (let i = 0; i < pathIds.length - 1; i++) {
+      const a = pathIds[i], b = pathIds[i + 1];
+      data.edges.forEach((e) => {
+        if ((e.source === a && e.target === b) || (e.source === b && e.target === a)) {
+          s.add(e.id);
+        }
+      });
+    }
+    return s;
+  }, [pathIds, data.edges]);
+
+  const pathSourceLabel = data.nodes.find((n) => n.id === pathSource)?.label;
+  const pathTargetLabel = data.nodes.find((n) => n.id === pathTarget)?.label;
+
+  const clearPath = () => {
+    setPathSource(null);
+    setPathTarget(null);
+  };
+
+  // Handle a click made while in path mode — intercept before parent's
+  // onNodeSelect so selecting source/target doesn't open the detail panel.
+  const handlePathPick = useCallback(
+    (nodeId: string) => {
+      if (!pathSource) {
+        setPathSource(nodeId);
+        setPathTarget(null);
+      } else if (!pathTarget) {
+        setPathTarget(nodeId);
+      } else {
+        // Start over from this node
+        setPathSource(nodeId);
+        setPathTarget(null);
+      }
+    },
+    [pathSource, pathTarget],
+  );
 
   // Mini-map — compute bounds of the current node layout so we can scale
   // every node into a 180×120 overview rect. Re-computes when nodes move
@@ -641,6 +719,28 @@ export function GraphExplorer({
             <path d="M3 3v5h5" />
           </svg>
         </button>
+        {/* Path-explorer toggle */}
+        <button
+          onClick={() => {
+            setPathMode((m) => {
+              if (m) clearPath();
+              return !m;
+            });
+          }}
+          className={cn(
+            "w-8 h-8 rounded-lg border flex items-center justify-center transition-all",
+            pathMode
+              ? "bg-amber-500/20 border-amber-400/60 text-amber-300"
+              : "bg-[#0f172a]/90 border-[#1e293b] text-slate-300 hover:text-white hover:border-amber-400/50",
+          )}
+          title={pathMode ? "Exit path mode" : "Find shortest path — click two nodes"}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="6" cy="19" r="3" /><circle cx="18" cy="5" r="3" />
+            <path d="M9 19h2a4 4 0 0 0 4-4V8a3 3 0 0 1 3-3" />
+          </svg>
+        </button>
+
         {/* Export menu */}
         <div className="relative">
           <button
@@ -697,6 +797,49 @@ export function GraphExplorer({
       {transform.k !== 1 && (
         <div className="absolute bottom-3 right-3 z-20 bg-[#0f172a]/80 backdrop-blur-sm border border-[#1e293b] rounded-lg px-2 py-1 text-[10px] text-slate-500">
           {Math.round(transform.k * 100)}%
+        </div>
+      )}
+
+      {/* Path-explorer banner — shows state in path mode */}
+      {pathMode && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-amber-950/90 backdrop-blur-sm border border-amber-500/40 rounded-xl px-4 py-2 text-[11px] flex items-center gap-3 shadow-lg max-w-[520px]">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" className="shrink-0">
+            <circle cx="6" cy="19" r="3" /><circle cx="18" cy="5" r="3" />
+            <path d="M9 19h2a4 4 0 0 0 4-4V8a3 3 0 0 1 3-3" />
+          </svg>
+          {!pathSource ? (
+            <span className="text-amber-200">Click a node to set the path <strong>source</strong>…</span>
+          ) : !pathTarget ? (
+            <span className="text-amber-200 truncate">
+              Source: <span className="text-amber-100 font-semibold">{pathSourceLabel || pathSource}</span> · click a second node for the <strong>target</strong>
+            </span>
+          ) : pathIds ? (
+            <span className="text-amber-100 truncate">
+              <span className="text-amber-400 font-semibold">{pathIds.length - 1} hops</span>{" "}
+              · <span className="font-semibold">{pathSourceLabel}</span> → <span className="font-semibold">{pathTargetLabel}</span>
+            </span>
+          ) : (
+            <span className="text-red-300">
+              No path found between <span className="font-semibold">{pathSourceLabel}</span> and <span className="font-semibold">{pathTargetLabel}</span> in the loaded graph — try a deeper explore.
+            </span>
+          )}
+          {(pathSource || pathTarget) && (
+            <button
+              onClick={clearPath}
+              className="text-amber-300 hover:text-amber-100 text-[10px] underline underline-offset-2 shrink-0"
+            >
+              reset
+            </button>
+          )}
+          <button
+            onClick={() => { setPathMode(false); clearPath(); }}
+            className="text-amber-300 hover:text-amber-100 shrink-0"
+            title="Exit path mode"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
 
@@ -813,8 +956,21 @@ export function GraphExplorer({
             const px = s.x + (t.x - s.x) * particleT;
             const py = s.y + (t.y - s.y) * particleT;
 
+            const isPath = pathEdgeSet.has(edge.id);
+
             return (
               <g key={edge.id}>
+                {/* Path highlight — golden glow under the normal edge line */}
+                {isPath && (
+                  <line
+                    x1={s.x} y1={s.y} x2={t.x} y2={t.y}
+                    stroke="#fbbf24"
+                    strokeWidth={6}
+                    strokeOpacity={0.35}
+                    filter="url(#glow-strong)"
+                    className="pointer-events-none"
+                  />
+                )}
                 {(isActive || isSelected) && (
                   <line
                     x1={s.x} y1={s.y} x2={t.x} y2={t.y}
@@ -923,6 +1079,10 @@ export function GraphExplorer({
                 onMouseDown={handleMouseDown(node.id)}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (pathMode) {
+                    handlePathPick(node.id);
+                    return;
+                  }
                   onNodeSelect?.(node);
                 }}
                 onDoubleClick={(e) => {
@@ -961,6 +1121,18 @@ export function GraphExplorer({
                     strokeOpacity={0.9}
                     strokeDasharray="4 2"
                     className="animate-pulse pointer-events-none"
+                  />
+                )}
+                {/* Path highlight — endpoints get a bright amber ring, intermediates a muted one */}
+                {pathNodeSet.has(node.id) && (
+                  <circle
+                    r={r + 8}
+                    fill="none"
+                    stroke={node.id === pathSource || node.id === pathTarget ? "#f59e0b" : "#fbbf24"}
+                    strokeWidth={node.id === pathSource || node.id === pathTarget ? 2.5 : 1.5}
+                    strokeOpacity={0.95}
+                    filter="url(#glow-strong)"
+                    className="pointer-events-none"
                   />
                 )}
                 {/* Severity ring */}
