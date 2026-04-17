@@ -37,38 +37,38 @@ const NAV_SECTIONS = [
   {
     label: "Overview",
     items: [
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/threats", label: "Threat Feed", icon: AlertTriangle },
-      { href: "/news", label: "Cyber News", icon: Newspaper },
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, color: "text-sky-400" },
+      { href: "/threats", label: "Threat Feed", icon: AlertTriangle, color: "text-red-400" },
+      { href: "/news", label: "Cyber News", icon: Newspaper, color: "text-amber-400" },
     ],
   },
   {
     label: "Investigation",
     items: [
-      { href: "/intel", label: "Intel Items", icon: List },
-      { href: "/cases", label: "Cases", icon: Briefcase },
-      { href: "/reports", label: "Reports", icon: FileText },
-      { href: "/investigate", label: "Investigate", icon: Telescope },
-      { href: "/techniques", label: "ATT&CK Map", icon: Crosshair },
-      { href: "/search", label: "IOC Search", icon: Search },
-      { href: "/iocs", label: "IOC Database", icon: Bug },
-      { href: "/detections", label: "Detection Rules", icon: ShieldCheck },
-      { href: "/briefings", label: "Threat Briefings", icon: ScrollText },
+      { href: "/intel", label: "Intel Items", icon: List, color: "text-cyan-400" },
+      { href: "/cases", label: "Cases", icon: Briefcase, color: "text-purple-400" },
+      { href: "/reports", label: "Reports", icon: FileText, color: "text-blue-400" },
+      { href: "/investigate", label: "Investigate", icon: Telescope, color: "text-violet-400" },
+      { href: "/techniques", label: "ATT&CK Map", icon: Crosshair, color: "text-rose-400" },
+      { href: "/search", label: "IOC Search", icon: Search, color: "text-emerald-400" },
+      { href: "/iocs", label: "IOC Database", icon: Bug, color: "text-orange-400" },
+      { href: "/detections", label: "Detection Rules", icon: ShieldCheck, color: "text-green-400" },
+      { href: "/briefings", label: "Threat Briefings", icon: ScrollText, color: "text-yellow-400" },
     ],
   },
   {
     label: "Analytics",
     items: [
-      { href: "/analytics", label: "Analytics", icon: BarChart3 },
-      { href: "/geo", label: "Geo View", icon: Globe },
+      { href: "/analytics", label: "Analytics", icon: BarChart3, color: "text-pink-400" },
+      { href: "/geo", label: "Geo View", icon: Globe, color: "text-teal-400" },
     ],
   },
   {
     label: "System",
     items: [
-      { href: "/feeds", label: "Feed Status", icon: Radio },
-      { href: "/notifications", label: "Notifications", icon: Bell },
-      { href: "/settings", label: "Settings", icon: Settings },
+      { href: "/feeds", label: "Feed Status", icon: Radio, color: "text-emerald-400" },
+      { href: "/notifications", label: "Notifications", icon: Bell, color: "text-fuchsia-400" },
+      { href: "/settings", label: "Settings", icon: Settings, color: "text-slate-300" },
     ],
   },
 ];
@@ -125,7 +125,7 @@ function DesktopSidebar() {
                         : "text-foreground/85 hover:bg-accent/50 hover:text-foreground"
                     )}
                   >
-                    <Icon className={cn("h-4 w-4 shrink-0", active ? "text-primary" : "text-foreground/70")} />
+                    <Icon className={cn("h-4 w-4 shrink-0", active ? "text-primary" : item.color)} />
                     {sidebarOpen && <span className="truncate">{item.label}</span>}
                   </Link>
                 );
@@ -278,7 +278,7 @@ function MobileSidebar() {
                           : "text-foreground/85 hover:bg-accent/50 hover:text-foreground active:bg-accent"
                       )}
                     >
-                      <Icon className={cn("h-4.5 w-4.5 shrink-0", active ? "text-primary" : "text-foreground/70")} />
+                      <Icon className={cn("h-4.5 w-4.5 shrink-0", active ? "text-primary" : item.color)} />
                       <span>{item.label}</span>
                     </Link>
                   );
