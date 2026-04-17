@@ -267,9 +267,11 @@ async def generate_briefing(
     payload: dict,
 ):
     """Generate an AI threat briefing from collected data."""
-    from app.services.ai import chat_completion_json
-    import json, logging
+    import json
+    import logging
     from datetime import datetime, timedelta, timezone
+
+    from app.services.ai import chat_completion_json
 
     def _jsonify(obj):
         """Deep-convert datetime objects to ISO strings for JSONB storage."""
