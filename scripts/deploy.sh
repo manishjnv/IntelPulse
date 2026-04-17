@@ -41,7 +41,7 @@ echo "[2/5] Building Docker images..." | tee -a "$LOG_FILE"
 $COMPOSE -f "$COMPOSE_FILE" build --parallel 2>&1 | tail -5 | tee -a "$LOG_FILE"
 
 # ── 3. Run SQL migrations ─────────────────────────────
-echo "[3/6] Running SQL migrations..." | tee -a "$LOG_FILE"
+echo "[3/5] Running SQL migrations..." | tee -a "$LOG_FILE"
 POSTGRES_CONTAINER=$($COMPOSE ps -q postgres 2>/dev/null || echo "")
 if [ -n "$POSTGRES_CONTAINER" ]; then
     for migration in db/migrations/*.sql; do
@@ -56,11 +56,13 @@ else
 fi
 
 # ── 4. Restart services ───────────────────────────────
-echo "[4/6] Starting services..." | tee -a "$LOG_FILE"
+echo "[4/5] Starting services..." | tee -a "$LOG_FILE"
 $COMPOSE -f "$COMPOSE_FILE" up -d --remove-orphans 2>&1 | tee -a "$LOG_FILE"
 
 # ── 5. Wait for health checks ─────────────────────────
-echo "[5/6] Waiting for health checks..." | tee -a "$LOG_FILE"
+# 2s poll cadence catches the "all healthy" moment within 2s instead of
+# within 10s. Max wait unchanged at 120s.
+echo "[5/5] Waiting for health checks..." | tee -a "$LOG_FILE"
 MAX_WAIT=120
 ELAPSED=0
 while [ $ELAPSED -lt $MAX_WAIT ]; do
@@ -70,13 +72,13 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
     if [ "$HEALTHY" -ge 3 ]; then
         break
     fi
-    sleep 10
-    ELAPSED=$((ELAPSED + 10))
+    sleep 2
+    ELAPSED=$((ELAPSED + 2))
 done
 
-# ── 6. Cleanup ─────────────────────────────────────────
-echo "[6/6] Cleaning up old images..." | tee -a "$LOG_FILE"
-docker image prune -f --filter "until=48h" 2>&1 | tail -1 | tee -a "$LOG_FILE"
+# Image pruning is handled by a separate weekly cron — don't run on every
+# deploy, since that invalidates Docker layer cache and slows subsequent
+# builds. See scripts/docker-cleanup.sh.
 
 # ── Summary ────────────────────────────────────────────
 echo "" | tee -a "$LOG_FILE"

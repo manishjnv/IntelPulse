@@ -1,11 +1,17 @@
+# syntax=docker/dockerfile:1.4
 # ---------- builder ----------
 FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
 COPY api/pyproject.toml ./
-RUN python -c "import tomllib,pathlib;d=tomllib.loads(pathlib.Path('pyproject.toml').read_text());[print(dep) for dep in d['project']['dependencies']]" > /tmp/requirements.txt \
-    && pip install --no-cache-dir --prefix=/install -r /tmp/requirements.txt
+# BuildKit cache mount persists pip wheels across builds — when
+# pyproject.toml is unchanged, the install is a no-op; when deps change,
+# only the delta is downloaded. Dropping --no-cache-dir is what lets the
+# mount actually cache things.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -c "import tomllib,pathlib;d=tomllib.loads(pathlib.Path('pyproject.toml').read_text());[print(dep) for dep in d['project']['dependencies']]" > /tmp/requirements.txt \
+    && pip install --prefix=/install -r /tmp/requirements.txt
 
 # ---------- runtime ----------
 FROM python:3.12-slim

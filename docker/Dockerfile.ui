@@ -1,8 +1,12 @@
+# syntax=docker/dockerfile:1.4
 # ---------- deps ----------
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY ui/package.json ui/package-lock.json* ./
-RUN npm ci
+# BuildKit cache mount persists ~/.npm across builds so `npm ci` only
+# re-fetches what lockfile changes touched.
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 # ---------- dev (used by docker-compose.dev.yml) ----------
 FROM node:20-alpine AS dev
