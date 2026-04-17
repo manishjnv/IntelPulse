@@ -38,15 +38,42 @@ IntelPulse is a production-grade Threat Intelligence Platform that:
 
 ---
 
+> ### **NEW — Multi-agent Bedrock enrichment is live**
+>
+> News enrichment can now route through a **three-agent Bedrock collaboration** — a Supervisor (`SUPERVISOR_ROUTER` mode) that delegates to an IOC Reputation Analyst and a Risk Scorer, and which invokes a real AWS Lambda action group (`virustotal_lookup`) to pull VirusTotal reputation data. The whole chain runs on `amazon.nova-lite-v1:0`.
+>
+> **What it does differently vs. the single-shot path:**
+> - The Supervisor **plans** which specialist to involve per article instead of one-shot prompting
+> - The IOC-Analyst **uses a tool** — it calls the VirusTotal Lambda via a Bedrock action group and reasons over the returned reputation payload
+> - Multiple agents **collaborate** — their outputs are aggregated by the Supervisor before the final structured JSON is returned
+>
+> **How to enable** (opt-in per environment; off by default):
+> ```bash
+> ssh intelpulse2 "echo 'AI_USE_AGENTS=true' >> /home/ubuntu/IntelPulse/.env && \
+>                  cd /home/ubuntu/IntelPulse && docker compose restart worker scheduler"
+> # Verify it's routing through agents:
+> ssh intelpulse2 "docker logs intelpulse-worker-1 --tail 200 | grep bedrock_invoke_agent_request"
+> ```
+>
+> See **[docs/MULTI_AGENT.md](docs/MULTI_AGENT.md)** for the deep-dive — agent catalog, action-group contract, request flow, cost/latency, failure modes, rollback.
+
+---
+
 ## AWS Services Utilized
 
 | AWS Service | How It's Used |
 |-------------|---------------|
-| **KIRO IDE** | Spec-driven development (requirements → design → tasks → code), 4 steering files for consistent context, 3 agent hooks for automation, autopilot mode for multi-file coordination |
-| **Amazon Q Developer** | Inline code suggestions for Bedrock adapter and CDK stack, security scanning (12 issues found/fixed), code transformation from HTTP-based AI to boto3 Bedrock SDK |
-| **Amazon Bedrock** | Claude 3 Haiku model for IOC threat analysis, risk scoring, MITRE ATT&CK mapping, news enrichment, report generation — all via direct boto3 SDK integration |
-| **AWS CDK** | Infrastructure as Code — VPC, ECS Fargate, ALB, security groups, Secrets Manager, ECR |
-| **EC2 + IAM** | Application hosting with BedrockAccessRole (least-privilege IAM policies) |
+| **Amazon Bedrock Agents** | Supervisor + specialist collaboration — `SUPERVISOR_ROUTER` mode with `TO_COLLABORATOR` wiring. 3 agents live (Threat-Analyst, IOC-Analyst, Risk-Scorer); a 4th (Context Enricher with MITRE KB) is scoped for follow-up. |
+| **Amazon Bedrock Agent Runtime** | `invoke_agent` EventStream, consumed synchronously by the worker for news enrichment. Trace events surface action-group and collaborator invocations for observability. |
+| **Amazon Bedrock (Runtime)** | Single-shot `invoke_model` on `amazon.nova-lite-v1:0` for IOC demo, health checks, reports, and intel enrichment. Anthropic models are blocked on this account (`INVALID_PAYMENT_INSTRUMENT`), so Nova is the production model. |
+| **AWS Lambda** | `intelpulse-virustotal-lookup` (Python 3.12, stdlib urllib — no pip deps). Dual event shape: legacy `{ioc, ioc_type}` for direct invoke + Bedrock action-group envelope. |
+| **AWS Secrets Manager** | `intelpulse/virustotal` — stores the VirusTotal API key; Lambda falls back to deterministic stub data when the secret is empty so the agent flow is demo-ready from day one. |
+| **Amazon CloudWatch Logs** | `/aws/lambda/intelpulse-virustotal-lookup` with 14-day retention; Bedrock Agent traces are also emitted for debugging collaborator + action-group invocations. |
+| **AWS IAM** | `BedrockAccessRole` (EC2 instance profile) + `intelpulse-virustotal-lookup-role` (Lambda exec) + `IntelPulse-BedrockAgentRole` (agent service principal). Least-privilege policies. |
+| **AWS CDK** | `bedrock-agents-construct.ts` + `bedrock-lambdas-construct.ts` describe the infra. Agents + Lambda were provisioned programmatically via [`infra/scripts/provision_bedrock_action_group.py`](infra/scripts/provision_bedrock_action_group.py) using boto3 (idempotent). |
+| **KIRO IDE** | Spec-driven development (requirements → design → tasks → code), 4 steering files for consistent context, 3 agent hooks for automation, autopilot mode for multi-file coordination. |
+| **Amazon Q Developer** | Inline code suggestions for Bedrock adapter and CDK stack, security scanning (12 issues found/fixed), code transformation from HTTP-based AI to boto3 Bedrock SDK. |
+| **EC2** | Application hosting (t3.small, us-east-1) with instance profile for IMDS-based AWS credentials — no long-lived secrets on the box. |
 
 ---
 

@@ -71,7 +71,7 @@ IntelPulse is a production-grade threat intelligence platform that aggregates IO
 | Backend | Python 3.12, FastAPI (async), Pydantic v2 | REST API |
 | Database | PostgreSQL 16 + TimescaleDB | Time-series intel storage |
 | Cache | Redis 7 | Sessions, caching, job queue |
-| AI | Amazon Bedrock (Claude 3 Haiku) | Threat analysis, IOC enrichment |
+| AI | Amazon Bedrock (Nova Lite + Bedrock Agents) | Threat analysis, IOC enrichment, multi-agent orchestration |
 | Infra | Docker Compose on EC2 | Container orchestration |
 | IaC | AWS CDK (TypeScript) | Infrastructure as Code |
 | Dev Tools | KIRO IDE, Amazon Q Developer | AI-assisted development |
@@ -80,14 +80,16 @@ IntelPulse is a production-grade threat intelligence platform that aggregates IO
 
 ### Amazon Bedrock
 
-The platform uses Amazon Bedrock for AI-powered threat analysis:
+The platform uses Amazon Bedrock for AI-powered threat analysis via a **multi-agent orchestration** path (when `AI_USE_AGENTS=true`) and a single-shot `invoke_model` fallback (default).
 
-- **Model**: Claude 3 Haiku (`anthropic.claude-3-haiku-20240307-v1:0`)
-- **Integration**: Direct boto3 SDK calls via `BedrockAdapter` class
-- **Authentication**: IAM role (BedrockAccessRole) attached to EC2 instance
+- **Foundation model**: `amazon.nova-lite-v1:0` (all agents)
+- **Integration**: `BedrockAgentAdapter` (agent path) and `BedrockAdapter` (single-shot fallback)
+- **Authentication**: IAM role attached to EC2 instance with `bedrock:InvokeAgent` and `bedrock:InvokeModel` permissions
 - **Endpoints**:
   - `POST /api/v1/demo/analyze` — IOC threat analysis
   - `GET /api/v1/demo/health` — Bedrock health check
+
+> **Note**: Anthropic Claude models (`anthropic.claude-*`) return `INVALID_PAYMENT_INSTRUMENT` on this AWS account. All inference uses Amazon Nova Lite.
 
 ### Bedrock Adapter Architecture
 
@@ -96,14 +98,14 @@ API Request → BedrockAdapter → boto3.client('bedrock-runtime')
                                     │
                                     ▼
                             Amazon Bedrock
-                            Claude 3 Haiku
+                            amazon.nova-lite-v1:0 (invoke_model)
                                     │
                                     ▼
                             Structured JSON Response
                             (risk_score, severity, MITRE techniques)
 ```
 
-The adapter supports:
+The single-shot adapter supports:
 
 - Text generation (`ai_analyze`)
 - Structured JSON generation (`ai_analyze_structured`)
@@ -112,19 +114,91 @@ The adapter supports:
 
 ### Multi-Agent Design
 
-| Agent | Role | Implementation |
-|-------|------|----------------|
-| Supervisor | IntelPulse Threat Analyst — orchestrates analysis | Bedrock adapter |
-| IOC Reputation Analyst | Queries VirusTotal, AbuseIPDB, OTX, Shodan | Lambda action groups |
-| Threat Context Enricher | Maps findings to MITRE ATT&CK | Knowledge base |
-| Risk Scorer | Aggregates into risk assessment | Scoring service |
+**LIVE as of 2026-04-17 (commit 6b768a6).** The platform provisions and routes through a supervisor-router + collaborator pattern using Bedrock Agents.
 
-### Lambda Action Groups (CDK)
+#### Live Agent Catalog
 
-- `virustotal_lookup` — IOC reputation check
-- `abuseipdb_check` — IP abuse scoring
-- `otx_lookup` — AlienVault OTX pulse search
-- `shodan_lookup` — Internet exposure scan
+| Agent | Agent ID | Alias ID | Foundation Model | Mode |
+| ----- | -------- | -------- | ---------------- | ---- |
+| **IntelPulse-Threat-Analyst** (Supervisor) | `FQBSERZQMP` | `HLSRFAFL42` (`live-v2`) | `amazon.nova-lite-v1:0` | `SUPERVISOR_ROUTER` |
+| **IOC-Analyst** | `UX0RYONP98` | `SFDO1GO27Y` (`live`) | `amazon.nova-lite-v1:0` | Collaborator |
+| **Risk-Scorer** | `WH4N4SUKMB` | `BP6KQNKDUB` (`live`) | `amazon.nova-lite-v1:0` | Collaborator |
+
+Collaborator wiring: Supervisor → IOC-Analyst (`TO_COLLABORATOR`), Supervisor → Risk-Scorer (`TO_COLLABORATOR`).
+
+**Deferred (follow-up PR):** Threat Context Enricher (requires Bedrock Knowledge Base + MITRE ATT&CK data upload to S3).
+
+#### Lambda Action Groups (Live)
+
+| Lambda | Action Group | Status |
+|--------|-------------|--------|
+| `intelpulse-virustotal-lookup` | `virustotal_lookup` on IOC-Analyst | **LIVE** — Python 3.12, stdlib urllib only; stub mode active (no API key yet) |
+| `abuseipdb_check` | — | Coded in `infra/lambdas/` but **not deployed** |
+| `otx_lookup` | — | Coded in `infra/lambdas/` but **not deployed** |
+| `shodan_lookup` | — | Coded in `infra/lambdas/` but **not deployed** |
+
+IAM role for the live Lambda: `intelpulse-virustotal-lookup-role` (Lambda trust + CloudWatch Logs + `secretsmanager:GetSecretValue` on `intelpulse/virustotal`).
+
+CloudWatch log group: `/aws/lambda/intelpulse-virustotal-lookup` (14-day retention).
+
+#### News Enrichment Flow
+
+```mermaid
+sequenceDiagram
+    participant W as enrich_news_batch<br/>(RQ worker)
+    participant A as BedrockAgentAdapter
+    participant BR as bedrock-agent-runtime<br/>InvokeAgent
+    participant SUP as Supervisor<br/>FQBSERZQMP/HLSRFAFL42
+    participant IOC as IOC-Analyst<br/>UX0RYONP98/SFDO1GO27Y
+    participant LMB as Lambda<br/>intelpulse-virustotal-lookup
+    participant SM as Secrets Manager<br/>intelpulse/virustotal
+
+    W->>A: ai_analyze_structured_via_agent(prompt, required_keys)
+    A->>BR: InvokeAgent(agentId=FQBSERZQMP, agentAliasId=HLSRFAFL42)
+    BR->>SUP: route prompt
+    SUP->>IOC: delegate (TO_COLLABORATOR)
+    IOC->>LMB: invoke action group virustotal_lookup.lookup_ioc
+    LMB->>SM: GetSecretValue (VIRUSTOTAL_API_KEY)
+    SM-->>LMB: key (or empty → stub mode)
+    LMB-->>IOC: stub/real reputation data
+    IOC-->>SUP: structured IOC assessment
+    SUP-->>BR: final completion (EventStream)
+    BR-->>A: EventStream chunks
+    A->>A: strip markdown fences, parse JSON,<br/>validate required_keys
+    A-->>W: dict with enrichment fields
+    W->>W: write fields to news_items table
+```
+
+#### Concrete Smoke-Test Results
+
+Direct invoke to IOC-Analyst `live` — prompt `"Analyze IOC 8.8.8.8"`:
+- 1 action group invocation (`virustotal_lookup.lookup_ioc`)
+- Stub reputation data returned from Lambda
+- Agent produced: `{"ioc": "8.8.8.8", "ioc_type": "ip", "reputation": "...", ...}`
+
+Supervisor `live-v2` — prompt `"Check IP 185.220.101.45 in VirusTotal"`:
+- 1 action group invocation through collaboration tree
+- Final output: structured JSON with `reputation: malicious`
+
+#### Known Caveats
+
+- **Output cap**: Agent inference config caps output at 1024 tokens. The full 30-field news-enrichment JSON may truncate; only `category`, `summary`, and `executive_brief` are strictly required. Bumping to 4096 requires overriding the full agent prompt template — deferred.
+- **Nova content filter**: Refuses approximately 20% of threat-intel content. Failed items are retried by the `re_enrich_fallback_news` scheduled task.
+- **Latency**: Agent path is 3–5x slower than single-shot `invoke_model`.
+- **Cost**: Roughly 5–8x per article (1 supervisor call + 1–2 collaborator rounds + up to 1 Lambda action-group call).
+
+#### Enabling the Agent Path
+
+The agent path is off by default (`AI_USE_AGENTS=false`). To enable on EC2:
+
+```bash
+echo 'AI_USE_AGENTS=true' >> /home/ubuntu/IntelPulse/.env
+docker compose -f /home/ubuntu/IntelPulse/docker-compose.yml restart worker scheduler
+# Verify:
+docker logs intelpulse-worker-1 --tail 200 | grep bedrock_invoke_agent_request
+```
+
+See [`docs/MULTI_AGENT.md`](MULTI_AGENT.md) for the full deep-dive reference.
 
 ## Data Flow
 
