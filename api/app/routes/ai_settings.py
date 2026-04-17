@@ -14,6 +14,7 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.logging import get_logger
 from app.core.redis import redis_client
+from app.core.url_validation import UnsafeURLError, validate_outbound_url
 from app.middleware.auth import require_admin
 from app.models.models import AISetting, User
 
@@ -341,6 +342,12 @@ async def test_ai_provider(
         test_url = test_url.rstrip("/") + "/openai"
     if not test_url.endswith("/chat/completions"):
         test_url += "/chat/completions"
+
+    # SSRF guard: reject private/internal targets before the outbound request.
+    try:
+        validate_outbound_url(test_url, require_https=True)
+    except UnsafeURLError as exc:
+        raise HTTPException(400, f"Refusing to contact unsafe URL: {exc}") from exc
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:

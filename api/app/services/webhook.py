@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 
 from app.core.logging import get_logger
+from app.core.url_validation import UnsafeURLError, validate_outbound_url
 
 logger = get_logger(__name__)
 
@@ -58,6 +59,12 @@ def deliver_webhook_sync(
     secret: str | None = None,
 ) -> dict[str, Any]:
     """POST notification payload to a webhook URL (synchronous)."""
+    try:
+        validate_outbound_url(url)
+    except UnsafeURLError as exc:
+        logger.warning("webhook_blocked_unsafe_url", url=url[:120], error=str(exc))
+        return {"success": False, "error": f"Refused unsafe URL: {exc}"}
+
     payload = _build_payload(notification)
     headers = _build_headers(payload, secret)
 
@@ -88,6 +95,12 @@ async def deliver_webhook_async(
     secret: str | None = None,
 ) -> dict[str, Any]:
     """POST notification payload to a webhook URL (async)."""
+    try:
+        validate_outbound_url(url)
+    except UnsafeURLError as exc:
+        logger.warning("webhook_blocked_unsafe_url", url=url[:120], error=str(exc))
+        return {"success": False, "error": f"Refused unsafe URL: {exc}"}
+
     payload = _build_payload(notification)
     headers = _build_headers(payload, secret)
 
