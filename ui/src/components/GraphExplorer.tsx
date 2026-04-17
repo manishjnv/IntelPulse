@@ -265,6 +265,104 @@ export function GraphExplorer({
   const resetView = () => setTransform({ x: 0, y: 0, k: 1 });
   const toggleFullscreen = useCallback(() => setIsFullscreen((f) => !f), []);
 
+  // Serialise the live SVG with its gradient defs + a painted background.
+  // Used by both exporters so the output looks like what the user sees —
+  // the canvas background is normally a CSS gradient, which SVG export
+  // alone wouldn't capture, so we inject a rect with an inline gradient.
+  const buildSerialisedSVG = useCallback((): string | null => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+
+    const w = svg.clientWidth || svg.viewBox.baseVal.width || 800;
+    const h = svg.clientHeight || svg.viewBox.baseVal.height || 560;
+
+    // Clone so we don't mutate the live DOM.
+    const clone = svg.cloneNode(true) as SVGSVGElement;
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+    clone.setAttribute("width", String(w));
+    clone.setAttribute("height", String(h));
+    clone.setAttribute("viewBox", `0 0 ${w} ${h}`);
+
+    // Prepend a real background rect (CSS gradient on the original SVG
+    // doesn't survive serialisation).
+    const bgDef = clone.ownerDocument?.createElementNS("http://www.w3.org/2000/svg", "defs");
+    const bgGrad = clone.ownerDocument?.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
+    if (bgDef && bgGrad) {
+      bgGrad.setAttribute("id", "export-bg");
+      bgGrad.setAttribute("x1", "0"); bgGrad.setAttribute("y1", "0");
+      bgGrad.setAttribute("x2", "1"); bgGrad.setAttribute("y2", "1");
+      ["#0a0e1a", "#0f172a", "#0a101f"].forEach((c, i) => {
+        const s = clone.ownerDocument!.createElementNS("http://www.w3.org/2000/svg", "stop");
+        s.setAttribute("offset", `${i * 50}%`);
+        s.setAttribute("stop-color", c);
+        bgGrad.appendChild(s);
+      });
+      bgDef.appendChild(bgGrad);
+      clone.insertBefore(bgDef, clone.firstChild);
+
+      const bgRect = clone.ownerDocument!.createElementNS("http://www.w3.org/2000/svg", "rect");
+      bgRect.setAttribute("width", "100%");
+      bgRect.setAttribute("height", "100%");
+      bgRect.setAttribute("fill", "url(#export-bg)");
+      clone.insertBefore(bgRect, bgDef.nextSibling);
+    }
+
+    return new XMLSerializer().serializeToString(clone);
+  }, []);
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const timestamp = () =>
+    new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+
+  const exportSVG = useCallback(() => {
+    const s = buildSerialisedSVG();
+    if (!s) return;
+    const blob = new Blob([s], { type: "image/svg+xml;charset=utf-8" });
+    downloadBlob(blob, `intelpulse-graph-${timestamp()}.svg`);
+  }, [buildSerialisedSVG]);
+
+  const exportPNG = useCallback(() => {
+    const s = buildSerialisedSVG();
+    if (!s || !svgRef.current) return;
+    const w = svgRef.current.clientWidth || 800;
+    const h = svgRef.current.clientHeight || 560;
+    const img = new Image();
+    const url = URL.createObjectURL(
+      new Blob([s], { type: "image/svg+xml;charset=utf-8" }),
+    );
+    img.onload = () => {
+      // 2× DPR for crisp PNG on retina displays.
+      const scale = 2;
+      const canvas = document.createElement("canvas");
+      canvas.width = w * scale;
+      canvas.height = h * scale;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0, w, h);
+      }
+      URL.revokeObjectURL(url);
+      canvas.toBlob((blob) => {
+        if (blob) downloadBlob(blob, `intelpulse-graph-${timestamp()}.png`);
+      }, "image/png");
+    };
+    img.onerror = () => URL.revokeObjectURL(url);
+    img.src = url;
+  }, [buildSerialisedSVG]);
+
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
   const nodeMap = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
   const connectedTo = useMemo(() => {
@@ -440,6 +538,41 @@ export function GraphExplorer({
             <path d="M3 3v5h5" />
           </svg>
         </button>
+        {/* Export menu */}
+        <div className="relative">
+          <button
+            onClick={() => setShowExportMenu((v) => !v)}
+            className="w-8 h-8 rounded-lg bg-[#0f172a]/90 border border-[#1e293b] text-slate-300 hover:text-white hover:border-blue-500/50 flex items-center justify-center transition-all"
+            title="Export graph"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </button>
+          {showExportMenu && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setShowExportMenu(false)} />
+              <div className="absolute right-0 top-full mt-1 w-36 z-40 rounded-lg bg-[#0f172a]/95 backdrop-blur-sm border border-[#1e293b] shadow-xl overflow-hidden">
+                <button
+                  onClick={() => { setShowExportMenu(false); exportPNG(); }}
+                  className="w-full text-left px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800/60 hover:text-white flex items-center gap-2"
+                >
+                  <span className="text-emerald-400 font-mono text-[10px]">PNG</span>
+                  <span>Rasterised · 2×</span>
+                </button>
+                <button
+                  onClick={() => { setShowExportMenu(false); exportSVG(); }}
+                  className="w-full text-left px-3 py-2 text-[11px] text-slate-300 hover:bg-slate-800/60 hover:text-white flex items-center gap-2 border-t border-[#1e293b]"
+                >
+                  <span className="text-sky-400 font-mono text-[10px]">SVG</span>
+                  <span>Vector · editable</span>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
         <button
           onClick={toggleFullscreen}
           className="w-8 h-8 rounded-lg bg-[#0f172a]/90 border border-[#1e293b] text-slate-300 hover:text-white hover:border-blue-500/50 flex items-center justify-center transition-all"
