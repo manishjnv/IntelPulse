@@ -115,8 +115,8 @@ async def live_lookup(query: str) -> dict[str, Any]:
             elif isinstance(out, dict):
                 result["results"].append(out)
 
-    # AI analysis if results found and AI available
-    if result["results"] and settings.ai_api_key:
+    # AI analysis if results found and either the agent path or an API key is available
+    if result["results"] and (settings.ai_api_key or settings.ai_use_agents_for_ioc):
         try:
             analysis = await _ai_analyze(q, source_tag, result["results"])
             if analysis:
