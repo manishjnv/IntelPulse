@@ -2118,13 +2118,19 @@ function AIConfigSettings() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-muted-foreground mb-1 block">API Key</label>
+                  <label className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
+                    API Key
+                    {cfg.primary_provider === "bedrock" && (
+                      <span className="text-[9px] text-emerald-400 ml-1">(not required — IAM role)</span>
+                    )}
+                  </label>
                   <input
                     type="password"
                     value={cfg.primary_api_key}
                     onChange={(e) => update("primary_api_key", e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full px-2 py-1.5 rounded-md bg-muted/30 border border-border text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder={cfg.primary_provider === "bedrock" ? "not needed (IAM role auth)" : "••••••••"}
+                    disabled={cfg.primary_provider === "bedrock"}
+                    className={`w-full px-2 py-1.5 rounded-md bg-muted/30 border border-border text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary ${cfg.primary_provider === "bedrock" ? "opacity-50 cursor-not-allowed" : ""}`}
                   />
                 </div>
                 <div>

@@ -759,13 +759,66 @@ async def check_ai_health() -> dict:
 
     Returns dict with overall status and per-provider details.
     """
-    chain = await _get_chain_async()
-    if not chain:
-        return {"healthy": False, "providers": [], "reason": "no_providers"}
-
-    results = []
+    results: list[dict] = []
     any_healthy = False
 
+    # Bedrock path — IAM role auth, not an HTTP provider chain. If the DB
+    # says primary_provider=bedrock or AI_API_URL=bedrock, test via boto3
+    # and add the tiered models so each tier shows as its own row.
+    db_cfg = await get_ai_db_settings()
+    is_bedrock = False
+    if db_cfg:
+        is_bedrock = (db_cfg.get("primary_provider") or "").lower() == "bedrock" \
+            or (db_cfg.get("primary_api_url") or "").strip().lower() == "bedrock"
+    if not is_bedrock:
+        is_bedrock = (settings.ai_api_url or "").strip().lower() == "bedrock" or _USE_BEDROCK
+
+    if is_bedrock:
+        try:
+            from app.services.bedrock_adapter import get_bedrock_adapter
+            adapter = get_bedrock_adapter()
+
+            # Probe primary + each distinct tier model. Dedupe so we don't
+            # test the same model five times.
+            primary_model = (
+                (db_cfg or {}).get("primary_model")
+                or settings.ai_model
+                or "amazon.nova-lite-v1:0"
+            )
+            tier_models: list[tuple[str, str]] = [("bedrock-primary", primary_model)]
+            if db_cfg:
+                for feat, label in (
+                    ("news_enrichment", "bedrock-classifier"),
+                    ("intel_enrichment", "bedrock-correlator"),
+                    ("briefing_gen", "bedrock-narrative"),
+                ):
+                    m = (db_cfg.get(f"model_{feat}") or "").strip()
+                    if m and m != primary_model and not any(t[1] == m for t in tier_models):
+                        tier_models.append((label, m))
+
+            for name, mid in tier_models:
+                try:
+                    text = await adapter.ai_analyze(
+                        system_prompt="Respond with exactly: OK",
+                        user_prompt="Test",
+                        max_tokens=10,
+                        temperature=0.0,
+                        model_id=mid,
+                    )
+                    ok = bool(text)
+                except Exception:  # noqa: BLE001
+                    ok = False
+                usage = await _get_provider_usage(name)
+                results.append({"name": name, "model": mid, "healthy": ok, "today_requests": usage})
+                if ok:
+                    any_healthy = True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("bedrock_health_check_failed", error=str(exc))
+            results.append({"name": "bedrock", "model": "(unreachable)", "healthy": False, "today_requests": 0})
+
+    # HTTP providers from the fallback chain (only populated when a key
+    # is set — Bedrock-only deployments get nothing from the chain).
+    chain = await _get_chain_async()
     for provider in chain:
         try:
             async with httpx.AsyncClient(timeout=8) as client:
@@ -789,4 +842,6 @@ async def check_ai_health() -> dict:
             usage = await _get_provider_usage(provider.name)
             results.append({"name": provider.name, "model": provider.model, "healthy": False, "today_requests": usage})
 
+    if not results:
+        return {"healthy": False, "providers": [], "reason": "no_providers"}
     return {"healthy": any_healthy, "providers": results}

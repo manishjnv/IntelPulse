@@ -325,6 +325,47 @@ async def test_ai_provider(
                     key = fb.get("key", "") or key
                     break
 
+    # Bedrock uses IAM role authentication (IMDS on EC2), not an API key.
+    # Detect Bedrock either by url == "bedrock" (the sentinel value) or by
+    # primary_provider == "bedrock" on the stored row, and route the test
+    # through the BedrockAdapter instead of the HTTP chat-completions path.
+    is_bedrock = (url or "").strip().lower() == "bedrock"
+    if not is_bedrock and provider_type is not None:
+        try:
+            row_provider = (await _get_or_create_settings(db)).primary_provider or ""
+            is_bedrock = row_provider.lower() == "bedrock" and str(provider_type) == "primary"
+        except Exception:  # noqa: BLE001
+            pass
+
+    if is_bedrock:
+        if not model:
+            raise HTTPException(400, "model is required")
+        try:
+            import time as _time
+            from app.services.bedrock_adapter import BedrockAdapter
+            adapter = BedrockAdapter()
+            t0 = _time.monotonic()
+            text = await adapter.ai_analyze(
+                system_prompt="Respond with exactly: OK",
+                user_prompt="Test",
+                max_tokens=10,
+                temperature=0.0,
+                model_id=model.split(",")[0].strip(),
+            )
+            latency_ms = int((_time.monotonic() - t0) * 1000)
+            if text:
+                logger.info("test_provider_success", provider_type=provider_type, model=model, path="bedrock")
+                return {
+                    "success": True,
+                    "status": 200,
+                    "response": f"{text.strip()[:60]} ({latency_ms} ms, IAM role)",
+                }
+            logger.warning("test_provider_fail", provider_type=provider_type, model=model, path="bedrock", reason="empty")
+            return {"success": False, "status": 0, "error": "Bedrock returned empty response"}
+        except Exception as exc:  # noqa: BLE001
+            logger.error("test_provider_bedrock_error", error=str(exc), model=model)
+            return {"success": False, "status": 0, "error": f"{type(exc).__name__}: {str(exc)[:180]}"}
+
     logger.info("test_provider_request",
                 provider_type=provider_type,
                 url=url,

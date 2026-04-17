@@ -127,6 +127,28 @@ class BedrockAdapter:
                     input_tokens=in_tok,
                     output_tokens=out_tok,
                 )
+                # Also bump the per-provider Redis counter the Health & Stats
+                # UI reads. "bedrock-primary" for the default model, tier-
+                # labelled otherwise so the Provider Health card breaks down
+                # usage across Classifier / Correlator / Narrative.
+                try:
+                    from app.services.ai import (
+                        _increment_provider_usage,
+                        get_ai_db_settings,
+                    )
+                    db_cfg = await get_ai_db_settings() or {}
+                    primary = (db_cfg.get("primary_model") or self.model_id or "").strip()
+                    tier_name = "bedrock-primary"
+                    if effective_model != primary:
+                        if effective_model == (db_cfg.get("model_news_enrichment") or "").strip():
+                            tier_name = "bedrock-classifier"
+                        elif effective_model == (db_cfg.get("model_intel_enrichment") or "").strip():
+                            tier_name = "bedrock-correlator"
+                        elif effective_model == (db_cfg.get("model_briefing_gen") or "").strip():
+                            tier_name = "bedrock-narrative"
+                    await _increment_provider_usage(tier_name)
+                except Exception:  # noqa: BLE001
+                    pass  # provider-usage telemetry is best-effort
                 return text.strip()
 
             logger.warning("bedrock_empty_response", model=effective_model, family=family)
