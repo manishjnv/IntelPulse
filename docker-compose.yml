@@ -8,6 +8,11 @@ x-common-env: &common-env
   OPENSEARCH_URL: http://opensearch:9200
   LOG_LEVEL: INFO
   ENVIRONMENT: production
+  # SECRET_KEY must be plumbed through here so worker and scheduler get it;
+  # previously it was only set on the `api` service, and the `ENVIRONMENT=
+  # production` flag caused the config validator to reject the default
+  # placeholder and crash the worker on startup.
+  SECRET_KEY: ${SECRET_KEY}
 
 services:
   # ── Data stores ──────────────────────────────────────────────
