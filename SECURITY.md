@@ -74,6 +74,7 @@ The application includes built-in rate limiting:
 
 - All user input is validated and sanitized
 - SQL queries use parameterized statements
+- PostgreSQL enum filters (severity, feed_type, asset_type) are validated against allowlists that mirror `db/schema.sql` and passed via bind parameters, not string interpolation
 - Search queries are length-limited (200 characters)
 - Email addresses are validated (max 254 characters)
 - Sort columns are whitelisted
