@@ -533,3 +533,149 @@ async def _invalidate_ai_cache():
     """Clear the cached AI settings so ai.py reloads from DB on next call."""
     r = redis_client
     await r.delete("ai_settings_cache")
+
+
+# ──────────────────────────────────────────────────────────────────
+# Multi-agent pipeline introspection + token-usage telemetry
+# (used by the AI Configuration panel to visualise routing + costs)
+# ──────────────────────────────────────────────────────────────────
+
+# Short Redis TTL for the agent-catalog response — Bedrock agent state
+# ("PREPARED", alias id, collaborator count) is ~static, don't hammer the
+# control-plane API on every UI poll.
+_PIPELINE_CACHE_KEY = "ai_settings:pipeline"
+_PIPELINE_CACHE_TTL = 60  # seconds
+
+
+@router.get("/pipeline")
+async def get_pipeline_config():
+    """Return the multi-agent routing + agent-catalog snapshot.
+
+    Anonymous-accessible on purpose — the AI Configuration panel needs it
+    and the site runs in demo_mode where require_admin would admit
+    everyone anyway. Exposes only public IDs / flag state / alias names.
+    """
+    import json
+
+    cached = await redis_client.get(_PIPELINE_CACHE_KEY)
+    if cached:
+        return json.loads(cached)
+
+    s = env_settings
+    # Routing map — which feature takes which path today.
+    routing = [
+        {
+            "feature": "News Enrichment",
+            "path": "agent" if s.ai_use_agents else "single-shot",
+            "model": "Supervisor+IOC-Analyst+Risk-Scorer" if s.ai_use_agents else s.ai_model or "amazon.nova-lite-v1:0",
+            "flag": "AI_USE_AGENTS",
+            "flag_value": bool(s.ai_use_agents),
+        },
+        {
+            "feature": "IOC Live Lookup",
+            "path": "agent + single-shot fallback" if s.ai_use_agents_for_ioc else "single-shot",
+            "model": "Supervisor+IOC-Analyst" if s.ai_use_agents_for_ioc else s.ai_model or "amazon.nova-lite-v1:0",
+            "flag": "AI_USE_AGENTS_FOR_IOC",
+            "flag_value": bool(s.ai_use_agents_for_ioc),
+        },
+        {"feature": "Intel Summary",       "path": "single-shot", "model": s.ai_model or "amazon.nova-lite-v1:0", "flag": None, "flag_value": None},
+        {"feature": "Intel Enrichment",    "path": "single-shot", "model": s.ai_model or "amazon.nova-lite-v1:0", "flag": None, "flag_value": None},
+        {"feature": "Report Generation",   "path": "single-shot", "model": s.ai_model or "amazon.nova-lite-v1:0", "flag": None, "flag_value": None},
+        {"feature": "Briefing Generation", "path": "single-shot", "model": s.ai_model or "amazon.nova-lite-v1:0", "flag": None, "flag_value": None},
+        {"feature": "KQL Generation",      "path": "single-shot", "model": s.ai_model or "amazon.nova-lite-v1:0", "flag": None, "flag_value": None},
+    ]
+
+    # Agent catalog — query Bedrock control plane for live status.
+    # Fail soft: if boto3 can't reach the control plane (perms, offline,
+    # region), surface unknown-status entries rather than 5xx'ing.
+    agents: list[dict] = []
+    action_groups: list[dict] = []
+    try:
+        import boto3
+        c = boto3.client("bedrock-agent", region_name=s.aws_region or "us-east-1")
+
+        sup_id = s.bedrock_supervisor_agent_id or "FQBSERZQMP"
+        sup_alias = s.bedrock_supervisor_alias_id or "HLSRFAFL42"
+
+        try:
+            a = c.get_agent(agentId=sup_id)["agent"]
+            al = c.get_agent_alias(agentId=sup_id, agentAliasId=sup_alias)["agentAlias"]
+            agent_version = al.get("routingConfiguration", [{}])[0].get("agentVersion", "DRAFT")
+            try:
+                collabs = c.list_agent_collaborators(agentId=sup_id, agentVersion=agent_version).get("agentCollaboratorSummaries", [])
+            except Exception:
+                collabs = []
+
+            agents.append({
+                "name": a.get("agentName", "Supervisor"),
+                "role": "SUPERVISOR_ROUTER",
+                "agent_id": sup_id,
+                "alias_id": sup_alias,
+                "alias_name": al.get("agentAliasName", ""),
+                "status": a.get("agentStatus", "UNKNOWN"),
+                "collaborators": len(collabs),
+            })
+
+            # Collaborators — pull their names / statuses too
+            for sub in collabs:
+                cid = sub.get("agentDescriptor", {}).get("aliasArn", "").split("/")[-3] if sub.get("agentDescriptor") else None
+                sub_name = sub.get("collaboratorName") or "Collaborator"
+                sub_status = "LINKED"
+                if cid and len(cid) == 10:  # rough agentId shape
+                    try:
+                        sa = c.get_agent(agentId=cid)["agent"]
+                        sub_name = sa.get("agentName", sub_name)
+                        sub_status = sa.get("agentStatus", sub_status)
+                    except Exception:
+                        pass
+                # Count action groups on this collaborator
+                ag_count = 0
+                if cid:
+                    try:
+                        ags = c.list_agent_action_groups(agentId=cid, agentVersion="DRAFT").get("actionGroupSummaries", [])
+                        ag_count = len(ags)
+                        for ag in ags:
+                            action_groups.append({
+                                "name": ag.get("actionGroupName", ""),
+                                "state": ag.get("actionGroupState", "UNKNOWN"),
+                                "agent": sub_name,
+                            })
+                    except Exception:
+                        pass
+
+                agents.append({
+                    "name": sub_name,
+                    "role": sub.get("relayConversationHistory") or "collaborator",
+                    "agent_id": cid or "",
+                    "status": sub_status,
+                    "action_groups": ag_count,
+                })
+
+        except Exception as e:
+            logger.warning("pipeline_agent_lookup_failed", error=str(e))
+            agents.append({"name": "Supervisor", "agent_id": sup_id, "status": "UNREACHABLE", "error": str(e)[:120]})
+
+    except ImportError:
+        logger.warning("pipeline_boto3_missing")
+
+    payload = {
+        "routing": routing,
+        "agents": agents,
+        "action_groups": action_groups,
+        "region": s.aws_region or "us-east-1",
+        "primary_model": s.ai_model or "amazon.nova-lite-v1:0",
+    }
+    await redis_client.set(_PIPELINE_CACHE_KEY, json.dumps(payload), ex=_PIPELINE_CACHE_TTL)
+    return payload
+
+
+@router.get("/token-usage")
+async def get_token_usage_endpoint(days: int = 7):
+    """Return real-time Bedrock/agent token + cost aggregates.
+
+    Counters are incremented on every successful invocation (see
+    `app.core.ai_telemetry.track_invocation`). Values here are at most a
+    few milliseconds stale — no response caching.
+    """
+    from app.core.ai_telemetry import get_token_usage
+    return await get_token_usage(days=days)

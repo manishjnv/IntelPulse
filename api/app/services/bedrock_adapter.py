@@ -98,13 +98,21 @@ class BedrockAdapter:
             text, usage = self._extract_text_and_usage(family, response_body)
 
             if text:
+                in_tok = usage.get("input_tokens", 0)
+                out_tok = usage.get("output_tokens", 0)
                 logger.info(
                     "bedrock_invoke_success",
                     model=self.model_id,
                     family=family,
                     chars=len(text),
-                    input_tokens=usage.get("input_tokens", 0),
-                    output_tokens=usage.get("output_tokens", 0),
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                )
+                from app.core.ai_telemetry import track_invocation
+                await track_invocation(
+                    model_id=self.model_id,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
                 )
                 return text.strip()
 

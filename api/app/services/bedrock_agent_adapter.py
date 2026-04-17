@@ -140,6 +140,16 @@ class BedrockAgentAdapter:
             raw_len=len(raw_text),
         )
 
+        # Agent runtime doesn't return a flat usage block — approximate via
+        # chars/4 (standard rough chars-to-tokens ratio for English) so the
+        # usage widget can attribute traffic to the agent path.
+        from app.core.ai_telemetry import track_invocation
+        await track_invocation(
+            model_id="bedrock-agent",
+            input_tokens=len(input_text) // 4,
+            output_tokens=len(raw_text) // 4,
+        )
+
         if not raw_text:
             return None
 

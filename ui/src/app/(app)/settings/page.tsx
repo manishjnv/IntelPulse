@@ -51,6 +51,8 @@ import * as api from "@/lib/api";
 import { useAppStore } from "@/store";
 import type { AISettings, FallbackProvider } from "@/types";
 import { HowItWorks } from "@/components/HowItWorks";
+import { AIMultiAgentPipeline } from "@/components/AIMultiAgentPipeline";
+import { AITokenUsageWidget } from "@/components/AITokenUsageWidget";
 
 interface SettingSection {
   id: string;
@@ -2010,6 +2012,10 @@ function AIConfigSettings() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Pipeline + token usage — always visible at top of AI Configuration */}
+      <AIMultiAgentPipeline />
+      <AITokenUsageWidget />
 
       {/* Sub-section tabs */}
       <div className="flex gap-1 flex-wrap">
