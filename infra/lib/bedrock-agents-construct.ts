@@ -17,26 +17,21 @@ export interface BedrockAgentsConstructProps {
 }
 
 /**
- * CDK Construct for Bedrock Agent Core multi-agent system
- * 
- * Creates:
- * - S3 bucket for MITRE ATT&CK data
- * - IAM roles for Bedrock agents
- * - Outputs for manual agent configuration
- * 
- * Note: Bedrock agents themselves need to be created manually via AWS Console or CLI
- * because CDK L1 constructs have limitations with action groups and knowledge bases.
- * 
- * Manual steps required after deployment:
- * 1. Upload MITRE ATT&CK data to S3 bucket
- * 2. Create Bedrock Knowledge Base (optional)
- * 3. Create 4 Bedrock agents via Console:
- *    - IOC Reputation Analyst (with Lambda action groups)
- *    - Threat Context Enricher (with Knowledge Base)
- *    - Risk Scorer
- *    - IntelPulse Threat Analyst (supervisor)
- * 4. Create agent alias for supervisor
- * 5. Add agent IDs to Secrets Manager
+ * CDK Construct for Bedrock Agent Core multi-agent system.
+ *
+ * This construct provisions supporting infrastructure — S3 bucket for MITRE
+ * ATT&CK data and IAM roles. The Bedrock agents themselves are created via
+ * ``infra/scripts/provision_bedrock_action_group.py`` (boto3) and through the
+ * AWS Console for initial collaborator wiring.
+ *
+ * Current production state (as of 2026-04-17):
+ * - IntelPulse-Threat-Analyst (Supervisor, FQBSERZQMP) — Nova Lite, SUPERVISOR_ROUTER
+ * - IntelPulse-IOC-Analyst (UX0RYONP98)                 — Nova Lite + virustotal_lookup action group
+ * - IntelPulse-Risk-Scorer (WH4N4SUKMB)                 — Nova Lite
+ * - Threat Context Enricher                              — not yet provisioned (follow-up PR)
+ *
+ * Foundation-model allow-list below is aligned with Nova because Anthropic
+ * models return INVALID_PAYMENT_INSTRUMENT on this account.
  */
 export class BedrockAgentsConstruct extends Construct {
   public readonly mitreDataBucket: s3.Bucket;
@@ -144,8 +139,8 @@ export class BedrockAgentsConstruct extends Construct {
           'bedrock:InvokeModelWithResponseStream',
         ],
         resources: [
-          `arn:aws:bedrock:${cdk.Aws.REGION}::foundation-model/anthropic.claude-3-5-haiku-20241022-v1:0`,
-          `arn:aws:bedrock:${cdk.Aws.REGION}::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0`,
+          `arn:aws:bedrock:${cdk.Aws.REGION}::foundation-model/amazon.nova-lite-v1:0`,
+          `arn:aws:bedrock:${cdk.Aws.REGION}::foundation-model/amazon.nova-pro-v1:0`,
         ],
       })
     );

@@ -143,6 +143,16 @@ class Settings(BaseSettings):
     # AWS Bedrock (for AWS deployment)
     aws_region: str = "us-east-1"
 
+    # AWS Bedrock Agents — multi-agent enrichment path for news.
+    # When ai_use_agents=True, enrich_news_item routes through the Supervisor
+    # agent (which collaborates with IOC-Analyst + Risk-Scorer and invokes
+    # the VirusTotal action group Lambda). Default off so the single-shot
+    # invoke_model path stays the primary.
+    ai_use_agents: bool = False
+    bedrock_supervisor_agent_id: str = "FQBSERZQMP"
+    bedrock_supervisor_alias_id: str = "HLSRFAFL42"  # "live-v2"
+    bedrock_agent_timeout: int = 120
+
     # AI fallback providers (free tiers for rate-limit resilience)
     cerebras_api_key: str = ""   # Cerebras — fast inference, free tier
     hf_api_key: str = ""         # HuggingFace Inference API — free tier

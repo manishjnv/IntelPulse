@@ -732,6 +732,7 @@ async def enrich_news_item(
         required_keys=["category", "summary", "executive_brief"],
         caller="news_enrichment",
         feature="news_enrichment",
+        use_agent=settings.ai_use_agents,
     )
 
     if not data:

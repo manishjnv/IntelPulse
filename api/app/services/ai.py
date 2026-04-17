@@ -596,6 +596,7 @@ async def chat_completion_json(
     required_keys: list[str] | None = None,
     caller: str = "ai_json",
     feature: str | None = None,
+    use_agent: bool = False,
 ) -> dict | None:
     """Chat completion that parses and validates JSON response.
 
@@ -603,7 +604,29 @@ async def chat_completion_json(
     Uses Bedrock if AI_API_URL="bedrock" or running on AWS.
     On parse failure, retries once with a corrective prompt asking the LLM
     to fix its output. Returns parsed dict or None.
+
+    When ``use_agent=True`` the call is routed through the Bedrock Supervisor
+    agent (``bedrock_agent_adapter``). Agent errors raise — per RCA
+    ``rca_rq_tasks_must_raise``, worker tasks must surface failures so the
+    failed-job registry populates. Caller (e.g. ``enrich_news_item``) gates
+    this on ``settings.ai_use_agents`` so only the intended integration
+    point uses the agent path.
     """
+    # Multi-agent path — routes news enrichment through Supervisor + sub-agents
+    # + VirusTotal action group. Only enabled when the caller opts in.
+    if use_agent:
+        from app.services.bedrock_agent_adapter import get_bedrock_agent_adapter
+        agent_adapter = get_bedrock_agent_adapter()
+        result = await agent_adapter.ai_analyze_structured_via_agent(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            required_keys=required_keys,
+            caller=caller,
+        )
+        if result and feature:
+            await increment_daily_usage(feature)
+        return result
+
     # Use Bedrock if enabled
     if _USE_BEDROCK:
         try:
