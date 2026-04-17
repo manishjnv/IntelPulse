@@ -13,21 +13,24 @@ IntelPulse is a production-grade threat intelligence platform that aggregates IO
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Users / SOC Analysts                      │
-│                    http://3.87.235.189:3000                       │
+│                    https://intelpulse.tech                        │
 └──────────────────────────┬──────────────────────────────────────┘
-                           │ HTTP
+                           │ HTTPS (Caddy + Let's Encrypt)
                            ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │                    EC2 Instance (t3.small)                        │
 │                    3.87.235.189 / us-east-1                       │
 │                                                                   │
-│  ┌───────────────────┐          ┌───────────────────┐            │
-│  │  Next.js UI :3000 │          │  FastAPI API :8000 │            │
-│  │  TypeScript        │  ◄────► │  Python 3.12       │            │
-│  │  Tailwind CSS      │          │  Async + Pydantic  │            │
-│  │  Recharts + Zustand│          │  Bedrock Adapter   │            │
-│  └───────────────────┘          └────────┬──────────┘            │
-│                                           │                       │
+│  ┌───────────────────┐          ┌─────────────────────┐          │
+│  │  Next.js UI :3000 │          │  FastAPI API :8000  │          │
+│  │  TypeScript        │  ◄────► │  Python 3.12        │          │
+│  │  Tailwind CSS      │          │  Async + Pydantic   │          │
+│  │  Recharts + Zustand│          │  Bedrock Adapter    │          │
+│  └───────────────────┘          │  + Agent Adapter    │          │
+│            ▲                     └────────┬──────────-┘          │
+│            │                              │                      │
+│            │  Caddy :443 (TLS)            │                      │
+│            │                              │                      │
 │  ┌────────────────────────────────────────┼──────────────────┐   │
 │  │              Docker Compose Services    │                  │   │
 │  │  ┌──────────────────┐  ┌──────────────┐│                  │   │
@@ -37,15 +40,27 @@ IntelPulse is a production-grade threat intelligence platform that aggregates IO
 │  │  └──────────────────┘  └──────────────┘│                  │   │
 │  └────────────────────────────────────────┘                  │   │
 └───────────────────────────────────────────┼──────────────────────┘
-                                            │ boto3 SDK
+                                            │ boto3 SDK (IMDS)
                                             ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │                        AWS Services                               │
 │                                                                   │
 │  ┌────────────────────────┐  ┌────────────────────────────────┐  │
-│  │   Amazon Bedrock        │  │   IAM                          │  │
-│  │   Claude 3 Haiku        │  │   BedrockAccessRole            │  │
-│  │   (AI threat analysis)  │  │   (least-privilege policies)   │  │
+│  │  Amazon Bedrock         │  │   IAM                          │  │
+│  │  Runtime: Nova / Titan /│  │   BedrockAccessRole            │  │
+│  │  Anthropic (invoke_model│  │   (least-privilege policies)   │  │
+│  │  ) + Meta / Mistral /   │  │                                │  │
+│  │  DeepSeek / Cohere /    │  │   IntelPulse-BedrockAgentRole  │  │
+│  │  AI21 (Converse API)    │  │   (service principal)          │  │
+│  │                         │  │                                │  │
+│  │  Agents:                │  │   intelpulse-virustotal-lookup │  │
+│  │  - Threat-Analyst       │  │   -role (Lambda exec)          │  │
+│  │  - IOC-Analyst          │  │                                │  │
+│  │  - Risk-Scorer          │  │                                │  │
+│  │                         │  │                                │  │
+│  │  Action Groups:         │  │                                │  │
+│  │  - virustotal_lookup    │  │                                │  │
+│  │    (AWS Lambda)         │  │                                │  │
 │  └────────────────────────┘  └────────────────────────────────┘  │
 │                                                                   │
 │  ┌────────────────────────┐  ┌────────────────────────────────┐  │
@@ -80,37 +95,76 @@ IntelPulse is a production-grade threat intelligence platform that aggregates IO
 
 ### Amazon Bedrock
 
-The platform uses Amazon Bedrock for AI-powered threat analysis via a **multi-agent orchestration** path (when `AI_USE_AGENTS=true`) and a single-shot `invoke_model` fallback (default).
+The platform uses Amazon Bedrock for AI-powered threat analysis via two
+complementary paths:
 
-- **Foundation model**: `amazon.nova-lite-v1:0` (all agents)
-- **Integration**: `BedrockAgentAdapter` (agent path) and `BedrockAdapter` (single-shot fallback)
-- **Authentication**: IAM role attached to EC2 instance with `bedrock:InvokeAgent` and `bedrock:InvokeModel` permissions
-- **Endpoints**:
-  - `POST /api/v1/demo/analyze` — IOC threat analysis
-  - `GET /api/v1/demo/health` — Bedrock health check
+1. **Single-shot with tiered routing** — the default for most features. A
+   `BedrockAdapter` dispatches `invoke_model` (Nova / Titan / Anthropic) or
+   the unified **Converse API** (Meta Llama / Mistral / DeepSeek / Cohere /
+   AI21). The model used is picked per feature via `model_<feature>` columns
+   in `ai_settings` — see [Tiered routing §](#tiered-model-routing) below.
+2. **Multi-agent Supervisor** — opt-in for news enrichment
+   (`AI_USE_AGENTS=true`), on-by-default for IOC live lookup
+   (`AI_USE_AGENTS_FOR_IOC=true`). A Supervisor agent routes to collaborators
+   (IOC-Analyst with a VirusTotal action group, Risk-Scorer).
 
-> **Note**: Anthropic Claude models (`anthropic.claude-*`) return `INVALID_PAYMENT_INSTRUMENT` on this AWS account. All inference uses Amazon Nova Lite.
+Authentication: IAM role on the EC2 instance (`BedrockAccessRole`) with
+`bedrock:InvokeAgent` + `bedrock:InvokeModel` via IMDS. No long-lived keys.
+
+Public endpoints:
+
+- `POST https://intelpulse.tech/api/v1/demo/analyze` — IOC threat analysis
+- `GET https://intelpulse.tech/api/v1/demo/health` — Bedrock health check
+- `GET https://intelpulse.tech/api/v1/ai-settings/pipeline` — live routing matrix
+
+> **Note**: Anthropic Claude models (`anthropic.claude-*`) return
+> `INVALID_PAYMENT_INSTRUMENT` on this AWS account. The adapter still
+> supports the Anthropic family — swap `primary_model` if a different
+> account has Marketplace access.
+
+### Tiered model routing
+
+Each feature is mapped to one of four tiers. Defaults are empirically
+verified via [`scripts/probe_bedrock_models.py`](../scripts/probe_bedrock_models.py).
+
+| Tier | Features | Default model | Why |
+| ---- | -------- | ------------- | --- |
+| Classifier | `news_enrichment`, `intel_summary`, `kql_generation` | `us.meta.llama4-scout-17b-instruct-v1:0` | Fast, MoE, clean JSON; ~400 ms p50. |
+| Correlator | `intel_enrichment`, `live_lookup` | `amazon.nova-pro-v1:0` | Native Bedrock Agent support + action-group tool calling. |
+| Narrative | `briefing_gen`, `report_gen` | `mistral.mistral-large-2402-v1:0` | Best prose; quality over speed. |
+| Fallback | auto-retry on refusal | `us.meta.llama3-3-70b-instruct-v1:0` | Permissive on cybersec content. |
+
+Seed on a fresh environment:
+
+```bash
+ssh intelpulse2 "docker cp /opt/IntelPulse/scripts/. intelpulse-api-1:/tmp/scripts/ \
+  && docker exec intelpulse-api-1 python /tmp/scripts/apply_tiered_model_routing.py"
+```
 
 ### Bedrock Adapter Architecture
 
 ```text
-API Request → BedrockAdapter → boto3.client('bedrock-runtime')
+API Request → BedrockAdapter.ai_analyze(model_id=<tier>)
+                     │
+                     ├──►  _model_family_for(model_id) → family dispatch
+                     │
+                     ├──►  Nova / Titan / Anthropic  → invoke_model
+                     │
+                     └──►  Meta / Mistral / DeepSeek → converse
+                           / Cohere / AI21
                                     │
                                     ▼
-                            Amazon Bedrock
-                            amazon.nova-lite-v1:0 (invoke_model)
-                                    │
-                                    ▼
-                            Structured JSON Response
-                            (risk_score, severity, MITRE techniques)
+                             Structured JSON Response
+                             (risk_score, severity, MITRE techniques)
 ```
 
 The single-shot adapter supports:
 
-- Text generation (`ai_analyze`)
+- Text generation (`ai_analyze`) — with per-call `model_id` override for tiered routing
 - Structured JSON generation (`ai_analyze_structured`)
 - Health checks (`check_health`)
 - Automatic response parsing with markdown fence stripping
+- DeepSeek R1 `<think>` trace stripping
 
 ### Multi-Agent Design
 
@@ -214,7 +268,11 @@ External Feed → Feed Connector → Normalize → Score → Store (PostgreSQL)
 ### 2. AI Enrichment Pipeline
 
 ```text
-IOC/News Item → Bedrock Adapter → Claude 3 Haiku → Structured Analysis
+IOC/News Item → resolve_bedrock_model(feature) → BedrockAdapter / AgentAdapter
+                                                  → Tier model (Llama 4 Scout,
+                                                    Nova Pro, Mistral Large,
+                                                    Llama 3.3 70B)
+                                                  → Structured Analysis
                                                   → Risk Score
                                                   → MITRE Techniques
                                                   → Recommendations
@@ -268,16 +326,19 @@ IOC data uses TimescaleDB hypertables for efficient time-series queries:
 
 ### IAM Policies
 
-- **BedrockAccessRole**: Least-privilege IAM role with `bedrock:InvokeModel` permission
-- **MarketplaceAccess**: AWS Marketplace subscription permissions for model access
-- Scoped to specific model ARNs (`anthropic.claude-*`)
+- **BedrockAccessRole** (EC2 instance profile): `bedrock:InvokeModel`, `bedrock:Converse`, `bedrock-agent-runtime:InvokeAgent`.
+- **IntelPulse-BedrockAgentRole** (Bedrock service principal): scoped to the three agent ARNs + `lambda:InvokeFunction` for the `virustotal_lookup` action group.
+- **intelpulse-virustotal-lookup-role** (Lambda exec role): `secretsmanager:GetSecretValue` on `intelpulse/virustotal` + CloudWatch Logs write.
+- **MarketplaceAccess**: would be needed for Anthropic Claude — currently blocked on this account, so unused.
 
 ### Network Security
 
-- Security groups with minimal port exposure (22, 3000, 8000)
-- Docker network isolation between services
-- Redis password authentication
-- PostgreSQL password authentication
+- Caddy (public :443) terminates TLS with Let's Encrypt and reverse-proxies to the UI (:3000) and API (:8000).
+- Security groups expose only 22 (SSH restricted) and 443 (public HTTPS).
+- UI :3000 and API :8000 are firewalled from the internet — reachable only via the Caddy reverse proxy.
+- Docker network isolation between services.
+- Redis password authentication.
+- PostgreSQL password authentication.
 
 ## Deployment Architecture
 
@@ -285,13 +346,19 @@ IOC data uses TimescaleDB hypertables for efficient time-series queries:
 
 ```text
 EC2 Instance (t3.small, us-east-1)
-├── Docker Compose
+├── Docker Compose (8 services)
+│   ├── Caddy (:443, TLS, reverse proxy)
+│   ├── Next.js UI (:3000, internal)
+│   ├── FastAPI API (:8000, internal)
+│   ├── Worker (RQ, Python)
+│   ├── Scheduler (APScheduler)
 │   ├── PostgreSQL + TimescaleDB (:5432)
 │   ├── Redis 7 (:6379)
-│   ├── FastAPI API (:8000)
-│   └── Next.js UI (:3000)
+│   └── OpenSearch 2 (:9200)
 └── IAM Role: BedrockAccessRole
-    └── Amazon Bedrock (Claude 3 Haiku)
+    ├── Amazon Bedrock (Nova / Meta / Mistral / DeepSeek — tiered routing)
+    └── Amazon Bedrock Agents (Supervisor + IOC-Analyst + Risk-Scorer)
+        └── AWS Lambda: virustotal_lookup
 ```
 
 ### Target (AWS Managed Services)
@@ -352,10 +419,18 @@ Requirements (12) → Design (1,320 lines) → Tasks (15) → Implementation
 
 ## Access URLs
 
+Public endpoints (HTTPS via Caddy + Let's Encrypt). The raw EC2 ports
+(`:3000`, `:8000`) are firewalled from the internet.
+
 | Access | URL |
-|--------|-----|
-| UI Dashboard | <http://3.87.235.189:3000> |
-| API Documentation | <http://3.87.235.189:8000/api/docs> |
-| API Root | <http://3.87.235.189:8000> |
-| Demo Health | <http://3.87.235.189:8000/api/v1/demo/health> |
-| Demo Analysis | `POST http://3.87.235.189:8000/api/v1/demo/analyze` |
+| ------ | --- |
+| UI Dashboard | <https://intelpulse.tech/dashboard> |
+| Threat Feed | <https://intelpulse.tech/threats> |
+| Cyber News | <https://intelpulse.tech/news> |
+| Threat Briefings | <https://intelpulse.tech/briefings> |
+| Settings → AI Configuration | <https://intelpulse.tech/settings?section=ai> |
+| API Documentation | <https://intelpulse.tech/api/docs> |
+| API Root | <https://intelpulse.tech/api> |
+| Demo Health | <https://intelpulse.tech/api/v1/demo/health> |
+| Demo Analysis | `POST https://intelpulse.tech/api/v1/demo/analyze` |
+| Pipeline JSON | <https://intelpulse.tech/api/v1/ai-settings/pipeline> |

@@ -18,12 +18,23 @@
 
 ## Live Demo
 
+Public HTTPS endpoints (Caddy + Let's Encrypt, no login required — demo mode):
+
 | Access | URL |
-|--------|-----|
-| Application (Dashboard) | <http://3.87.235.189:3000> |
-| API Documentation (Swagger) | <http://3.87.235.189:8000/api/docs> |
-| Bedrock Health Check | <http://3.87.235.189:8000/api/v1/demo/health> |
-| Source Code | <https://github.com/manishjnv/IntelPulse> (branch: `aws-migration`) |
+| ------ | --- |
+| Application (Dashboard) | <https://intelpulse.tech/dashboard> |
+| Threat Feed | <https://intelpulse.tech/threats> |
+| Cyber News | <https://intelpulse.tech/news> |
+| Threat Briefings | <https://intelpulse.tech/briefings> |
+| Settings → AI Configuration | <https://intelpulse.tech/settings?section=ai> |
+| API Documentation (Swagger) | <https://intelpulse.tech/api/docs> |
+| Bedrock Health Check | <https://intelpulse.tech/api/v1/demo/health> |
+| Multi-Agent Pipeline (JSON) | <https://intelpulse.tech/api/v1/ai-settings/pipeline> |
+| Source Code | <https://github.com/manishjnv/IntelPulse> (branch: `main`) |
+
+> The raw EC2 IP endpoints (`http://3.87.235.189:3000` / `:8000`) are **no
+> longer public** — Caddy fronts everything through `intelpulse.tech` with
+> TLS. Use the HTTPS URLs above.
 
 ---
 
@@ -38,24 +49,40 @@ IntelPulse is a production-grade Threat Intelligence Platform that:
 
 ---
 
-> ### **NEW — Multi-agent Bedrock enrichment is live**
+> ### **Multi-agent Bedrock enrichment + tiered routing — live**
 >
-> News enrichment can now route through a **three-agent Bedrock collaboration** — a Supervisor (`SUPERVISOR_ROUTER` mode) that delegates to an IOC Reputation Analyst and a Risk Scorer, and which invokes a real AWS Lambda action group (`virustotal_lookup`) to pull VirusTotal reputation data. The whole chain runs on `amazon.nova-lite-v1:0`.
+> IntelPulse routes AI work through two complementary layers:
 >
-> **What it does differently vs. the single-shot path:**
-> - The Supervisor **plans** which specialist to involve per article instead of one-shot prompting
-> - The IOC-Analyst **uses a tool** — it calls the VirusTotal Lambda via a Bedrock action group and reasons over the returned reputation payload
-> - Multiple agents **collaborate** — their outputs are aggregated by the Supervisor before the final structured JSON is returned
+> 1. **Tiered single-shot routing** (on by default). Each feature is mapped
+>    to a specific Bedrock model empirically picked for its role — Classifier
+>    (Llama 4 Scout 17B), Correlator (Nova Pro), Narrative (Mistral Large),
+>    Fallback (Llama 3.3 70B). See the [Tiered Bedrock Model Routing
+>    section](#tiered-bedrock-model-routing) below and Settings → AI
+>    Configuration → Tiered Routing.
 >
-> **How to enable** (opt-in per environment; off by default):
+> 2. **Three-agent Bedrock collaboration**. A Supervisor (`SUPERVISOR_ROUTER`
+>    mode) delegates to an IOC Reputation Analyst and a Risk Scorer, and
+>    invokes a real AWS Lambda action group (`virustotal_lookup`) for
+>    IOC enrichment. `AI_USE_AGENTS_FOR_IOC=true` by default; `AI_USE_AGENTS`
+>    (news enrichment via agents) is opt-in.
+>
+> **What the agent path does differently:**
+>
+> - The Supervisor **plans** which specialist to involve per article.
+> - The IOC-Analyst **uses a tool** — calls the VirusTotal Lambda via a
+>   Bedrock action group and reasons over the returned reputation payload.
+> - Agents **collaborate** — their outputs are aggregated by the Supervisor
+>   before the final structured JSON is returned.
+>
+> **Enable news-enrichment agent path** (opt-in; off by default):
 > ```bash
 > ssh intelpulse2 "echo 'AI_USE_AGENTS=true' >> /home/ubuntu/IntelPulse/.env && \
 >                  cd /home/ubuntu/IntelPulse && docker compose restart worker scheduler"
-> # Verify it's routing through agents:
+> # Verify:
 > ssh intelpulse2 "docker logs intelpulse-worker-1 --tail 200 | grep bedrock_invoke_agent_request"
 > ```
 >
-> See **[docs/MULTI_AGENT.md](docs/MULTI_AGENT.md)** for the deep-dive — agent catalog, action-group contract, request flow, cost/latency, failure modes, rollback.
+> See **[docs/MULTI_AGENT.md](docs/MULTI_AGENT.md)** for the deep-dive.
 
 ---
 
@@ -65,7 +92,7 @@ IntelPulse is a production-grade Threat Intelligence Platform that:
 |-------------|---------------|
 | **Amazon Bedrock Agents** | Supervisor + specialist collaboration — `SUPERVISOR_ROUTER` mode with `TO_COLLABORATOR` wiring. 3 agents live (Threat-Analyst, IOC-Analyst, Risk-Scorer); a 4th (Context Enricher with MITRE KB) is scoped for follow-up. |
 | **Amazon Bedrock Agent Runtime** | `invoke_agent` EventStream, consumed synchronously by the worker for news enrichment. Trace events surface action-group and collaborator invocations for observability. |
-| **Amazon Bedrock (Runtime)** | Single-shot `invoke_model` on `amazon.nova-lite-v1:0` for IOC demo, health checks, reports, and intel enrichment. Anthropic models are blocked on this account (`INVALID_PAYMENT_INSTRUMENT`), so Nova is the production model. |
+| **Amazon Bedrock (Runtime)** | Multi-model runtime. Adapter dispatches Nova / Titan / Anthropic via `invoke_model`, and Meta Llama / Mistral / DeepSeek / Cohere / AI21 via the unified **Converse API**. Tiered routing (see below) picks the model per feature. Anthropic models blocked on this account (`INVALID_PAYMENT_INSTRUMENT`). |
 | **AWS Lambda** | `intelpulse-virustotal-lookup` (Python 3.12, stdlib urllib — no pip deps). Dual event shape: legacy `{ioc, ioc_type}` for direct invoke + Bedrock action-group envelope. |
 | **AWS Secrets Manager** | `intelpulse/virustotal` — stores the VirusTotal API key; Lambda falls back to deterministic stub data when the secret is empty so the agent flow is demo-ready from day one. |
 | **Amazon CloudWatch Logs** | `/aws/lambda/intelpulse-virustotal-lookup` with 14-day retention; Bedrock Agent traces are also emitted for debugging collaborator + action-group invocations. |
@@ -80,68 +107,95 @@ IntelPulse is a production-grade Threat Intelligence Platform that:
 
 ## Multi-Agent Architecture (Amazon Bedrock)
 
-IntelPulse uses a supervisor-led multi-agent pattern for comprehensive IOC analysis:
+IntelPulse runs two complementary AI paths. Each feature picks the one that
+fits its latency / quality / tool-use profile. Both share the same Bedrock
+adapter, so swapping a tier's model is a single DB update.
 
 ```text
-                    ┌─────────────────────────┐
-                    │   SOC Analyst Request    │
-                    │   "Analyze 45.142.212.61"│
-                    └────────────┬────────────┘
+ ┌──────────────────────────────────────────────────────────────────────────┐
+ │                        IntelPulse call sites                              │
+ │ (worker, API routes — chat_completion_json with caller + feature hints)   │
+ └───────────────────────────────┬──────────────────────────────────────────┘
                                  │
-                    ┌────────────▼────────────┐
-                    │      SUPERVISOR          │
-                    │  IntelPulse Threat       │
-                    │  Analyst Agent           │
-                    │  (Orchestrates analysis) │
-                    └──┬─────────┬─────────┬──┘
-                       │         │         │
-          ┌────────────▼──┐  ┌──▼────────┐ │  ┌──────────────┐
-          │ IOC Reputation │  │ Threat    │ └─►│ Risk Scorer  │
-          │ Analyst        │  │ Context   │    │              │
-          │                │  │ Enricher  │    │ Aggregates   │
-          │ Queries:       │  │           │    │ findings →   │
-          │ • VirusTotal   │  │ Maps to   │    │ risk score   │
-          │ • AbuseIPDB    │  │ MITRE     │    │ (0-100)      │
-          │ • OTX          │  │ ATT&CK    │    │              │
-          │ • Shodan       │  │ framework │    │ Severity:    │
-          │ (via Lambda)   │  │           │    │ CRITICAL/    │
-          └────────────────┘  └───────────┘    │ HIGH/MED/LOW │
-                                                └──────────────┘
+                     resolve_bedrock_model(feature, caller)
+                     reads model_<feature> from ai_settings
                                  │
-                    ┌────────────▼────────────┐
-                    │   Structured Response    │
-                    │   • Risk Score: 85/100   │
-                    │   • Severity: HIGH       │
-                    │   • MITRE: T1566, T1059  │
-                    │   • Actions: Block, Log  │
-                    │   • Analysis: Summary    │
-                    └─────────────────────────┘
+              ┌──────────────────┴────────────────────┐
+              │                                        │
+    ┌─────────▼──────────┐                 ┌──────────▼──────────────────┐
+    │ SINGLE-SHOT PATH   │                 │  MULTI-AGENT PATH           │
+    │ (tiered routing)   │                 │  (SUPERVISOR_ROUTER)        │
+    │                    │                 │                             │
+    │ invoke_model /     │                 │  invoke_agent EventStream   │
+    │ converse per-call  │                 │  Supervisor → Collaborators │
+    │                    │                 │  + VirusTotal action group  │
+    └─────────┬──────────┘                 └──────────┬──────────────────┘
+              │                                        │
+      ┌───────┼────────┬──────────┐             ┌────┴───────────────┐
+      ▼       ▼        ▼          ▼             ▼                    ▼
+ ┌────────┐ ┌────┐ ┌────────┐ ┌────────┐   ┌──────────────┐  ┌──────────────┐
+ │Classif │ │Cor │ │Narrat  │ │Fallback│   │ IntelPulse-  │  │ IntelPulse-  │
+ │Llama 4 │ │Nova│ │Mistral │ │Llama3.3│   │ Threat-      │  │ IOC-Analyst  │
+ │Scout   │ │Pro │ │Large   │ │70B     │   │ Analyst      │  │ (tool caller │
+ │17B MoE │ │    │ │2402    │ │        │   │ (supervisor) │  │  → VT Lambda)│
+ └────────┘ └────┘ └────────┘ └────────┘   └──────┬───────┘  └──────────────┘
+     │                                             │                 │
+     └────── news_enrichment, intel_summary,       └─► routes to ────┘
+             briefing_gen, report_gen, …              collaborators
+                                                      │         │
+                                         ┌────────────▼──┐ ┌───▼────────────┐
+                                         │IntelPulse-    │ │VirusTotal      │
+                                         │Risk-Scorer    │ │Action Group    │
+                                         │(PREPARED)     │ │(Lambda)        │
+                                         └───────────────┘ └────────────────┘
 ```
 
-### Agent Responsibilities
+### When each path runs
+
+| Feature | Path (today) | Flag | Default model(s) |
+| ------- | ------------ | ---- | ---------------- |
+| News enrichment | single-shot (tiered) | `AI_USE_AGENTS=false` | Classifier tier — Llama 4 Scout |
+| IOC live lookup | agent + single-shot fallback | `AI_USE_AGENTS_FOR_IOC=true` | Supervisor + IOC-Analyst (Nova Pro via agent) |
+| Intel summary / enrichment | single-shot (tiered) | — | Classifier / Correlator tier |
+| Briefing + report generation | single-shot (tiered) | — | Narrative tier — Mistral Large |
+| KQL / Sigma rule generation | single-shot (tiered) | — | Classifier tier |
+
+The live `/api/v1/ai-settings/pipeline` endpoint (also rendered inside
+Settings → AI Configuration) returns this mapping at runtime so operators
+can see exactly what model a given feature invokes.
+
+### Agent Responsibilities (multi-agent path)
 
 | Agent | What It Does | Inputs | Outputs |
 |-------|-------------|--------|---------|
-| **Supervisor** (IntelPulse Threat Analyst) | Orchestrates the full analysis workflow, delegates to specialists, aggregates results | IOC value + type | Complete threat assessment |
-| **IOC Reputation Analyst** | Queries external threat intelligence sources for reputation data | IOC value | Reputation scores, blocklist status, abuse reports |
-| **Threat Context Enricher** | Maps findings to MITRE ATT&CK framework, identifies TTPs | Reputation data | Technique IDs, tactic categories, campaign context |
-| **Risk Scorer** | Aggregates all findings into a quantified risk assessment | All agent outputs | Risk score (0-100), severity level, confidence % |
+| **Supervisor** (`IntelPulse-Threat-Analyst`, `FQBSERZQMP`) | Orchestrates the full analysis workflow, delegates to specialists, aggregates results. | IOC value + type | Complete threat assessment (JSON) |
+| **IOC Reputation Analyst** (`IntelPulse-IOC-Analyst`, `UX8RYONP98`) | Uses the `virustotal_lookup` action group to pull reputation data and reasons over it. | IOC value | Reputation scores, blocklist status, community votes |
+| **Risk Scorer** (`IntelPulse-Risk-Scorer`, `WH4N4SUKMB`) | Aggregates all findings into a quantified risk assessment. | Agent outputs | Risk score (0-100), severity, confidence % |
+
+All three agents are in the `PREPARED` state on prod (verified live via the
+Multi-Agent Pipeline panel). Status + alias IDs are pulled from the Bedrock
+control plane every 60 s and cached in Redis.
 
 ### Orchestration Logic
 
-- **Task Routing**: Supervisor receives IOC → delegates to all three specialist agents in parallel
-- **Collaboration**: IOC Reputation Analyst feeds results to Threat Context Enricher for MITRE mapping
-- **Aggregation**: Risk Scorer combines all outputs into a single structured assessment
-- **Error Handling**: If any agent fails, Supervisor returns partial results with confidence adjustment
+- **Task Routing** — Supervisor receives an IOC, delegates to the IOC Analyst and Risk Scorer. Collaboration uses `TO_COLLABORATOR` wiring with `SUPERVISOR_ROUTER` mode.
+- **Tool Use** — IOC Analyst invokes the `virustotal_lookup` Bedrock action group (Lambda). The agent parses the returned JSON and factors it into its reasoning.
+- **Aggregation** — Risk Scorer combines all outputs into a single structured assessment with severity + confidence fields.
+- **Error Handling** — If an action group or collaborator fails, the Supervisor returns a partial result with confidence adjusted downward. The worker still raises on total failure so RQ's failed-job registry catches it (per `rca_rq_tasks_must_raise`).
 
 ### Lambda Action Groups
 
-| Lambda | Data Source | Returns |
-|--------|------------|---------|
-| `virustotal_lookup` | VirusTotal API | Detection ratio, community score, scan results |
-| `abuseipdb_check` | AbuseIPDB | Abuse confidence score, report count, categories |
-| `otx_lookup` | AlienVault OTX | Pulse count, related indicators, tags |
-| `shodan_lookup` | Shodan | Open ports, services, vulnerabilities, ISP info |
+| Lambda | Data Source | State | Returns |
+| ------ | ----------- | ----- | ------- |
+| `virustotal_lookup` | VirusTotal API v3 | Live / `ENABLED` | Detection ratio, community score, scan results, vendor votes |
+| `abuseipdb_check` | AbuseIPDB | Planned | Abuse confidence score, report count, categories |
+| `otx_lookup` | AlienVault OTX | Planned | Pulse count, related indicators, tags |
+| `shodan_lookup` | Shodan | Planned | Open ports, services, vulnerabilities, ISP info |
+
+The VirusTotal Lambda is stdlib-only (Python 3.12, `urllib`) and dual-shaped —
+accepts both the legacy `{ioc, ioc_type}` payload for direct invoke and the
+Bedrock action-group envelope. CDK in `infra/lib/bedrock-*.ts`; one-shot
+provisioning in [`infra/scripts/provision_bedrock_action_group.py`](infra/scripts/provision_bedrock_action_group.py).
 
 ---
 

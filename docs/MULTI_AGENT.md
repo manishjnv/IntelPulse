@@ -1,34 +1,81 @@
 # Multi-Agent Bedrock Architecture — Deep Dive
 
-> **Status:** Live as of 2026-04-17 (commit `6b768a6`). 3 of 4 scoped agents provisioned; VirusTotal action group wired end-to-end.
+> **Status:** Live as of 2026-04-17. 3 of 4 scoped agents provisioned;
+> VirusTotal action group wired end-to-end; **tiered single-shot routing**
+> rolled out across seven features.
 
-This document is the reference for how IntelPulse's multi-agent enrichment path actually works in production — what runs on AWS, how a news article flows through it, what it costs, how it fails, and how to roll it back.
+This document is the reference for how IntelPulse's AI enrichment actually
+runs in production — the two paths (single-shot tiered routing + multi-agent
+Supervisor collaboration), how a news article flows through them, what it
+costs, how it fails, and how to roll each one back.
 
-For the high-level overview see [`README.md`](../README.md); for the whole-platform architecture see [`ARCHITECTURE.md`](ARCHITECTURE.md).
+For the high-level overview see [`README.md`](../README.md); for the
+whole-platform architecture see [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+**Live endpoints** (HTTPS only — the raw EC2 IP is firewalled):
+
+- Dashboard: <https://intelpulse.tech/dashboard>
+- Multi-Agent Pipeline panel: <https://intelpulse.tech/settings?section=ai>
+- Pipeline JSON: <https://intelpulse.tech/api/v1/ai-settings/pipeline>
+- Bedrock health: <https://intelpulse.tech/api/v1/demo/health>
 
 ---
 
 ## 1. Overview
 
-The enrichment of a news article can take one of two paths, selected by the `AI_USE_AGENTS` feature flag:
+IntelPulse runs two complementary AI paths. The path is selected per feature
+at call time; both share the same adapter so they're one DB update apart.
 
-| Flag | Path | Components |
-|------|------|------------|
-| `AI_USE_AGENTS=false` (default) | Single-shot | `BedrockAdapter` → `bedrock-runtime.InvokeModel` on `amazon.nova-lite-v1:0` |
-| `AI_USE_AGENTS=true` | **Multi-agent** | `BedrockAgentAdapter` → `bedrock-agent-runtime.InvokeAgent` → Supervisor → (IOC-Analyst → Lambda → VirusTotal/Stub) → Risk-Scorer → final JSON |
+| Path | Dispatcher | Used for | Models |
+| ---- | ---------- | -------- | ------ |
+| **Single-shot (tiered routing)** | `BedrockAdapter` → `invoke_model` / `converse` | news enrichment, intel summary, briefings, reports, KQL generation, live-lookup fallback | Per-feature tier model (see §1a) |
+| **Multi-agent (Supervisor)** | `BedrockAgentAdapter` → `invoke_agent` EventStream | IOC live lookup (default ON), news enrichment (opt-in) | Agents each run on their configured foundation model; orchestrated by the Supervisor |
 
-Only `enrich_news_item` passes the flag through — briefings, intel search enrichment, IOC demo, and health checks all stay on the single-shot path regardless of the flag.
+Feature flags that route between them:
 
-The multi-agent path is enabled by two runtime files:
+| Flag | Path selected | Default |
+| ---- | ------------- | ------- |
+| `AI_USE_AGENTS=false` | News enrichment uses single-shot (tiered). | **default** |
+| `AI_USE_AGENTS=true` | News enrichment routes through Supervisor. | opt-in |
+| `AI_USE_AGENTS_FOR_IOC=true` | IOC live lookup routes through Supervisor + IOC-Analyst action group. | **default** |
+| `AI_USE_AGENTS_FOR_IOC=false` | IOC live lookup falls back to single-shot (Correlator tier). | opt-out |
 
-- [`api/app/services/bedrock_agent_adapter.py`](../api/app/services/bedrock_agent_adapter.py) — the new adapter
-- [`api/app/services/ai.py`](../api/app/services/ai.py) — routes at `chat_completion_json` when `use_agent=True`
+Runtime files:
+
+- [`api/app/services/bedrock_adapter.py`](../api/app/services/bedrock_adapter.py) — single-shot dispatcher; supports Nova / Titan / Anthropic via `invoke_model` and Meta Llama / Mistral / DeepSeek / Cohere / AI21 via the **Converse API**. Accepts a per-call `model_id` override so every tier shares one adapter instance.
+- [`api/app/services/bedrock_agent_adapter.py`](../api/app/services/bedrock_agent_adapter.py) — Supervisor / collaborator / action-group dispatcher.
+- [`api/app/services/ai.py`](../api/app/services/ai.py) — `resolve_bedrock_model(feature, caller)` looks up the tier model from `ai_settings`; `chat_completion_json` routes to agent or single-shot based on `use_agent`.
+
+### 1a. Tiered single-shot routing
+
+Each feature maps to one of four tiers. Defaults land via
+[`scripts/apply_tiered_model_routing.py`](../scripts/apply_tiered_model_routing.py)
+— idempotent, writes to empty `model_<feature>` columns unless `--force`.
+
+| Tier | Features (`model_<feature>` columns) | Default Bedrock model | Rationale |
+| ---- | ------------------------------------ | --------------------- | --------- |
+| **Classifier** | `news_enrichment`, `intel_summary`, `kql_generation` | `us.meta.llama4-scout-17b-instruct-v1:0` | MoE, cheap, fast; clean JSON on cybersec content; ~400 ms p50 on prod probe. |
+| **Correlator** | `intel_enrichment`, `live_lookup` | `amazon.nova-pro-v1:0` | Native Bedrock Agent support + action-group tool calling; strict JSON; ~1 s p50. |
+| **Narrative** | `briefing_gen`, `report_gen` | `mistral.mistral-large-2402-v1:0` | Best prose; quality-over-speed (low volume). |
+| **Fallback** | auto-retry when primary refuses | `us.meta.llama3-3-70b-instruct-v1:0` | Permissive on cybersec content where Nova's filter trips. |
+
+Evidence + latency matrix: [`scripts/probe_bedrock_models.py`](../scripts/probe_bedrock_models.py).
+
+All tier values are editable live at Settings → AI Configuration → Tiered
+Routing. Changing a tier updates every `model_<feature>` column that maps
+to it.
 
 ---
 
 ## 2. Agent Catalog
 
-All three agents run on `amazon.nova-lite-v1:0` in `us-east-1`, account `604275788592`.
+All three agents run on `amazon.nova-lite-v1:0` in `us-east-1`, account
+`604275788592`. This is the foundation model configured in the Bedrock
+control plane for the agent itself — it's **independent of the single-shot
+tiered routing** (§1a), which picks a different model per feature for
+non-agent calls. Changing the agent's foundation model requires a Bedrock
+`update_agent` call and re-preparation; the single-shot tier can be swapped
+with a DB update.
 
 ### Supervisor — `IntelPulse-Threat-Analyst`
 

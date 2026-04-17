@@ -10,13 +10,21 @@
 
 ## Access URLs
 
+Public endpoints served over HTTPS via Caddy + Let's Encrypt. The raw EC2
+ports (`:3000`, `:8000`) are firewalled — only the domain is reachable.
+
 | Method | URL | Notes |
-|--------|-----|-------|
-| **Application (UI)** | <http://3.87.235.189:3000> | Full dashboard |
-| **API Documentation** | <http://3.87.235.189:8000/api/docs> | Swagger UI |
-| **API Root** | <http://3.87.235.189:8000> | Version info |
-| **Demo Health** | <http://3.87.235.189:8000/api/v1/demo/health> | Bedrock status |
-| **Demo Analysis** | `POST http://3.87.235.189:8000/api/v1/demo/analyze` | AI threat analysis |
+| ------ | --- | ----- |
+| **Application (UI)** | <https://intelpulse.tech/dashboard> | Full dashboard |
+| **Threat Feed** | <https://intelpulse.tech/threats> | Filterable intel feed |
+| **Cyber News** | <https://intelpulse.tech/news> | AI-enriched news |
+| **Threat Briefings** | <https://intelpulse.tech/briefings> | 3 enriched sample briefings |
+| **AI Configuration** | <https://intelpulse.tech/settings?section=ai> | Tiered routing + pipeline panel |
+| **API Documentation** | <https://intelpulse.tech/api/docs> | Swagger UI |
+| **API Root** | <https://intelpulse.tech/api> | Version info |
+| **Demo Health** | <https://intelpulse.tech/api/v1/demo/health> | Bedrock status |
+| **Demo Analysis** | `POST https://intelpulse.tech/api/v1/demo/analyze` | IOC threat analysis |
+| **Pipeline JSON** | <https://intelpulse.tech/api/v1/ai-settings/pipeline> | Live routing matrix |
 
 ---
 
@@ -24,8 +32,8 @@
 
 | Deliverable | Status | Location |
 |-------------|--------|----------|
-| Working Application | ✅ | <http://3.87.235.189:3000> |
-| Source Code Repository | ✅ | <https://github.com/manishjnv/IntelPulse> (branch: `aws-migration`) |
+| Working Application | ✅ | <https://intelpulse.tech/dashboard> |
+| Source Code Repository | ✅ | <https://github.com/manishjnv/IntelPulse> (branch: `main`) |
 | Amazon Q Usage Report | ✅ | `docs/AMAZON_Q_USAGE_REPORT.md` |
 | Productivity Metrics | ✅ | `docs/PRODUCTIVITY_METRICS.md` |
 | Technical Architecture | ✅ | `docs/ARCHITECTURE.md` |
@@ -39,7 +47,7 @@
 |---------|-------|----------|
 | **KIRO IDE** | Specs, steering files, hooks, autopilot development | `.kiro/specs/`, `.kiro/steering/`, `.kiro/hooks/` |
 | **Amazon Q Developer** | Inline code suggestions, debugging, security scans | `docs/AMAZON_Q_USAGE_REPORT.md` |
-| **Amazon Bedrock** | Claude 3 Haiku for AI-powered threat analysis | `api/app/services/bedrock_adapter.py`, `api/app/routes/demo.py` |
+| **Amazon Bedrock** | Tiered multi-model routing (Nova / Llama / Mistral) + Supervisor-led Agents with a VirusTotal action group | `api/app/services/bedrock_adapter.py`, `api/app/services/bedrock_agent_adapter.py`, `api/app/routes/demo.py`, `scripts/probe_bedrock_models.py` |
 | **AWS CDK** | Infrastructure as Code | `infra/lib/intelpulse-stack.ts` |
 | **EC2** | Application hosting (t3.small, us-east-1) | Instance i-08e16a37688d50004 |
 | **IAM** | BedrockAccessRole with least-privilege policies | Bedrock invoke + Marketplace permissions |
@@ -50,22 +58,29 @@
 
 ### Bedrock AI Enrichment (Implemented)
 
-Amazon Bedrock powers the AI layer with direct SDK integration:
+Amazon Bedrock powers the AI layer through two complementary paths — both
+share the same `BedrockAdapter` instance:
 
-- **Model**: Claude 3 Haiku (`anthropic.claude-3-haiku-20240307-v1:0`)
-- **Integration**: boto3 SDK via `BedrockAdapter` class
-- **Authentication**: IAM role (no API keys)
+- **Tiered single-shot routing** (default for most features):
+  - Classifier → `us.meta.llama4-scout-17b-instruct-v1:0`
+  - Correlator → `amazon.nova-pro-v1:0`
+  - Narrative → `mistral.mistral-large-2402-v1:0`
+  - Fallback → `us.meta.llama3-3-70b-instruct-v1:0`
+- **Multi-agent Supervisor collaboration** — Supervisor (`IntelPulse-Threat-Analyst`) + IOC-Analyst (with `virustotal_lookup` Lambda action group) + Risk-Scorer.
+- **Dispatch**: `BedrockAdapter.ai_analyze(model_id=...)` — handles Nova / Titan / Anthropic via `invoke_model`, and Meta Llama / Mistral / DeepSeek / Cohere / AI21 via the unified **Converse API**.
+- **Authentication**: EC2 IAM role `BedrockAccessRole` via IMDS — no API keys.
+- **Routing transparency**: <https://intelpulse.tech/api/v1/ai-settings/pipeline> returns the live feature → path → model mapping.
 - **Features**:
-  - IOC threat analysis with risk scoring
-  - MITRE ATT&CK technique mapping
-  - Structured JSON output for automation
-  - Natural language summaries for analysts
-  - Actionable security recommendations
+  - Tier-appropriate IOC analysis, news enrichment, briefing generation
+  - MITRE ATT&CK mapping
+  - Structured JSON extraction with refusal fallback
+  - Executive narratives + analyst-ready summaries
+  - Actionable recommendations
 
 ### Demo Endpoint
 
 ```bash
-curl -X POST http://3.87.235.189:8000/api/v1/demo/analyze \
+curl -X POST https://intelpulse.tech/api/v1/demo/analyze \
   -H "Content-Type: application/json" \
   -d '{"ioc": "45.142.212.61", "ioc_type": "ip"}'
 ```
@@ -193,10 +208,10 @@ docker compose up -d --build
 
 ```bash
 # Health check
-curl http://3.87.235.189:8000/api/v1/demo/health
+curl https://intelpulse.tech/api/v1/demo/health
 
 # Analyze a threat
-curl -X POST http://3.87.235.189:8000/api/v1/demo/analyze \
+curl -X POST https://intelpulse.tech/api/v1/demo/analyze \
   -H "Content-Type: application/json" \
   -d '{"ioc": "malicious-domain.com", "ioc_type": "domain"}'
 ```
