@@ -20,7 +20,6 @@ ports (`:3000`, `:8000`) are firewalled — only the domain is reachable.
 | **Cyber News** | <https://intelpulse.tech/news> | AI-enriched news |
 | **Threat Briefings** | <https://intelpulse.tech/briefings> | 3 enriched sample briefings |
 | **AI Configuration** | <https://intelpulse.tech/settings?section=ai> | Tiered routing + pipeline panel |
-| **API Documentation** | <https://intelpulse.tech/api/docs> | Swagger UI |
 | **API Root** | <https://intelpulse.tech/api> | Version info |
 | **Demo Health** | <https://intelpulse.tech/api/v1/demo/health> | Bedrock status |
 | **Demo Analysis** | `POST https://intelpulse.tech/api/v1/demo/analyze` | IOC threat analysis |

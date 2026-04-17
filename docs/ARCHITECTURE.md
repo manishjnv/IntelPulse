@@ -429,7 +429,6 @@ Public endpoints (HTTPS via Caddy + Let's Encrypt). The raw EC2 ports
 | Cyber News | <https://intelpulse.tech/news> |
 | Threat Briefings | <https://intelpulse.tech/briefings> |
 | Settings → AI Configuration | <https://intelpulse.tech/settings?section=ai> |
-| API Documentation | <https://intelpulse.tech/api/docs> |
 | API Root | <https://intelpulse.tech/api> |
 | Demo Health | <https://intelpulse.tech/api/v1/demo/health> |
 | Demo Analysis | `POST https://intelpulse.tech/api/v1/demo/analyze` |

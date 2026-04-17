@@ -27,7 +27,6 @@ Public HTTPS endpoints (Caddy + Let's Encrypt, no login required — demo mode):
 | Cyber News | <https://intelpulse.tech/news> |
 | Threat Briefings | <https://intelpulse.tech/briefings> |
 | Settings → AI Configuration | <https://intelpulse.tech/settings?section=ai> |
-| API Documentation (Swagger) | <https://intelpulse.tech/api/docs> |
 | Bedrock Health Check | <https://intelpulse.tech/api/v1/demo/health> |
 | Multi-Agent Pipeline (JSON) | <https://intelpulse.tech/api/v1/ai-settings/pipeline> |
 | Source Code | <https://github.com/manishjnv/IntelPulse> (branch: `main`) |
