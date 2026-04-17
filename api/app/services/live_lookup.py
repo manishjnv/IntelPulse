@@ -897,48 +897,38 @@ async def _ai_analyze(query: str, ioc_type: str, results: list[dict]) -> dict[st
         except Exception as e:
             logger.error("ioc_ai_analyze_agent_error_falling_back", error=str(e))
 
+    # Fallback: single-shot via chat_completion_json (handles Bedrock + httpx
+    # providers with one call). Used when the agent path is off, or as a
+    # secondary when the agent returned non-JSON (prompt-length truncation).
     try:
-        async with httpx.AsyncClient(timeout=25) as c:
-            resp = await c.post(
-                settings.ai_api_url,
-                headers={
-                    "Authorization": f"Bearer {settings.ai_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": settings.ai_model if hasattr(settings, "ai_model") and settings.ai_model else "llama-3.3-70b-versatile",
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user_msg},
-                    ],
-                    "temperature": 0.2,
-                    "max_tokens": 700,
-                },
-            )
-            resp.raise_for_status()
-            raw = resp.json()["choices"][0]["message"]["content"].strip()
-
-            # Parse JSON — strip markdown code fences if present
-            import json as _json
-            cleaned = raw
-            if cleaned.startswith("```"):
-                cleaned = "\n".join(cleaned.split("\n")[1:])
-            if cleaned.endswith("```"):
-                cleaned = cleaned[:-3]
-            cleaned = cleaned.strip()
-
-            analysis = _json.loads(cleaned)
-
-            # Also set the old ai_summary field for backward compat
-            return {
-                "summary": analysis.get("summary", ""),
-                "threat_actors": analysis.get("threat_actors", []),
-                "timeline": analysis.get("timeline", []),
-                "affected_products": analysis.get("affected_products", []),
-                "fix_remediation": analysis.get("fix_remediation"),
-                "known_breaches": analysis.get("known_breaches"),
-                "key_findings": analysis.get("key_findings", []),
-            }
+        from app.services.ai import chat_completion_json
+        analysis = await chat_completion_json(
+            system_prompt=system,
+            user_prompt=user_msg,
+            max_tokens=800,
+            temperature=0.2,
+            required_keys=[
+                "summary",
+                "threat_actors",
+                "timeline",
+                "affected_products",
+                "fix_remediation",
+                "known_breaches",
+                "key_findings",
+            ],
+            caller="ioc_ai_analyze",
+        )
+        if not analysis:
+            return None
+        return {
+            "summary": analysis.get("summary", ""),
+            "threat_actors": analysis.get("threat_actors", []),
+            "timeline": analysis.get("timeline", []),
+            "affected_products": analysis.get("affected_products", []),
+            "fix_remediation": analysis.get("fix_remediation"),
+            "known_breaches": analysis.get("known_breaches"),
+            "key_findings": analysis.get("key_findings", []),
+        }
     except Exception as e:
         logger.debug("ai_analysis_error", error=str(e))
         return None
