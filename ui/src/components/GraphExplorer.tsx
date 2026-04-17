@@ -404,6 +404,68 @@ export function GraphExplorer({
 
   const [showExportMenu, setShowExportMenu] = useState(false);
 
+  // Mini-map — compute bounds of the current node layout so we can scale
+  // every node into a 180×120 overview rect. Re-computes when nodes move
+  // (drag, new data).
+  const miniW = 180;
+  const miniH = 120;
+  const miniPad = 6;
+
+  const bounds = useMemo(() => {
+    if (!nodes.length) return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of nodes) {
+      if (n.x < minX) minX = n.x;
+      if (n.y < minY) minY = n.y;
+      if (n.x > maxX) maxX = n.x;
+      if (n.y > maxY) maxY = n.y;
+    }
+    return { minX, minY, maxX, maxY };
+  }, [nodes]);
+
+  const projectMini = useCallback(
+    (x: number, y: number) => {
+      const bw = Math.max(1, bounds.maxX - bounds.minX);
+      const bh = Math.max(1, bounds.maxY - bounds.minY);
+      const scale = Math.min(
+        (miniW - miniPad * 2) / bw,
+        (miniH - miniPad * 2) / bh,
+      );
+      return {
+        x: miniPad + (x - bounds.minX) * scale,
+        y: miniPad + (y - bounds.minY) * scale,
+        scale,
+      };
+    },
+    [bounds],
+  );
+
+  const handleMiniClick = useCallback(
+    (e: React.MouseEvent<SVGSVGElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const bw = Math.max(1, bounds.maxX - bounds.minX);
+      const bh = Math.max(1, bounds.maxY - bounds.minY);
+      const scale = Math.min(
+        (miniW - miniPad * 2) / bw,
+        (miniH - miniPad * 2) / bh,
+      );
+      // Reverse: mini-space → world coordinates
+      const worldX = bounds.minX + (mx - miniPad) / scale;
+      const worldY = bounds.minY + (my - miniPad) / scale;
+      // Center the main viewport on that world point given current zoom.
+      const w = svgRef.current?.clientWidth || 800;
+      const h = svgRef.current?.clientHeight || 560;
+      setTransform((t) => ({
+        ...t,
+        x: w / 2 - worldX * t.k,
+        y: h / 2 - worldY * t.k,
+      }));
+    },
+    [bounds],
+  );
+
   const nodeMap = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
   const connectedTo = useMemo(() => {
@@ -635,6 +697,77 @@ export function GraphExplorer({
       {transform.k !== 1 && (
         <div className="absolute bottom-3 right-3 z-20 bg-[#0f172a]/80 backdrop-blur-sm border border-[#1e293b] rounded-lg px-2 py-1 text-[10px] text-slate-500">
           {Math.round(transform.k * 100)}%
+        </div>
+      )}
+
+      {/* Mini-map — bottom-left. Click to pan the main view. */}
+      {nodes.length > 0 && (
+        <div className="absolute bottom-3 left-3 z-20 bg-[#0f172a]/90 backdrop-blur-sm border border-[#1e293b] rounded-lg overflow-hidden shadow-lg">
+          <svg
+            width={miniW}
+            height={miniH}
+            className="cursor-crosshair"
+            onClick={handleMiniClick}
+          >
+            <rect width="100%" height="100%" fill="#0a0e1a" />
+            {/* Edges — tiny grey lines, no detail */}
+            {data.edges.map((edge) => {
+              const s = nodeMap.get(edge.source);
+              const t = nodeMap.get(edge.target);
+              if (!s || !t) return null;
+              const p1 = projectMini(s.x, s.y);
+              const p2 = projectMini(t.x, t.y);
+              return (
+                <line
+                  key={edge.id}
+                  x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                  stroke="#334155" strokeWidth={0.4} opacity={0.6}
+                />
+              );
+            })}
+            {/* Nodes — colored dots */}
+            {nodes.map((n) => {
+              const p = projectMini(n.x, n.y);
+              const c = NODE_COLORS[n.type]?.fill || "#475569";
+              return (
+                <circle
+                  key={n.id}
+                  cx={p.x} cy={p.y}
+                  r={n.isCenter ? 2.2 : 1.4}
+                  fill={c}
+                  fillOpacity={0.9}
+                />
+              );
+            })}
+            {/* Viewport rect — shows where the main view is looking */}
+            {(() => {
+              const w = svgRef.current?.clientWidth || 800;
+              const h = svgRef.current?.clientHeight || 560;
+              const worldTopLeft = projectMini(
+                -transform.x / transform.k,
+                -transform.y / transform.k,
+              );
+              const worldBotRight = projectMini(
+                (-transform.x + w) / transform.k,
+                (-transform.y + h) / transform.k,
+              );
+              const vx = Math.max(miniPad, Math.min(miniW - miniPad, worldTopLeft.x));
+              const vy = Math.max(miniPad, Math.min(miniH - miniPad, worldTopLeft.y));
+              const vw = Math.max(4, Math.min(miniW - vx - miniPad, worldBotRight.x - worldTopLeft.x));
+              const vh = Math.max(4, Math.min(miniH - vy - miniPad, worldBotRight.y - worldTopLeft.y));
+              return (
+                <rect
+                  x={vx} y={vy} width={vw} height={vh}
+                  fill="none" stroke="#38bdf8" strokeWidth={1}
+                  strokeDasharray="3 2"
+                  pointerEvents="none"
+                />
+              );
+            })()}
+          </svg>
+          <div className="px-2 py-0.5 text-[9px] text-slate-500 text-center border-t border-[#1e293b]">
+            overview · click to pan
+          </div>
         </div>
       )}
 
