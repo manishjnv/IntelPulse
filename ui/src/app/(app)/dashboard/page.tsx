@@ -11,6 +11,7 @@ import { FeedStatusPanel } from "@/components/FeedStatusPanel";
 import { RankedDataList } from "@/components/RankedDataList";
 import { InsightDetailModal, ViewAllModal } from "@/components/InsightDetailModal";
 import { DonutChart, TrendLineChart } from "@/components/charts";
+import { HowItWorks } from "@/components/HowItWorks";
 import {
   Shield,
   AlertTriangle,
@@ -214,6 +215,8 @@ export default function DashboardPage() {
         </div>
 
       </div>
+
+      <HowItWorks context="dashboard" />
 
       {/* KPI Stats Row — each stat is clickable */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">

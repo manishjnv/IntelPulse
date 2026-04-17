@@ -67,6 +67,7 @@ import {
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import * as api from "@/lib/api";
+import { HowItWorks } from "@/components/HowItWorks";
 import type {
   NewsListResponse,
   NewsItem,
@@ -2424,6 +2425,8 @@ export default function CyberNewsPage() {
           onFilterCategory={(cat) => { setSelectedCategory(cat); setPage(1); }}
           onSortBy={(sort) => { setSortKey(sort); setPage(1); }}
         />
+
+        <HowItWorks context="news" />
 
         {/* ── Subtopic Tabs ─────────────────────────── */}
         <div className="flex items-center gap-0 bg-card/60 border border-border/40 rounded-lg p-0.5">

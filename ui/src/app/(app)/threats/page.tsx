@@ -39,6 +39,7 @@ import {
   FileText,
   Eye,
 } from "lucide-react";
+import { HowItWorks } from "@/components/HowItWorks";
 import { formatDate, severityBorder, riskColor, riskBg } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -427,6 +428,8 @@ export default function ThreatsPage() {
           </div>
         </div>
       </div>
+
+      <HowItWorks context="threats" />
 
       {/* ─── Stats Bar ─── */}
       <QuickStatsBar stats={stats} onFilter={handleStatsFilter} />
