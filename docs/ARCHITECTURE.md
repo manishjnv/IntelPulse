@@ -74,7 +74,7 @@ IntelPulse is a production-grade threat intelligence platform that aggregates IO
 | AI | Amazon Bedrock (Nova Lite + Bedrock Agents) | Threat analysis, IOC enrichment, multi-agent orchestration |
 | Infra | Docker Compose on EC2 | Container orchestration |
 | IaC | AWS CDK (TypeScript) | Infrastructure as Code |
-| Dev Tools | KIRO IDE, Amazon Q Developer | AI-assisted development |
+| Dev Tools | KIRO IDE, KIRO CLI, Amazon Q Developer | AI-driven, spec-to-production development |
 
 ## AWS Services Integration
 
@@ -313,9 +313,21 @@ AWS (us-east-1)
 └── Amazon Bedrock (AI layer)
 ```
 
-## KIRO IDE Development Workflow
+## AI-Driven Development — KIRO + Amazon Q Developer
 
-### Spec-Driven Development
+**KIRO + Q → Build faster.** Spec-driven, end-to-end software delivery.
+
+| Tool | Role |
+|------|------|
+| **KIRO IDE** | Specs → guided → autonomous (autopilot) development with multi-file coordination and production focus |
+| **KIRO CLI** | Automates tasks, infra (IaC), CI/CD, and AWS operations via natural language |
+| **Amazon Q Developer** | AI coding, debugging, security scans, docs, and smart code suggestions inside IDEs |
+
+IntelPulse was designed and built end-to-end with this toolchain. KIRO's spec-driven workflow (requirements → design → tasks → autopilot implementation) produced the application and infra code; Amazon Q Developer provided inline suggestions, security scanning, and the boto3/Bedrock code transformations; KIRO CLI drove natural-language AWS operations — Bedrock agent provisioning, Lambda action-group wiring, and CI/CD configuration.
+
+### KIRO IDE Workflow
+
+#### Spec-Driven Development
 
 ```text
 Requirements (12) → Design (1,320 lines) → Tasks (15) → Implementation

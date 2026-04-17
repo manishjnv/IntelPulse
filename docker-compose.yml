@@ -24,6 +24,10 @@ x-common-env: &common-env
   # Supervisor agent + IOC-Analyst + Risk-Scorer + virustotal_lookup action
   # group Lambda instead of single-shot invoke_model. Off by default.
   AI_USE_AGENTS: ${AI_USE_AGENTS:-false}
+  # Route IOC live-lookup AI analysis (live_lookup._ai_analyze) through the
+  # agent path — Supervisor → IOC-Analyst → VirusTotal action group.
+  # Independent of AI_USE_AGENTS (which gates news enrichment).
+  AI_USE_AGENTS_FOR_IOC: ${AI_USE_AGENTS_FOR_IOC:-true}
   BEDROCK_SUPERVISOR_AGENT_ID: ${BEDROCK_SUPERVISOR_AGENT_ID:-FQBSERZQMP}
   BEDROCK_SUPERVISOR_ALIAS_ID: ${BEDROCK_SUPERVISOR_ALIAS_ID:-HLSRFAFL42}
 

@@ -71,8 +71,9 @@ IntelPulse is a production-grade Threat Intelligence Platform that:
 | **Amazon CloudWatch Logs** | `/aws/lambda/intelpulse-virustotal-lookup` with 14-day retention; Bedrock Agent traces are also emitted for debugging collaborator + action-group invocations. |
 | **AWS IAM** | `BedrockAccessRole` (EC2 instance profile) + `intelpulse-virustotal-lookup-role` (Lambda exec) + `IntelPulse-BedrockAgentRole` (agent service principal). Least-privilege policies. |
 | **AWS CDK** | `bedrock-agents-construct.ts` + `bedrock-lambdas-construct.ts` describe the infra. Agents + Lambda were provisioned programmatically via [`infra/scripts/provision_bedrock_action_group.py`](infra/scripts/provision_bedrock_action_group.py) using boto3 (idempotent). |
-| **KIRO IDE** | Spec-driven development (requirements → design → tasks → code), 4 steering files for consistent context, 3 agent hooks for automation, autopilot mode for multi-file coordination. |
-| **Amazon Q Developer** | Inline code suggestions for Bedrock adapter and CDK stack, security scanning (12 issues found/fixed), code transformation from HTTP-based AI to boto3 Bedrock SDK. |
+| **KIRO IDE** | Specs → guided → autonomous (autopilot) development with multi-file coordination and production focus. 4 steering files for consistent context; 3 agent hooks for automation. |
+| **KIRO CLI** | Automates tasks, infra (IaC), CI/CD, and AWS operations via natural language. Drove provisioning of the Bedrock agents + the VirusTotal Lambda action group. |
+| **Amazon Q Developer** | AI coding, debugging, security scans, docs, and smart code suggestions inside IDEs. Security scanning fixed 12 issues; drove HTTP-to-boto3 Bedrock transformation. |
 | **EC2** | Application hosting (t3.small, us-east-1) with instance profile for IMDS-based AWS credentials — no long-lived secrets on the box. |
 
 ---
@@ -182,7 +183,19 @@ curl -X POST http://3.87.235.189:8000/api/v1/demo/analyze \
 
 ---
 
-## KIRO IDE — Spec-Driven Development
+## AI-Driven Development — KIRO + Amazon Q Developer
+
+> **KIRO + Q → Build faster** — spec-driven, end-to-end software delivery.
+
+| Tool | Role |
+|------|------|
+| **KIRO IDE** | Specs → guided → autonomous (autopilot) development with multi-file coordination and production focus |
+| **KIRO CLI** | Automates tasks, infra (IaC), CI/CD, and AWS operations via natural language |
+| **Amazon Q Developer** | AI coding, debugging, security scans, docs, and smart code suggestions inside IDEs |
+
+IntelPulse was designed and built end-to-end with this toolchain: KIRO's spec-driven workflow (requirements → design → tasks → autopilot implementation) plus Amazon Q Developer for inline code assistance, security scanning, and AWS-aware suggestions. KIRO CLI drove AWS operations — Bedrock agent provisioning, Lambda action-group wiring, and CI/CD configuration — via natural-language commands.
+
+### KIRO IDE — Spec-Driven Workflow
 
 ### Specs
 

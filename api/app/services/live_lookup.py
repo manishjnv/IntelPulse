@@ -858,6 +858,43 @@ async def _ai_analyze(query: str, ioc_type: str, results: list[dict]) -> dict[st
     )
     user_msg = f"IOC: {query} (type: {ioc_type})\n\nLive lookup results:\n{context}"
 
+    # Multi-agent path for IOC enrichment — routes through the Bedrock
+    # Supervisor so IOC-Analyst can call the VirusTotal Lambda action group.
+    # Falls through to the legacy httpx path on any failure.
+    if settings.ai_use_agents_for_ioc:
+        try:
+            from app.services.bedrock_agent_adapter import (
+                get_bedrock_agent_adapter,
+            )
+            adapter = get_bedrock_agent_adapter()
+            analysis = await adapter.ai_analyze_structured_via_agent(
+                system_prompt=system,
+                user_prompt=user_msg,
+                required_keys=[
+                    "summary",
+                    "threat_actors",
+                    "timeline",
+                    "affected_products",
+                    "fix_remediation",
+                    "known_breaches",
+                    "key_findings",
+                ],
+                caller="ioc_ai_analyze",
+            )
+            if analysis:
+                return {
+                    "summary": analysis.get("summary", ""),
+                    "threat_actors": analysis.get("threat_actors", []),
+                    "timeline": analysis.get("timeline", []),
+                    "affected_products": analysis.get("affected_products", []),
+                    "fix_remediation": analysis.get("fix_remediation"),
+                    "known_breaches": analysis.get("known_breaches"),
+                    "key_findings": analysis.get("key_findings", []),
+                }
+            logger.warning("ioc_ai_analyze_agent_returned_none_falling_back")
+        except Exception as e:
+            logger.error("ioc_ai_analyze_agent_error_falling_back", error=str(e))
+
     try:
         async with httpx.AsyncClient(timeout=25) as c:
             resp = await c.post(

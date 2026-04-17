@@ -149,6 +149,10 @@ class Settings(BaseSettings):
     # the VirusTotal action group Lambda). Default off so the single-shot
     # invoke_model path stays the primary.
     ai_use_agents: bool = False
+    # Route IOC enrichment (live_lookup._ai_analyze) through the same agent
+    # path as news — default True since the IOC flow genuinely benefits from
+    # the Supervisor → IOC-Analyst → VirusTotal action-group chain.
+    ai_use_agents_for_ioc: bool = True
     bedrock_supervisor_agent_id: str = "FQBSERZQMP"
     bedrock_supervisor_alias_id: str = "HLSRFAFL42"  # "live-v2"
     bedrock_agent_timeout: int = 120
