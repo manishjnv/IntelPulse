@@ -145,6 +145,59 @@ IntelPulse uses a supervisor-led multi-agent pattern for comprehensive IOC analy
 
 ---
 
+## Tiered Bedrock Model Routing
+
+Instead of serving every AI call from one model, IntelPulse routes each agent
+role to the Bedrock model best suited for the job. The adapter in
+[api/app/services/bedrock_adapter.py](api/app/services/bedrock_adapter.py)
+dispatches across the Amazon Nova (`invoke_model`), Anthropic Claude
+(`invoke_model`), Titan (`invoke_model`), and Meta Llama / Mistral / DeepSeek /
+Cohere / AI21 families (Bedrock **Converse API**) from one interface.
+
+| Tier | Role | Default Model | Why |
+| ---- | ---- | ------------- | --- |
+| **Classifier** | `news_enrichment`, `intel_summary`, `kql_generation` | `us.meta.llama4-scout-17b-instruct-v1:0` | High-volume, fast, MoE — cheapest path for category + CVE extraction. |
+| **Correlator** | `intel_enrichment`, `live_lookup` | `amazon.nova-pro-v1:0` | Native Bedrock Agent support + VirusTotal action-group tool calling; strict JSON. |
+| **Narrative** | `briefing_gen`, `report_gen` | `mistral.mistral-large-2402-v1:0` | Best prose for weekly briefings and executive reports — low volume, quality-over-speed. |
+| **Fallback** | auto-retry when primary refuses | `us.meta.llama3-3-70b-instruct-v1:0` | Permissive on cybersec content; 497 ms in benchmark. |
+
+All four models are **empirically verified** — see
+[scripts/probe_bedrock_models.py](scripts/probe_bedrock_models.py). The probe
+runs inside `intelpulse-api-1` with the `BedrockAccessRole` IAM role, tests
+each candidate with a cybersec JSON-extraction prompt, and produces a matrix
+of latency / JSON-mode / content-filter behaviour.
+
+**How the routing is wired.** Each call site (e.g. `chat_completion_json` in
+[api/app/services/ai.py](api/app/services/ai.py)) passes a `caller` and optional
+`feature`. `resolve_bedrock_model(feature, caller)` looks up
+`model_<feature>` in the `ai_settings` Postgres row; if present, it's passed
+into the Bedrock adapter as a per-call `model_id` override. If empty, the
+adapter falls back to the globally-configured `primary_model` (currently
+`amazon.nova-lite-v1:0`).
+
+**Surface this in the UI.** Settings → AI Configuration → **Tiered Routing**
+shows all four tiers as editable cards — change a tier's model and it
+propagates to every feature in that tier. The "Apply Recommended to All"
+button fills every tier with the empirically-verified default.
+
+**Seed the defaults on a fresh environment:**
+
+```bash
+ssh intelpulse2 \
+  "docker cp /opt/IntelPulse/scripts/. intelpulse-api-1:/tmp/scripts/ \
+   && docker exec intelpulse-api-1 python /tmp/scripts/apply_tiered_model_routing.py"
+```
+
+The script is idempotent — only fills in empty `model_<feature>` columns
+unless `--force` is passed.
+
+**Why Claude is blocked.** Every Anthropic model on this Bedrock account
+returns `INVALID_PAYMENT_INSTRUMENT`. The adapter still supports the
+`anthropic` family (via `invoke_model`) — it's just not reachable on
+production without an AWS Marketplace fix.
+
+---
+
 ## AI-Powered Features
 
 Every major feature in IntelPulse is backed by Amazon Bedrock AI:

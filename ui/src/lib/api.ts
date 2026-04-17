@@ -309,6 +309,24 @@ export async function getGraphStats() {
   return fetcher<import("@/types").GraphStatsResponse>("/graph/stats");
 }
 
+export type GraphFeaturedEntity = {
+  id: string;
+  type: "intel" | "ioc" | "technique" | "cve";
+  label: string;
+  degree: number;
+  raw_id: string;
+  severity?: string | null;
+  risk_score?: number | null;
+  source?: string | null;
+  feed_type?: string | null;
+  ioc_type?: string | null;
+  tactic?: string | null;
+};
+
+export async function getGraphFeatured(limit: number = 12) {
+  return fetcher<{ featured: GraphFeaturedEntity[] }>(`/graph/featured?limit=${limit}`);
+}
+
 // ─── Notifications ──────────────────────────────────────
 export async function getNotifications(params: {
   unread_only?: boolean;

@@ -60,49 +60,62 @@ class BedrockAdapter:
         *,
         max_tokens: int = 800,
         temperature: float = 0.3,
+        model_id: str | None = None,
     ) -> str | None:
         """Generate text response using Bedrock.
-        
+
         Args:
             system_prompt: System instruction for the model
             user_prompt: User query or content to analyze
             max_tokens: Maximum tokens in response
             temperature: Sampling temperature (0.0-1.0)
-            
+            model_id: Optional per-call model override — lets the tiered
+                router pick a different Bedrock model for classifier /
+                correlator / narrative / fallback roles without mutating
+                global adapter state.
+
         Returns:
             Generated text content or None on error
         """
+        effective_model = model_id or self.model_id
         try:
             # Different Bedrock model families use different request/response
             # schemas. Dispatch on the model family so this adapter can serve
-            # both Anthropic Claude and Amazon Nova without the caller having
-            # to know the difference.
-            family = self._model_family()
-            body = self._build_request_body(
-                family, system_prompt, user_prompt, max_tokens, temperature
-            )
-
+            # Anthropic Claude, Amazon Nova, Meta Llama, and Mistral with the
+            # caller using one interface. Llama and Mistral go through the
+            # Converse API (unified schema); the older families stay on the
+            # per-family invoke_model schemas they were built for.
+            family = self._model_family_for(effective_model)
             logger.info(
                 "bedrock_invoke_request",
-                model=self.model_id,
+                model=effective_model,
                 family=family,
                 max_tokens=max_tokens,
                 temperature=temperature,
             )
 
-            response = self.client.invoke_model(
-                modelId=self.model_id,
-                body=json.dumps(body),
-            )
-            response_body = json.loads(response["body"].read())
-            text, usage = self._extract_text_and_usage(family, response_body)
+            if family in ("meta", "mistral", "deepseek", "ai21", "cohere"):
+                text, usage = self._call_converse(
+                    effective_model, family, system_prompt, user_prompt,
+                    max_tokens, temperature,
+                )
+            else:
+                body = self._build_request_body(
+                    family, system_prompt, user_prompt, max_tokens, temperature
+                )
+                response = self.client.invoke_model(
+                    modelId=effective_model,
+                    body=json.dumps(body),
+                )
+                response_body = json.loads(response["body"].read())
+                text, usage = self._extract_text_and_usage(family, response_body)
 
             if text:
                 in_tok = usage.get("input_tokens", 0)
                 out_tok = usage.get("output_tokens", 0)
                 logger.info(
                     "bedrock_invoke_success",
-                    model=self.model_id,
+                    model=effective_model,
                     family=family,
                     chars=len(text),
                     input_tokens=in_tok,
@@ -110,24 +123,24 @@ class BedrockAdapter:
                 )
                 from app.core.ai_telemetry import track_invocation
                 await track_invocation(
-                    model_id=self.model_id,
+                    model_id=effective_model,
                     input_tokens=in_tok,
                     output_tokens=out_tok,
                 )
                 return text.strip()
 
-            logger.warning("bedrock_empty_response", model=self.model_id, family=family)
+            logger.warning("bedrock_empty_response", model=effective_model, family=family)
             return None
 
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
             error_message = e.response.get("Error", {}).get("Message", str(e))
-            
+
             logger.error(
                 "bedrock_client_error",
                 error_code=error_code,
                 error_message=error_message,
-                model=self.model_id,
+                model=effective_model,
             )
             return None
 
@@ -135,7 +148,7 @@ class BedrockAdapter:
             logger.error(
                 "bedrock_botocore_error",
                 error=str(e),
-                model=self.model_id,
+                model=effective_model,
             )
             return None
 
@@ -144,21 +157,33 @@ class BedrockAdapter:
                 "bedrock_unexpected_error",
                 error=str(e),
                 error_type=type(e).__name__,
-                model=self.model_id,
+                model=effective_model,
             )
             return None
 
     def _model_family(self) -> str:
-        """Classify the configured model into a request-schema family.
+        """Family classification for the globally-configured model."""
+        return self._model_family_for(self.model_id)
 
-        - "anthropic": Claude 3/4 via Bedrock (with or without `us./global.`
-          inference-profile prefix). Expects the `anthropic_version` body.
-        - "nova": Amazon Nova (Lite/Micro/Pro). Expects the
-          `inferenceConfig` body with role-content lists.
-        - "titan": Amazon Titan Text. Expects the `inputText` body.
-        - "unknown": falls back to the Anthropic schema.
+    @staticmethod
+    def _model_family_for(model_id: str) -> str:
+        """Classify the model into a request-schema family.
+
+        Historical invoke_model-schema families:
+        - "anthropic": Claude 3/4 via Bedrock.
+        - "nova":     Amazon Nova (Lite/Micro/Pro/Premier).
+        - "titan":    Amazon Titan Text.
+
+        Converse-API families (unified schema, routed through _call_converse):
+        - "meta":     Llama 3.x / Llama 4.x Instruct.
+        - "mistral":  Mistral Small/Large/Mixtral/Ministral.
+        - "deepseek": DeepSeek R1 / V3.
+        - "cohere":   Cohere Command R / R+.
+        - "ai21":     Jamba 1.5 Mini/Large.
+
+        "unknown": falls back to the Anthropic schema.
         """
-        mid = (self.model_id or "").lower()
+        mid = (model_id or "").lower()
         # Strip optional cross-region inference-profile prefix ("us." / "global.")
         bare = mid.split(".", 1)[1] if mid.startswith(("us.", "global.", "eu.", "apac.")) else mid
         if bare.startswith("anthropic.") or "claude" in bare:
@@ -167,7 +192,63 @@ class BedrockAdapter:
             return "nova"
         if bare.startswith("amazon.titan"):
             return "titan"
+        if bare.startswith("meta.") or "llama" in bare:
+            return "meta"
+        if bare.startswith("mistral.") or "mistral" in bare or "mixtral" in bare or "magistral" in bare:
+            return "mistral"
+        if bare.startswith("deepseek."):
+            return "deepseek"
+        if bare.startswith("cohere."):
+            return "cohere"
+        if bare.startswith("ai21."):
+            return "ai21"
         return "unknown"
+
+    def _call_converse(
+        self,
+        model_id: str,
+        family: str,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> tuple[str, dict]:
+        """Dispatch through the Bedrock Converse API (unified schema).
+
+        Converse normalises request/response across Meta, Mistral,
+        DeepSeek, Cohere and AI21 — we use it for every family that
+        isn't on a legacy family-specific invoke_model schema.
+        """
+        request: dict = {
+            "modelId": model_id,
+            "messages": [
+                {"role": "user", "content": [{"text": user_prompt}]}
+            ],
+            "inferenceConfig": {
+                "maxTokens": max_tokens,
+                "temperature": temperature,
+            },
+        }
+        if system_prompt:
+            request["system"] = [{"text": system_prompt}]
+
+        response = self.client.converse(**request)
+
+        msg = (response.get("output") or {}).get("message") or {}
+        parts = msg.get("content") or []
+        text = "".join(p.get("text", "") for p in parts if isinstance(p, dict))
+
+        # DeepSeek-R1 wraps its chain-of-thought in <think>...</think>.
+        # Strip it so callers see the clean final answer.
+        if family == "deepseek" and "<think>" in text:
+            after = text.split("</think>", 1)
+            text = (after[1] if len(after) > 1 else after[0]).strip()
+
+        usage = response.get("usage") or {}
+        return text, {
+            "input_tokens": usage.get("inputTokens", 0),
+            "output_tokens": usage.get("outputTokens", 0),
+        }
 
     def _build_request_body(
         self,
@@ -250,6 +331,7 @@ class BedrockAdapter:
         max_tokens: int = 800,
         temperature: float = 0.3,
         required_keys: list[str] | None = None,
+        model_id: str | None = None,
     ) -> dict | None:
         """Generate structured JSON response using Bedrock.
         
@@ -269,6 +351,7 @@ class BedrockAdapter:
             user_prompt=user_prompt,
             max_tokens=max_tokens,
             temperature=temperature,
+            model_id=model_id,
         )
 
         if not raw:

@@ -498,3 +498,63 @@ async def get_graph_stats(db: AsyncSession) -> dict:
         "by_type": {r[0]: r[1] for r in by_type.all()},
         "avg_confidence": round(float(avg_conf.scalar() or 0), 1),
     }
+
+
+async def get_featured_entities(db: AsyncSession, limit: int = 12) -> list[dict]:
+    """Return the most-connected entities across the graph, with labels.
+
+    Powers the Investigate page empty-state: shows users clickable chips for
+    "most interesting" intel items / IOCs / techniques / CVEs so the graph
+    auto-populates with real data instead of staring at an empty canvas.
+
+    Counts every entity's appearance as source or target in `relationships`,
+    groups by (type, id), orders by degree desc, resolves labels via
+    `_resolve_node`. Skips entities that can't be resolved (deleted /
+    orphaned).
+    """
+    # UNION ALL ensures an entity shows up once per appearance (on either
+    # end of the edge). GROUP BY (type, id) then counts degree.
+    degree_sql = text(
+        """
+        SELECT entity_type, entity_id, COUNT(*) AS degree
+        FROM (
+            SELECT source_type AS entity_type, source_id AS entity_id
+              FROM relationships
+            UNION ALL
+            SELECT target_type AS entity_type, target_id AS entity_id
+              FROM relationships
+        ) x
+        GROUP BY entity_type, entity_id
+        ORDER BY degree DESC
+        LIMIT :lim
+        """
+    )
+    result = await db.execute(degree_sql, {"lim": max(limit * 3, 24)})
+    rows = result.mappings().all()
+
+    # Resolve labels for at most `limit*3` candidates; stop once we have
+    # `limit` resolved entries, keeping a mix of types.
+    featured: list[dict] = []
+    type_counts: dict[str, int] = {}
+    per_type_cap = max(3, limit // 2)  # don't let one type swamp the list
+
+    for r in rows:
+        etype = r["entity_type"]
+        eid = r["entity_id"]
+        if type_counts.get(etype, 0) >= per_type_cap and len(featured) >= limit:
+            break
+
+        node = await _resolve_node(db, eid, etype)
+        if not node:
+            continue
+        type_counts[etype] = type_counts.get(etype, 0) + 1
+        featured.append({
+            **node,
+            "degree": int(r["degree"]),
+            # Strip the prefix so callers can round-trip it through /explore
+            "raw_id": eid,
+        })
+        if len(featured) >= limit:
+            break
+
+    return featured

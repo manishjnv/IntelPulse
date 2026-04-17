@@ -277,6 +277,24 @@ export function GraphExplorer({
     return s;
   }, [hoveredNode, selectedNodeId, data.edges]);
 
+  // Degree = how many edges touch each node. Drives node radius so the most
+  // connected entities visually dominate — a core "at-a-glance centrality"
+  // cue every graph viewer should have.
+  const degreeMap = useMemo(() => {
+    const m = new Map<string, number>();
+    data.edges.forEach((e) => {
+      m.set(e.source, (m.get(e.source) ?? 0) + 1);
+      m.set(e.target, (m.get(e.target) ?? 0) + 1);
+    });
+    return m;
+  }, [data.edges]);
+
+  const maxDegree = useMemo(() => {
+    let mx = 1;
+    degreeMap.forEach((v) => { if (v > mx) mx = v; });
+    return mx;
+  }, [degreeMap]);
+
   const activeNode = hoveredNode || selectedNodeId;
 
   const svgW = isFullscreen ? "100vw" : width;
@@ -497,7 +515,13 @@ export function GraphExplorer({
           {nodes.map((node) => {
             const colorSet = NODE_COLORS[node.type] || { fill: "#475569", glow: "#64748b", icon: "?" };
             const ring = node.severity ? SEVERITY_RING[node.severity] : undefined;
-            const r = node.isCenter ? 22 : node.type === "intel" ? 17 : 13;
+            // Base radius by role/type, then boost by (degree / maxDegree).
+            // Clamp so a single super-connected node can't fill the canvas
+            // and low-degree satellites still stay readable.
+            const deg = degreeMap.get(node.id) ?? 0;
+            const degBoost = maxDegree > 1 ? (deg / maxDegree) * 10 : 0;
+            const baseR = node.isCenter ? 22 : node.type === "intel" ? 16 : 12;
+            const r = Math.min(34, baseR + degBoost);
             const isHovered = hoveredNode === node.id;
             const isSelected = selectedNodeId === node.id;
             const isHighlighted = isHovered || isSelected;

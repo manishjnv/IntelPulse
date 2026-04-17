@@ -20,7 +20,12 @@ from app.schemas import (
     GraphStatsResponse,
     RelatedIntelItem,
 )
-from app.services.graph import get_entity_graph, get_related_intel, get_graph_stats
+from app.services.graph import (
+    get_entity_graph,
+    get_related_intel,
+    get_graph_stats,
+    get_featured_entities,
+)
 
 router = APIRouter(prefix="/graph", tags=["Graph"])
 
@@ -73,6 +78,29 @@ async def get_related_items(
     items = await get_related_intel(db, str(item_id), limit=limit)
     await set_cached(ck, items, ttl=60)
     return items
+
+
+@router.get("/featured")
+async def graph_featured(
+    user: Annotated[User, Depends(require_viewer)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: int = Query(default=12, ge=1, le=30),
+):
+    """Return most-connected entities for the Investigate empty state.
+
+    Each entry carries enough to render a clickable chip AND to round-trip
+    through /explore: `id` (prefixed), `type`, `label`, `degree`, plus type-
+    specific fields like `severity`, `risk_score`, `ioc_type`, `tactic`.
+    """
+    ck = cache_key("graph_featured", str(limit))
+    cached = await get_cached(ck)
+    if cached:
+        return cached
+
+    featured = await get_featured_entities(db, limit=limit)
+    payload = {"featured": featured}
+    await set_cached(ck, payload, ttl=120)
+    return payload
 
 
 @router.get("/stats", response_model=GraphStatsResponse)

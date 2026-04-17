@@ -254,6 +254,63 @@ async def get_feature_model(feature: str) -> str | None:
     return model if model else None
 
 
+# ── Tiered Bedrock routing ────────────────────────────────
+
+# Maps caller names (set at the chat_completion_json call site) to the feature
+# column used in ai_settings. Add new callers here when a new AI entry point is
+# introduced — otherwise resolve_bedrock_model falls back to the primary model.
+_CALLER_TO_FEATURE: dict[str, str] = {
+    "ai_summary": "intel_summary",
+    "intel_summary": "intel_summary",
+    "news_enrichment": "news_enrichment",
+    "enrich_news": "news_enrichment",
+    "enrich_intel": "intel_enrichment",
+    "intel_enrichment": "intel_enrichment",
+    "live_lookup": "live_lookup",
+    "ioc_live_lookup": "live_lookup",
+    "report_gen": "report_gen",
+    "briefing_gen": "briefing_gen",
+    "kql_generation": "kql_generation",
+    "kql_gen": "kql_generation",
+}
+
+# Tier grouping for docs / UI. Classifier = cheap+fast, Correlator = tool-use +
+# clean JSON, Narrative = quality-over-speed, Fallback = permissive retry.
+TIER_FEATURES: dict[str, list[str]] = {
+    "classifier": ["intel_summary", "news_enrichment", "kql_generation"],
+    "correlator": ["intel_enrichment", "live_lookup"],
+    "narrative":  ["report_gen", "briefing_gen"],
+}
+
+
+async def resolve_bedrock_model(feature: str | None, caller: str | None) -> str | None:
+    """Pick the Bedrock model ID for a given feature/caller.
+
+    Resolution order:
+      1. model_<feature> column in ai_settings (explicit per-feature override)
+      2. model_<caller-mapped-feature> (when caller maps cleanly to a feature)
+      3. None — caller keeps the adapter's globally-configured model
+
+    Returns None to mean "use the default" so the adapter keeps its legacy
+    behaviour when tiered routing hasn't been configured yet.
+    """
+    # 1. Direct feature override
+    if feature:
+        m = await get_feature_model(feature)
+        if m:
+            return m
+
+    # 2. Map caller → feature
+    if caller:
+        mapped = _CALLER_TO_FEATURE.get(caller)
+        if mapped:
+            m = await get_feature_model(mapped)
+            if m:
+                return m
+
+    return None
+
+
 # ── Fallback Model Chain ──────────────────────────────────
 # Each entry is a (url, key_env_attr, model) tuple.  When the primary
 # returns 429 (rate-limit), we cascade to the next provider/model.
@@ -631,12 +688,18 @@ async def chat_completion_json(
     if _USE_BEDROCK:
         try:
             adapter = get_bedrock_adapter()
+            # Tiered routing: resolve the Bedrock model per feature/caller so
+            # Classifier / Correlator / Narrative roles can use different
+            # models (cheap+fast vs. strong+slow). Falls back to the global
+            # primary_model if no per-feature override exists.
+            tier_model = await resolve_bedrock_model(feature, caller)
             result = await adapter.ai_analyze_structured(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 max_tokens=max_tokens,
                 temperature=temperature,
                 required_keys=required_keys,
+                model_id=tier_model,
             )
             if result and feature:
                 await increment_daily_usage(feature)

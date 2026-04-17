@@ -437,7 +437,7 @@ export function HowItWorks({
             <div className="flex items-center gap-1.5 mb-1">
               <Cloud className="h-3.5 w-3.5 text-orange-400" />
               <span className="text-[11px] font-semibold text-orange-300">
-                AWS-powered multi-agent AI
+                AWS-powered multi-agent AI — tiered Bedrock routing
               </span>
             </div>
             <p className="text-[11px] text-foreground/85 leading-relaxed">
@@ -445,30 +445,41 @@ export function HowItWorks({
               <span className="font-semibold text-orange-300">
                 Amazon Bedrock
               </span>{" "}
-              with three specialist agents coordinated by a supervisor:
+              with four specialist roles, each routed to the Bedrock model
+              best suited for the job. Settings → AI → Tiered Routing exposes
+              every slot.
             </p>
             <ul className="mt-1 space-y-0.5">
               <li className="text-[10px] text-foreground/85 leading-relaxed flex items-start gap-1.5">
-                <span className="text-orange-400/80 shrink-0 mt-0.5">•</span>
+                <span className="text-sky-400/80 shrink-0 mt-0.5">•</span>
                 <span>
-                  <span className="font-semibold">Classifier / Summariser</span>{" "}
-                  — tags category, extracts CVEs, produces the executive brief.
+                  <span className="font-semibold text-sky-300">Classifier / Summariser</span>
+                  {" "}→ <span className="font-mono text-[9px]">Llama 4 Scout 17B</span>{" "}
+                  — high-volume, cheap, fast; tags category, extracts CVEs, writes summaries.
                 </span>
               </li>
               <li className="text-[10px] text-foreground/85 leading-relaxed flex items-start gap-1.5">
-                <span className="text-orange-400/80 shrink-0 mt-0.5">•</span>
+                <span className="text-violet-400/80 shrink-0 mt-0.5">•</span>
                 <span>
-                  <span className="font-semibold">IOC Correlator</span> —
-                  validates indicators against VirusTotal and clusters related
-                  IOCs.
+                  <span className="font-semibold text-violet-300">IOC Correlator</span>
+                  {" "}→ <span className="font-mono text-[9px]">Nova Pro</span>{" "}
+                  — strict JSON + Bedrock Agent tool calling; validates indicators via VirusTotal action group.
                 </span>
               </li>
               <li className="text-[10px] text-foreground/85 leading-relaxed flex items-start gap-1.5">
-                <span className="text-orange-400/80 shrink-0 mt-0.5">•</span>
+                <span className="text-rose-400/80 shrink-0 mt-0.5">•</span>
                 <span>
-                  <span className="font-semibold">Narrative Builder</span> —
-                  writes the attack narrative, risk assessment and detection
-                  opportunities.
+                  <span className="font-semibold text-rose-300">Narrative Builder</span>
+                  {" "}→ <span className="font-mono text-[9px]">Mistral Large 2402</span>{" "}
+                  — quality over speed; writes briefings, risk assessments and attack narratives.
+                </span>
+              </li>
+              <li className="text-[10px] text-foreground/85 leading-relaxed flex items-start gap-1.5">
+                <span className="text-emerald-400/80 shrink-0 mt-0.5">•</span>
+                <span>
+                  <span className="font-semibold text-emerald-300">Fallback on Refusal</span>
+                  {" "}→ <span className="font-mono text-[9px]">Llama 3.3 70B</span>{" "}
+                  — permissive retry when the primary's content filter refuses cybersec material.
                 </span>
               </li>
             </ul>

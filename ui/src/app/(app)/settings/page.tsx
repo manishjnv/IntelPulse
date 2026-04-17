@@ -36,6 +36,11 @@ import {
   ChevronDown,
   ChevronUp,
   FlaskConical,
+  Workflow,
+  Cpu,
+  Rss,
+  Puzzle,
+  FileText as FileTextIcon,
   Gauge,
   RotateCcw,
   ArrowUp,
@@ -1738,7 +1743,7 @@ function Tooltip({ text }: { text: string }) {
   );
 }
 
-type AISubSection = "provider" | "features" | "limits" | "prompts" | "advanced" | "health";
+type AISubSection = "provider" | "routing" | "features" | "limits" | "prompts" | "advanced" | "health";
 
 function getModelGuidance(model: string): { size: string; tempRange: string; tokensRange: string; bestFor: string; note: string } {
   const m = model.toLowerCase();
@@ -1964,6 +1969,7 @@ function AIConfigSettings() {
 
   const SUB_SECTIONS: { id: AISubSection; label: string; icon: React.ReactNode }[] = [
     { id: "provider", label: "Provider", icon: <Server className="h-3 w-3" /> },
+    { id: "routing", label: "Tiered Routing", icon: <Workflow className="h-3 w-3" /> },
     { id: "features", label: "Features", icon: <Zap className="h-3 w-3" /> },
     { id: "limits", label: "Limits & Usage", icon: <Gauge className="h-3 w-3" /> },
     { id: "prompts", label: "Custom Prompts", icon: <MessageSquare className="h-3 w-3" /> },
@@ -2323,6 +2329,11 @@ function AIConfigSettings() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* ── Tiered Routing ── */}
+      {activeSubSection === "routing" && (
+        <TieredRoutingCard cfg={cfg} update={update} />
       )}
 
       {/* ── Feature Toggles ── */}
@@ -3378,4 +3389,258 @@ function formatTTL(seconds: number): string {
   if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
   if (seconds < 86400) return `${Math.round(seconds / 3600)}h`;
   return `${Math.round(seconds / 86400)}d`;
+}
+
+/* ── Tiered Routing card ────────────────────────────────────────
+ * Surfaces the four logical tiers (Classifier / Correlator / Narrative
+ * / Fallback) that IntelPulse uses to route Bedrock calls by role.
+ * Each tier maps to one or more model_<feature> columns in ai_settings;
+ * editing a tier's model updates every feature that belongs to the tier.
+ */
+
+type Tier = "classifier" | "correlator" | "narrative" | "fallback";
+
+type TierMeta = {
+  label: string;
+  short: string;
+  accent: string;
+  iconBg: string;
+  icon: React.ReactNode;
+  // ai_settings model_<feature> keys that belong to this tier
+  features: (keyof AISettings)[];
+  featureLabels: string[];
+  recommended: { id: string; label: string };
+  alternatives: { id: string; label: string }[];
+};
+
+const BEDROCK_MODELS_AVAILABLE: { id: string; label: string; note?: string }[] = [
+  { id: "amazon.nova-lite-v1:0", label: "Amazon Nova Lite", note: "fast, general-purpose" },
+  { id: "amazon.nova-pro-v1:0", label: "Amazon Nova Pro", note: "native Bedrock Agents" },
+  { id: "amazon.nova-micro-v1:0", label: "Amazon Nova Micro", note: "cheapest, text-only" },
+  { id: "us.meta.llama4-scout-17b-instruct-v1:0", label: "Llama 4 Scout 17B", note: "MoE, fast" },
+  { id: "us.meta.llama4-maverick-17b-instruct-v1:0", label: "Llama 4 Maverick 17B" },
+  { id: "us.meta.llama3-3-70b-instruct-v1:0", label: "Llama 3.3 70B Instruct", note: "permissive fallback" },
+  { id: "us.meta.llama3-1-70b-instruct-v1:0", label: "Llama 3.1 70B Instruct" },
+  { id: "mistral.mistral-large-2402-v1:0", label: "Mistral Large 2402", note: "best prose" },
+  { id: "mistral.mistral-small-2402-v1:0", label: "Mistral Small 2402" },
+  { id: "us.deepseek.r1-v1:0", label: "DeepSeek-R1", note: "reasoning traces" },
+  { id: "ai21.jamba-1-5-mini-v1:0", label: "AI21 Jamba 1.5 Mini" },
+];
+
+const TIER_META: Record<Tier, TierMeta> = {
+  classifier: {
+    label: "Classifier / Summariser",
+    short: "High volume · fast · cheap — tags categories, extracts CVEs, writes summaries.",
+    accent: "border-sky-500/40 bg-sky-500/5",
+    iconBg: "bg-sky-500/15 text-sky-300",
+    icon: <Rss className="h-4 w-4" />,
+    features: ["model_news_enrichment", "model_intel_summary", "model_kql_generation"],
+    featureLabels: ["News enrichment", "Intel summary", "KQL generation"],
+    recommended: { id: "us.meta.llama4-scout-17b-instruct-v1:0", label: "Llama 4 Scout 17B" },
+    alternatives: [
+      { id: "amazon.nova-micro-v1:0", label: "Nova Micro (cheapest)" },
+      { id: "amazon.nova-lite-v1:0", label: "Nova Lite" },
+      { id: "us.meta.llama3-3-70b-instruct-v1:0", label: "Llama 3.3 70B" },
+    ],
+  },
+  correlator: {
+    label: "IOC Correlator",
+    short: "Strict JSON + tool calling — correlates IOCs with VirusTotal action group.",
+    accent: "border-violet-500/40 bg-violet-500/5",
+    iconBg: "bg-violet-500/15 text-violet-300",
+    icon: <Puzzle className="h-4 w-4" />,
+    features: ["model_intel_enrichment", "model_live_lookup"],
+    featureLabels: ["Intel enrichment", "Live IOC lookup"],
+    recommended: { id: "amazon.nova-pro-v1:0", label: "Nova Pro" },
+    alternatives: [
+      { id: "mistral.mistral-large-2402-v1:0", label: "Mistral Large 2402" },
+      { id: "us.meta.llama4-maverick-17b-instruct-v1:0", label: "Llama 4 Maverick 17B" },
+    ],
+  },
+  narrative: {
+    label: "Narrative Builder",
+    short: "Quality over speed — weekly briefings, executive reports, attack narratives.",
+    accent: "border-rose-500/40 bg-rose-500/5",
+    iconBg: "bg-rose-500/15 text-rose-300",
+    icon: <FileTextIcon className="h-4 w-4" />,
+    features: ["model_briefing_gen", "model_report_gen"],
+    featureLabels: ["Briefing generation", "Report generation"],
+    recommended: { id: "mistral.mistral-large-2402-v1:0", label: "Mistral Large 2402" },
+    alternatives: [
+      { id: "us.meta.llama4-maverick-17b-instruct-v1:0", label: "Llama 4 Maverick 17B" },
+      { id: "us.deepseek.r1-v1:0", label: "DeepSeek-R1" },
+      { id: "amazon.nova-pro-v1:0", label: "Nova Pro" },
+    ],
+  },
+  fallback: {
+    label: "Fallback on Refusal",
+    short: "Permissive model used when the primary refuses cybersec content.",
+    accent: "border-emerald-500/40 bg-emerald-500/5",
+    iconBg: "bg-emerald-500/15 text-emerald-300",
+    icon: <Cpu className="h-4 w-4" />,
+    features: [],  // no per-feature column — advisory only for now
+    featureLabels: [],
+    recommended: { id: "us.meta.llama3-3-70b-instruct-v1:0", label: "Llama 3.3 70B Instruct" },
+    alternatives: [
+      { id: "mistral.mistral-small-2402-v1:0", label: "Mistral Small 2402" },
+    ],
+  },
+};
+
+function TieredRoutingCard({
+  cfg,
+  update,
+}: {
+  cfg: AISettings;
+  update: (key: keyof AISettings, value: unknown) => void;
+}) {
+  // A tier's "current model" is the value of its first feature column —
+  // if all features in the tier share the same model (the common case)
+  // the UI reads like a single slot. When they diverge we show the
+  // first value and mark the tier as "mixed".
+  const tierCurrent = (tier: Tier): { model: string; mixed: boolean } => {
+    const meta = TIER_META[tier];
+    if (meta.features.length === 0) return { model: "", mixed: false };
+    const values = meta.features.map((k) => (cfg[k] as string) || "");
+    const first = values[0];
+    const mixed = values.some((v) => v !== first);
+    return { model: first, mixed };
+  };
+
+  const applyTier = (tier: Tier, model: string) => {
+    const meta = TIER_META[tier];
+    for (const feat of meta.features) {
+      update(feat, model);
+    }
+  };
+
+  const applyAllRecommended = () => {
+    (Object.keys(TIER_META) as Tier[]).forEach((t) => {
+      if (TIER_META[t].features.length > 0) applyTier(t, TIER_META[t].recommended.id);
+    });
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2 pt-4 px-5">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <Workflow className="h-3.5 w-3.5 text-violet-400" />
+          Tiered Bedrock Routing
+          <Tooltip text="Route each agent role to its own Bedrock model. Classifier is high-volume and cheap; Correlator needs strict JSON + tool calling; Narrative prioritises writing quality for briefings; Fallback kicks in when the primary refuses content." />
+        </CardTitle>
+        <div className="flex items-center justify-between mt-1">
+          <p className="text-[10px] text-muted-foreground">
+            Primary model: <span className="font-mono text-primary">{cfg.primary_model || "(unset)"}</span>
+            . Each tier's model is stored in the corresponding <code className="text-[9px]">model_*</code> column of <code className="text-[9px]">ai_settings</code>.
+          </p>
+          <button
+            onClick={applyAllRecommended}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-medium hover:bg-emerald-500/20 transition-colors"
+            title="Set every tier to its recommended Bedrock model (empirically verified on prod)"
+          >
+            <Zap className="h-3 w-3" /> Apply Recommended to All
+          </button>
+        </div>
+      </CardHeader>
+      <CardContent className="px-5 pb-4 space-y-3">
+        {(Object.keys(TIER_META) as Tier[]).map((tier) => {
+          const meta = TIER_META[tier];
+          const { model, mixed } = tierCurrent(tier);
+          const isAdvisory = meta.features.length === 0;
+          return (
+            <div
+              key={tier}
+              className={`rounded-md border p-3 ${meta.accent}`}
+            >
+              <div className="flex items-start gap-3">
+                <div className={`h-8 w-8 rounded flex items-center justify-center shrink-0 ${meta.iconBg}`}>
+                  {meta.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-semibold">{meta.label}</span>
+                    {mixed && (
+                      <Badge variant="outline" className="text-[9px] text-amber-400 border-amber-400/40">
+                        mixed — features use different models
+                      </Badge>
+                    )}
+                    {isAdvisory && (
+                      <Badge variant="outline" className="text-[9px] text-muted-foreground">
+                        advisory (no column yet)
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{meta.short}</p>
+                  {meta.featureLabels.length > 0 && (
+                    <p className="text-[9px] text-muted-foreground/80 mt-1">
+                      Features: {meta.featureLabels.join(" · ")}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
+                <label className="text-[10px] font-medium text-muted-foreground w-16">Model</label>
+                <select
+                  value={model}
+                  disabled={isAdvisory}
+                  onChange={(e) => applyTier(tier, e.target.value)}
+                  className="flex-1 min-w-[260px] h-8 text-[11px] rounded border border-border/50 bg-background px-2 disabled:opacity-50 font-mono"
+                >
+                  <option value="">(use primary)</option>
+                  {BEDROCK_MODELS_AVAILABLE.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label} — {m.id}{m.note ? ` · ${m.note}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  disabled={isAdvisory}
+                  onClick={() => applyTier(tier, meta.recommended.id)}
+                  className="h-8 px-2 rounded text-[10px] font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-40"
+                  title={`Set to ${meta.recommended.label} (${meta.recommended.id})`}
+                >
+                  Use recommended
+                </button>
+                <button
+                  disabled={isAdvisory}
+                  onClick={() => applyTier(tier, "")}
+                  className="h-8 px-2 rounded text-[10px] font-medium border border-border/50 hover:bg-muted/40 transition-colors disabled:opacity-40"
+                  title="Clear tier override — falls back to primary model"
+                >
+                  Clear
+                </button>
+              </div>
+
+              {meta.alternatives.length > 0 && (
+                <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[9px] text-muted-foreground">alternatives:</span>
+                  {meta.alternatives.map((alt) => (
+                    <button
+                      key={alt.id}
+                      disabled={isAdvisory}
+                      onClick={() => applyTier(tier, alt.id)}
+                      className="text-[9px] px-1.5 py-0.5 rounded border border-border/50 hover:bg-muted/40 transition-colors disabled:opacity-40"
+                      title={alt.id}
+                    >
+                      {alt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        <div className="text-[10px] text-muted-foreground leading-relaxed pt-1 border-t border-border/30">
+          <span className="font-semibold">How it works:</span> when a feature is invoked
+          (for example <code>briefing_gen</code>), the API resolves <code>model_briefing_gen</code>
+          from <code>ai_settings</code> and passes that model ID to the Bedrock adapter.
+          Empty tier slots fall back to <code>primary_model</code>. Rerun
+          <code className="ml-1">scripts/apply_tiered_model_routing.py</code> on prod
+          to repopulate defaults after a reset.
+        </div>
+      </CardContent>
+    </Card>
+  );
 }

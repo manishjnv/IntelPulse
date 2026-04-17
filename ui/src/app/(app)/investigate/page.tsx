@@ -25,7 +25,6 @@ import {
   RefreshCw,
   Minus,
   Plus,
-  Info,
   ExternalLink,
   X,
   BarChart3,
@@ -35,6 +34,7 @@ import {
   Bug,
   ChevronRight,
   Activity,
+  Sparkles,
 } from "lucide-react";
 
 /* ── Node type metadata ─────────────────────────────── */
@@ -57,9 +57,14 @@ export default function InvestigatePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [featured, setFeatured] = useState<api.GraphFeaturedEntity[]>([]);
 
   useEffect(() => {
     api.getGraphStats().then(setStats).catch(() => {});
+    api
+      .getGraphFeatured(12)
+      .then((r) => setFeatured(r.featured || []))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -72,6 +77,18 @@ export default function InvestigatePage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-center on the most-connected entity once featured arrives — but
+  // only if the user hasn't already typed/deep-linked.
+  useEffect(() => {
+    if (graphData || loading || searchParams?.get("id") || query.trim()) return;
+    if (featured.length === 0) return;
+    const top = featured[0];
+    setQuery(top.raw_id);
+    setEntityType(top.type);
+    explore(top.raw_id, top.type, depth);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [featured]);
 
   const explore = useCallback(
     async (id?: string, type?: string, d?: number) => {
@@ -210,6 +227,44 @@ export default function InvestigatePage() {
               {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Explore"}
             </Button>
           </form>
+
+          {/* Suggested entities — click to auto-load that entity's graph. */}
+          {featured.length > 0 && (
+            <div className="mt-3 flex items-start gap-2">
+              <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground pt-1.5 shrink-0">
+                <Sparkles className="h-3 w-3" />
+                Suggested
+              </div>
+              <div className="flex-1 flex flex-wrap gap-1.5">
+                {featured.slice(0, 10).map((f) => {
+                  const meta = NODE_TYPE_META[f.type] || NODE_TYPE_META.intel;
+                  return (
+                    <button
+                      key={`${f.type}:${f.raw_id}`}
+                      onClick={() => {
+                        setQuery(f.raw_id);
+                        setEntityType(f.type);
+                        explore(f.raw_id, f.type, depth);
+                      }}
+                      className="group flex items-center gap-1.5 px-2 py-1 rounded-md border border-border/50 hover:border-primary/50 bg-muted/20 hover:bg-muted/40 transition-colors"
+                      title={`${meta.label} · ${f.degree} connections`}
+                    >
+                      <span
+                        className="w-1.5 h-1.5 rounded-full shrink-0"
+                        style={{ background: meta.color, boxShadow: `0 0 4px ${meta.color}` }}
+                      />
+                      <span className="text-[11px] font-medium text-foreground/80 group-hover:text-foreground truncate max-w-[160px]">
+                        {f.label}
+                      </span>
+                      <span className="text-[9px] text-muted-foreground/70 tabular-nums shrink-0">
+                        ×{f.degree}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
