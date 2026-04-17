@@ -10,7 +10,6 @@ import {
   LayoutDashboard,
   Search,
   List,
-  User,
   ChevronLeft,
   ChevronRight,
   AlertTriangle,
@@ -76,7 +75,7 @@ const NAV_SECTIONS = [
 /* ── Desktop Sidebar ─────────────────────────────────── */
 function DesktopSidebar() {
   const pathname = usePathname();
-  const { sidebarOpen, toggleSidebar, user } = useAppStore();
+  const { sidebarOpen, toggleSidebar } = useAppStore();
 
   return (
     <aside
@@ -135,23 +134,6 @@ function DesktopSidebar() {
         ))}
       </nav>
 
-      {/* User */}
-      {user && (
-        <div className="border-t border-border/50 px-2 py-2">
-          <div className="flex items-center gap-2">
-            <div className="h-6 w-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-              <User className="h-3 w-3 text-primary" />
-            </div>
-            {sidebarOpen && (
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-medium truncate">{user.name || user.email}</p>
-                <p className="text-[9px] text-muted-foreground capitalize">{user.role}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Bottom collapse/expand bar */}
       <div className="border-t border-border/50 px-2 py-1.5">
         <button
@@ -199,7 +181,7 @@ function DesktopSidebar() {
 /* ── Mobile Sidebar (Drawer) ──────────────────────────── */
 function MobileSidebar() {
   const pathname = usePathname();
-  const { mobileSidebarOpen, setMobileSidebarOpen, user } = useAppStore();
+  const { mobileSidebarOpen, setMobileSidebarOpen } = useAppStore();
 
   // Close on route change
   useEffect(() => {
@@ -288,20 +270,6 @@ function MobileSidebar() {
           ))}
         </nav>
 
-        {/* User section */}
-        {user && (
-          <div className="border-t border-border/50 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                <User className="h-4 w-4 text-primary" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium truncate">{user.name || user.email}</p>
-                <p className="text-[11px] text-muted-foreground capitalize">{user.role}</p>
-              </div>
-            </div>
-          </div>
-        )}
       </aside>
     </>
   );
