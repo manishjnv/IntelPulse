@@ -13,6 +13,13 @@ x-common-env: &common-env
   # production` flag caused the config validator to reject the default
   # placeholder and crash the worker on startup.
   SECRET_KEY: ${SECRET_KEY}
+  # DEMO_MODE / DEMO_USER_* drive the "open access" no-login deployment.
+  # Without this in common-env, the api service silently defaults to
+  # demo_mode=False and every data endpoint returns 401, making the site
+  # look broken even though the DB has data.
+  DEMO_MODE: ${DEMO_MODE:-false}
+  DEMO_USER_EMAIL: ${DEMO_USER_EMAIL:-admin@intelpulse.tech}
+  DEMO_USER_NAME: ${DEMO_USER_NAME:-Admin}
 
 services:
   # ── Data stores ──────────────────────────────────────────────
