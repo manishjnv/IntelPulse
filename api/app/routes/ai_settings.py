@@ -562,27 +562,40 @@ async def get_pipeline_config():
         return json.loads(cached)
 
     s = env_settings
+
+    # Pull per-feature tiered models from ai_settings so this panel reflects
+    # the actual model that chat_completion_json will invoke — not the env
+    # primary. Tier defaults live in the model_<feature> columns (seeded by
+    # scripts/apply_tiered_model_routing.py).
+    from app.services.ai import get_ai_db_settings
+    db_cfg = await get_ai_db_settings() or {}
+    default_model = s.ai_model or "amazon.nova-lite-v1:0"
+
+    def _feat_model(feature_key: str) -> str:
+        # DB override first, then env primary, then a safety default.
+        return (db_cfg.get(f"model_{feature_key}") or "").strip() or default_model
+
     # Routing map — which feature takes which path today.
     routing = [
         {
             "feature": "News Enrichment",
             "path": "agent" if s.ai_use_agents else "single-shot",
-            "model": "Supervisor+IOC-Analyst+Risk-Scorer" if s.ai_use_agents else s.ai_model or "amazon.nova-lite-v1:0",
+            "model": "Supervisor+IOC-Analyst+Risk-Scorer" if s.ai_use_agents else _feat_model("news_enrichment"),
             "flag": "AI_USE_AGENTS",
             "flag_value": bool(s.ai_use_agents),
         },
         {
             "feature": "IOC Live Lookup",
             "path": "agent + single-shot fallback" if s.ai_use_agents_for_ioc else "single-shot",
-            "model": "Supervisor+IOC-Analyst" if s.ai_use_agents_for_ioc else s.ai_model or "amazon.nova-lite-v1:0",
+            "model": "Supervisor+IOC-Analyst" if s.ai_use_agents_for_ioc else _feat_model("live_lookup"),
             "flag": "AI_USE_AGENTS_FOR_IOC",
             "flag_value": bool(s.ai_use_agents_for_ioc),
         },
-        {"feature": "Intel Summary",       "path": "single-shot", "model": s.ai_model or "amazon.nova-lite-v1:0", "flag": None, "flag_value": None},
-        {"feature": "Intel Enrichment",    "path": "single-shot", "model": s.ai_model or "amazon.nova-lite-v1:0", "flag": None, "flag_value": None},
-        {"feature": "Report Generation",   "path": "single-shot", "model": s.ai_model or "amazon.nova-lite-v1:0", "flag": None, "flag_value": None},
-        {"feature": "Briefing Generation", "path": "single-shot", "model": s.ai_model or "amazon.nova-lite-v1:0", "flag": None, "flag_value": None},
-        {"feature": "KQL Generation",      "path": "single-shot", "model": s.ai_model or "amazon.nova-lite-v1:0", "flag": None, "flag_value": None},
+        {"feature": "Intel Summary",       "path": "single-shot", "model": _feat_model("intel_summary"),    "flag": None, "flag_value": None},
+        {"feature": "Intel Enrichment",    "path": "single-shot", "model": _feat_model("intel_enrichment"), "flag": None, "flag_value": None},
+        {"feature": "Report Generation",   "path": "single-shot", "model": _feat_model("report_gen"),       "flag": None, "flag_value": None},
+        {"feature": "Briefing Generation", "path": "single-shot", "model": _feat_model("briefing_gen"),     "flag": None, "flag_value": None},
+        {"feature": "KQL Generation",      "path": "single-shot", "model": _feat_model("kql_generation"),   "flag": None, "flag_value": None},
     ]
 
     # Agent catalog — query Bedrock control plane for live status.

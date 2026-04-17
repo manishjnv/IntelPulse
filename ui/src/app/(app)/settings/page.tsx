@@ -1695,8 +1695,30 @@ const PROVIDER_INFO: Record<string, { freeLimit: string; models: string[]; note:
   },
   bedrock: {
     freeLimit: "Pay-per-use: ~$0.25-$3 per 1M tokens (IAM role auth, no API key needed)",
-    models: ["amazon.nova-lite-v1:0", "amazon.nova-micro-v1:0", "amazon.nova-pro-v1:0", "anthropic.claude-3-haiku-20240307-v1:0", "anthropic.claude-3-5-sonnet-20241022-v2:0"],
-    note: "AWS managed AI. Multi-agent orchestration via Bedrock Agent Core. IAM role authentication — no API keys. Supports Claude, Nova, and Llama models.",
+    models: [
+      // Amazon Nova (invoke_model)
+      "amazon.nova-lite-v1:0",
+      "amazon.nova-micro-v1:0",
+      "amazon.nova-pro-v1:0",
+      // Meta Llama (Converse API) — verified available on prod
+      "us.meta.llama4-scout-17b-instruct-v1:0",
+      "us.meta.llama4-maverick-17b-instruct-v1:0",
+      "us.meta.llama3-3-70b-instruct-v1:0",
+      "us.meta.llama3-1-70b-instruct-v1:0",
+      // Mistral (Converse API)
+      "mistral.mistral-large-2402-v1:0",
+      "mistral.mistral-small-2402-v1:0",
+      // DeepSeek (Converse API)
+      "us.deepseek.r1-v1:0",
+      // AI21
+      "ai21.jamba-1-5-mini-v1:0",
+      // Anthropic — blocked on this account (INVALID_PAYMENT_INSTRUMENT)
+      // but kept in the list so operators can swap if a different account
+      // has Marketplace access:
+      "anthropic.claude-3-haiku-20240307-v1:0",
+      "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    ],
+    note: "AWS managed AI. Multi-agent orchestration via Bedrock Agent Core. IAM role auth — no API keys. Adapter handles Nova / Titan / Anthropic (invoke_model) + Meta / Mistral / DeepSeek / Cohere / AI21 (Converse API). Tier models editable in Tiered Routing tab.",
   },
   ollama: {
     freeLimit: "Local: Unlimited (runs on your hardware)",
