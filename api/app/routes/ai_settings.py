@@ -619,11 +619,14 @@ async def get_pipeline_config():
             # Collaborators — pull their names / statuses too.
             # aliasArn shape is:
             #   arn:aws:bedrock:<region>:<acct>:agent-alias/<agentId>/<aliasId>
-            # So split('/')[-2] is the collaborator's real agentId.
+            # Note: the segment before 'agent-alias' is separated by a COLON
+            # (ARN convention), not a slash — the only slashes are the two
+            # between agent-alias / agentId / aliasId. So `split('/')` yields
+            # exactly three parts; [-2] is the agentId.
             for sub in collabs:
                 alias_arn = (sub.get("agentDescriptor") or {}).get("aliasArn", "")
                 cid = ""
-                if "/agent-alias/" in alias_arn:
+                if ":agent-alias/" in alias_arn:
                     parts = alias_arn.split("/")
                     if len(parts) >= 3:
                         cid = parts[-2]
