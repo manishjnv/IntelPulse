@@ -24,6 +24,20 @@ from app.schemas import (
 )
 
 
+# Enum allowlists — must stay in sync with db/schema.sql CREATE TYPE statements.
+# Used to validate user-supplied filter values before binding them into a SQL
+# CAST, which prevents the f-string interpolation that previously enabled SQLi.
+_VALID_SEVERITY = frozenset(
+    {"critical", "high", "medium", "low", "info", "unknown"}
+)
+_VALID_FEED_TYPE = frozenset(
+    {"vulnerability", "ioc", "malware", "threat_actor", "campaign", "exploit", "advisory"}
+)
+_VALID_ASSET_TYPE = frozenset(
+    {"ip", "domain", "url", "hash_md5", "hash_sha1", "hash_sha256", "email", "cve", "file", "other"}
+)
+
+
 # ─── Intel Items ──────────────────────────────────────────
 async def get_intel_items(
     db: AsyncSession,
@@ -46,13 +60,28 @@ async def get_intel_items(
     query = select(IntelItem)
 
     if severity:
-        query = query.where(IntelItem.severity == text(f"'{severity}'::severity_level"))
+        if severity not in _VALID_SEVERITY:
+            raise ValueError(f"Invalid severity: {severity!r}")
+        query = query.where(
+            IntelItem.severity
+            == text("CAST(:severity AS severity_level)").bindparams(severity=severity)
+        )
     if feed_type:
-        query = query.where(IntelItem.feed_type == text(f"'{feed_type}'::feed_type"))
+        if feed_type not in _VALID_FEED_TYPE:
+            raise ValueError(f"Invalid feed_type: {feed_type!r}")
+        query = query.where(
+            IntelItem.feed_type
+            == text("CAST(:feed_type AS feed_type)").bindparams(feed_type=feed_type)
+        )
     if source_name:
         query = query.where(IntelItem.source_name == source_name)
     if asset_type:
-        query = query.where(IntelItem.asset_type == text(f"'{asset_type}'::asset_type"))
+        if asset_type not in _VALID_ASSET_TYPE:
+            raise ValueError(f"Invalid asset_type: {asset_type!r}")
+        query = query.where(
+            IntelItem.asset_type
+            == text("CAST(:asset_type AS asset_type)").bindparams(asset_type=asset_type)
+        )
     if is_kev is not None:
         query = query.where(IntelItem.is_kev == is_kev)
     if exploit_available is not None:
