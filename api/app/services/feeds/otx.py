@@ -32,13 +32,26 @@ class OTXConnector(BaseFeedConnector):
         if last_cursor:
             params["modified_since"] = last_cursor
 
+        pulses: list[dict] = []
         try:
             response = await self.client.get(url, headers=headers, params=params)
+            if response.status_code == 429:
+                logger.warning("otx_rate_limited", endpoint="subscribed")
+                return []
             response.raise_for_status()
             data = response.json()
-            pulses = data.get("results", [])
+            if not isinstance(data, dict):
+                logger.warning("otx_schema_drift", endpoint="subscribed", got_type=type(data).__name__)
+                data = {}
+            pulses = data.get("results") or []
+            if not isinstance(pulses, list):
+                logger.warning("otx_schema_drift", endpoint="subscribed", field="results",
+                               got_type=type(pulses).__name__)
+                pulses = []
         except Exception as e:
-            logger.debug("otx_subscribed_error", error=str(e))
+            # Warn (not debug) so a hard failure is visible in logs — a bare
+            # `return []` on broken schema previously hid outages for days.
+            logger.warning("otx_subscribed_error", error=str(e)[:300])
             pulses = []
 
         # Fallback: if no subscribed pulses, search for recent threat pulses
@@ -51,12 +64,22 @@ class OTXConnector(BaseFeedConnector):
                     "limit": 50,
                 }
                 response = await self.client.get(search_url, headers=headers, params=search_params)
+                if response.status_code == 429:
+                    logger.warning("otx_rate_limited", endpoint="search")
+                    return []
                 response.raise_for_status()
                 data = response.json()
-                pulses = data.get("results", [])
+                if not isinstance(data, dict):
+                    logger.warning("otx_schema_drift", endpoint="search", got_type=type(data).__name__)
+                    data = {}
+                pulses = data.get("results") or []
+                if not isinstance(pulses, list):
+                    logger.warning("otx_schema_drift", endpoint="search", field="results",
+                                   got_type=type(pulses).__name__)
+                    pulses = []
                 logger.info("otx_search_fallback", total=len(pulses))
             except Exception as e:
-                logger.error("otx_search_error", error=str(e))
+                logger.error("otx_search_error", error=str(e)[:300])
                 pulses = []
 
         logger.info("otx_fetch", total=len(pulses))

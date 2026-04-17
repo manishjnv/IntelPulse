@@ -37,3 +37,7 @@ dump.rdb
 pg_data
 os_data
 redis_data
+
+# AWS sensitive files
+stack-events.json
+cdk.out*/

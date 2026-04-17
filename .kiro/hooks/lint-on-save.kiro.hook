@@ -13,5 +13,7 @@
     "type": "runCommand",
     "command": "ruff check --fix .",
     "timeout": 30
-  }
+  },
+  "workspaceFolderName": "ti-platform",
+  "shortName": "lint-on-save"
 }

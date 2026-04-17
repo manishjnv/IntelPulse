@@ -68,8 +68,20 @@ async def health_check():
     except Exception:
         pass
 
+    # Three-tier status. Postgres and Redis are load-bearing; OpenSearch is
+    # a search-quality accelerator — its absence degrades the product but
+    # doesn't break it. Previously only pg+redis fed "ok", and OS was
+    # silent. Now `degraded` explicitly flags OS outages so the status bar
+    # and dashboards can alert on them.
+    if pg_ok and redis_ok and os_ok:
+        status = "ok"
+    elif pg_ok and redis_ok:
+        status = "degraded"
+    else:
+        status = "down"
+
     return HealthResponse(
-        status="ok" if (pg_ok and redis_ok) else "degraded",
+        status=status,
         version="1.0.0",
         postgres=pg_ok,
         redis=redis_ok,
@@ -202,8 +214,14 @@ async def status_bar():
     except Exception:
         pass
 
+    if pg_ok and redis_ok and os_ok:
+        bar_status = "ok"
+    elif pg_ok and redis_ok:
+        bar_status = "degraded"
+    else:
+        bar_status = "down"
     payload = StatusBarResponse(
-        status="ok" if (pg_ok and redis_ok) else "degraded",
+        status=bar_status,
         postgres=pg_ok,
         redis=redis_ok,
         opensearch=os_ok,

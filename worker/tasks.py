@@ -126,20 +126,50 @@ def ingest_feed(feed_name: str) -> dict:
         return result
 
     except Exception as e:
-        logger.error("ingest_error", feed=feed_name, error=str(e))
-        session.rollback()
+        logger.error("ingest_error", feed=feed_name, error=str(e), exc_info=True)
+        # Roll back the poisoned transaction on the primary session before
+        # closing it in `finally`.
         try:
-            _update_feed_state(session, feed_name, status="failed", error_message=str(e)[:500])
-            session.commit()
-        except Exception:
-            pass
-        return {"error": str(e), "feed": feed_name}
+            session.rollback()
+        except Exception as rb_err:
+            logger.warning("ingest_rollback_failed", feed=feed_name, error=str(rb_err))
+        # Write the failed-state marker on an INDEPENDENT session so a
+        # broken pool connection on the primary session can't swallow the
+        # update. Without this, a feed can stay pinned to status="running"
+        # forever, hiding the fact that it's dead.
+        _write_feed_failure_state(feed_name, str(e)[:500])
+        # Re-raise so RQ marks the job as failed and it surfaces in the
+        # failed-job registry. The scheduler will still re-enqueue at the
+        # next interval; this just ensures operators see the failure.
+        raise
     finally:
         session.close()
         try:
             _run_async(connector.close())
         except RuntimeError:
             pass  # Event loop closed — httpx client already cleaned up
+
+
+def _write_feed_failure_state(feed_name: str, error_message: str) -> None:
+    """Persist a feed's failed state using a fresh session.
+
+    Isolated from the caller's session so a poisoned/closed connection on
+    the primary session can't prevent the failure marker from landing.
+    Swallowed errors here are logged but non-fatal — the caller's re-raise
+    is what actually reports the failure.
+    """
+    failure_session = SyncSession()
+    try:
+        _update_feed_state(failure_session, feed_name, status="failed", error_message=error_message)
+        failure_session.commit()
+    except Exception as ex:
+        logger.error("feed_failure_state_update_failed", feed=feed_name, error=str(ex))
+        try:
+            failure_session.rollback()
+        except Exception:
+            pass
+    finally:
+        failure_session.close()
 
 
 def ingest_all_feeds() -> list[dict]:
@@ -162,8 +192,12 @@ def refresh_materialized_views() -> dict:
         logger.info("materialized_views_refreshed")
         return {"status": "ok"}
     except Exception as e:
-        logger.error("mv_refresh_error", error=str(e))
-        return {"error": str(e)}
+        logger.error("mv_refresh_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -204,11 +238,33 @@ def generate_ai_summaries(batch_size: int = 10) -> dict:
         return {"generated": generated, "total": len(items)}
 
     except Exception as e:
-        logger.error("ai_summary_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("ai_summary_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
+
+
+def _merge_tactic_labels(existing_label: str | None, new_label: str | None) -> str:
+    """Merge two `tactic_label` values without losing information.
+
+    tactic_label is stored as a single String(100) column, but many techniques
+    span multiple tactics in MITRE. We de-duplicate and join with " / ",
+    truncating to 100 chars. Empty inputs are ignored.
+    """
+    parts: list[str] = []
+    for label in (existing_label, new_label):
+        if not label:
+            continue
+        for piece in label.split("/"):
+            piece = piece.strip()
+            if piece and piece not in parts:
+                parts.append(piece)
+    merged = " / ".join(parts)[:100]
+    return merged or (existing_label or new_label or "")
 
 
 def sync_attack_techniques() -> dict:
@@ -223,13 +279,17 @@ def sync_attack_techniques() -> dict:
 
         upserted = 0
         for t in techniques:
-            existing = session.query(AttackTechnique).filter_by(
-                id=t["id"], tactic=t["tactic"]
-            ).first()
+            # PK is just `id` — one row per technique. MITRE lists some
+            # techniques under multiple tactics; we merge the tactic_label
+            # strings so no tactic information is silently lost.
+            existing = session.query(AttackTechnique).filter_by(id=t["id"]).first()
 
             if existing:
                 existing.name = t["name"]
-                existing.tactic_label = t["tactic_label"]
+                existing.tactic = t["tactic"]  # primary tactic wins (ordered)
+                existing.tactic_label = _merge_tactic_labels(
+                    existing.tactic_label, t["tactic_label"]
+                )
                 existing.description = t["description"]
                 existing.url = t["url"]
                 existing.platforms = t["platforms"]
@@ -239,11 +299,6 @@ def sync_attack_techniques() -> dict:
                 existing.data_sources = t["data_sources"]
                 existing.updated_at = datetime.now(timezone.utc)
             else:
-                # For multi-tactic techniques, use composite key id+tactic
-                # But our PK is just id, so we pick the first tactic
-                exists_any = session.query(AttackTechnique).filter_by(id=t["id"]).first()
-                if exists_any:
-                    continue  # Already stored under a different tactic
                 session.add(AttackTechnique(**t))
             upserted += 1
 
@@ -252,9 +307,12 @@ def sync_attack_techniques() -> dict:
         return {"upserted": upserted, "total_fetched": len(techniques)}
 
     except Exception as e:
-        logger.error("attack_sync_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("attack_sync_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -316,9 +374,12 @@ def map_intel_to_attack(batch_size: int = 100) -> dict:
         return {"items_processed": len(items), "links_created": total_links}
 
     except Exception as e:
-        logger.error("attack_mapping_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("attack_mapping_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -397,9 +458,12 @@ def remap_all_intel_to_attack() -> dict:
         return {"items_processed": total_items, "links_created": total_links, "old_links_deleted": deleted}
 
     except Exception as e:
-        logger.error("remap_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("remap_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -418,9 +482,12 @@ def build_relationships(batch_size: int = 200) -> dict:
         logger.info("relationship_build_complete", **stats)
         return stats
     except Exception as e:
-        logger.error("relationship_build_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("relationship_build_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -526,9 +593,12 @@ def extract_iocs(batch_size: int = 500) -> dict:
         return {"items_processed": len(items), "iocs_extracted": extracted, "links_created": linked}
 
     except Exception as e:
-        logger.error("ioc_extraction_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("ioc_extraction_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -574,8 +644,7 @@ def _extract_ioc_values(item) -> list[tuple[str, str]]:
 
     if item.asset_type == "ip":
         for ip in set(re.findall(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b", text)):
-            parts = ip.split(".")
-            if all(0 <= int(p) <= 255 for p in parts):
+            if _is_public_ip(ip):
                 results.append((ip, "ip"))
 
     elif item.asset_type == "url":
@@ -583,10 +652,10 @@ def _extract_ioc_values(item) -> list[tuple[str, str]]:
             results.append((url.rstrip(".,;)"), "url"))
 
     elif item.asset_type == "domain":
-        skip = {"abuse.ch", "alienvault.com", "abuseipdb.com", "nist.gov", "mitre.org", "cisa.gov"}
         for d in set(re.findall(r"\b([a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?(?:\.[a-z]{2,})+)\b", text, re.I)):
-            if d.lower() not in skip:
-                results.append((d.lower(), "domain"))
+            d_low = d.lower()
+            if _is_probable_malicious_domain(d_low):
+                results.append((d_low, "domain"))
 
     elif item.asset_type in ("hash_sha256", "hash_md5", "hash_sha1"):
         sha256 = set(re.findall(r"\b([a-f0-9]{64})\b", text, re.I))
@@ -601,6 +670,103 @@ def _extract_ioc_values(item) -> list[tuple[str, str]]:
             results.append((h.lower(), "hash_md5"))
 
     return results
+
+
+# IP ranges that must never be treated as IOCs: RFC1918, loopback, link-local,
+# CGNAT, multicast, reserved, documentation. Parsing with ipaddress is simpler
+# but adds an import cost per call — the numeric checks below are ~free.
+def _is_public_ip(ip: str) -> bool:
+    """Return True iff ``ip`` is a globally routable IPv4 address."""
+    try:
+        parts = [int(p) for p in ip.split(".")]
+    except ValueError:
+        return False
+    if len(parts) != 4 or not all(0 <= p <= 255 for p in parts):
+        return False
+    a, b = parts[0], parts[1]
+    # 0.0.0.0/8, 127/8, 169.254/16 (link-local), 224-255 (multicast/reserved)
+    if a in (0, 127) or a >= 224:
+        return False
+    if a == 169 and b == 254:
+        return False
+    # 10/8, 172.16/12, 192.168/16 — RFC1918 private
+    if a == 10:
+        return False
+    if a == 172 and 16 <= b <= 31:
+        return False
+    if a == 192 and b == 168:
+        return False
+    # 100.64/10 CGNAT, 192.0.0/24, 192.0.2/24 (TEST-NET-1), 198.18/15 (benchmark),
+    # 198.51.100/24 (TEST-NET-2), 203.0.113/24 (TEST-NET-3)
+    if a == 100 and 64 <= b <= 127:
+        return False
+    if a == 192 and b == 0:
+        return False
+    if a == 198 and b in (18, 19):
+        return False
+    if a == 198 and b == 51 and parts[2] == 100:
+        return False
+    if a == 203 and b == 0 and parts[2] == 113:
+        return False
+    return True
+
+
+# Well-known non-malicious domains that frequently appear in feed descriptions
+# (vendor sites, advisory boards, standards bodies, research orgs). Extracting
+# these as IOCs poisons the graph with legitimate infrastructure. This list is
+# intentionally a hard allowlist — safer to miss a real IOC than to publish a
+# false positive. Pair with manual admin IOC curation for edge cases.
+_BENIGN_DOMAIN_SUFFIXES = frozenset({
+    # Feed/advisory providers
+    "abuse.ch", "alienvault.com", "abuseipdb.com", "virustotal.com",
+    "shodan.io", "threatfox.abuse.ch", "urlhaus.abuse.ch", "malwarebazaar.abuse.ch",
+    "internetdb.shodan.io", "ipinfo.io", "ipinfo.tech",
+    # Standards / government
+    "nist.gov", "mitre.org", "cisa.gov", "first.org", "cve.mitre.org",
+    "nvd.nist.gov", "cve.org", "cwe.mitre.org", "attack.mitre.org",
+    "us-cert.gov", "cert.org",
+    # Dev/hosting infrastructure
+    "github.com", "github.io", "githubusercontent.com", "raw.githubusercontent.com",
+    "gitlab.com", "bitbucket.org", "readthedocs.io",
+    # Search/docs
+    "google.com", "googleusercontent.com", "microsoft.com", "apple.com",
+    "amazon.com", "aws.amazon.com",
+    # CDN / infrastructure
+    "cloudflare.com", "akamai.com", "fastly.net",
+    # News / research orgs
+    "bleepingcomputer.com", "thehackernews.com", "securityweek.com",
+    "krebsonsecurity.com", "darkreading.com", "threatpost.com",
+    "sans.org", "isc.sans.edu",
+    # Browsers / protocol docs
+    "mozilla.org", "w3.org", "ietf.org", "iana.org",
+    # TLDs / examples
+    "example.com", "example.org", "example.net", "localhost",
+})
+
+
+def _is_probable_malicious_domain(domain: str) -> bool:
+    """Filter obvious false-positives out of regex-extracted domain candidates.
+
+    Conservative by design: if a domain is in the benign allowlist or matches
+    any benign SUFFIX (so subdomains like `docs.github.com` are also rejected),
+    drop it. Still not perfect — a malicious subdomain of github.io (e.g.
+    `evil.github.io`) will be dropped — but better than polluting the IOC
+    graph with every vendor URL that appears in advisory prose.
+    """
+    if not domain or "." not in domain:
+        return False
+    # Exact-match benign
+    if domain in _BENIGN_DOMAIN_SUFFIXES:
+        return False
+    # Suffix-match benign (covers `docs.github.com`, `blog.microsoft.com`, etc.)
+    for suffix in _BENIGN_DOMAIN_SUFFIXES:
+        if domain.endswith("." + suffix):
+            return False
+    # Pure-numeric TLDs (e.g. `1.2.3.4` if the IP regex missed) — skip
+    tld = domain.rsplit(".", 1)[-1]
+    if tld.isdigit():
+        return False
+    return True
 
 
 # ─── Notification Evaluation ──────────────────────────────
@@ -627,9 +793,12 @@ def evaluate_notification_rules(lookback_minutes: int = 10) -> dict:
         stats = _evaluate(session, lookback_minutes=lookback_minutes)
         return stats
     except Exception as e:
-        logger.error("notification_eval_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("notification_eval_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -726,6 +895,7 @@ def _bulk_store(session: Session, items: list[dict]) -> list[dict]:
     )
 
     stored_items: list[dict] = []
+    dropped = 0
     for item in items:
         if item["source_hash"] in existing:
             continue
@@ -734,10 +904,24 @@ def _bulk_store(session: Session, items: list[dict]) -> list[dict]:
             session.flush()
             stored_items.append(item)
             existing.add(item["source_hash"])
-        except Exception:
+        except Exception as ex:
+            # Previously this block silently swallowed ALL errors (bad schema,
+            # NOT NULL violations, dropped connections) making feed failures
+            # invisible. Log the offending source_hash + the exception so
+            # operators can diagnose, then roll back and continue.
+            logger.warning(
+                "bulk_store_skip",
+                source_hash=item.get("source_hash"),
+                source_name=item.get("source_name"),
+                asset_type=item.get("asset_type"),
+                error=str(ex)[:300],
+            )
+            dropped += 1
             session.rollback()
             continue
 
+    if dropped:
+        logger.warning("bulk_store_dropped_total", dropped=dropped, accepted=len(stored_items))
     return stored_items
 
 
@@ -816,8 +1000,17 @@ def enrich_ips_ipinfo(batch_size: int = 100) -> dict:
             data = _run_async(_ipinfo_lookup(ioc.value, token))
             if data is None:
                 errors += 1
-                # Mark as enriched to avoid infinite retry loop
-                ioc.enriched_at = datetime.now(timezone.utc)
+                # Transient failures (rate-limit, network, 5xx) should not permanently
+                # blacklist the IP. Track attempts in context; only give up after 5.
+                ctx = dict(ioc.context or {})
+                attempts = int(ctx.get("ipinfo_attempts", 0)) + 1
+                ctx["ipinfo_attempts"] = attempts
+                ctx["ipinfo_last_attempt"] = datetime.now(timezone.utc).isoformat()
+                ioc.context = ctx
+                if attempts >= 5:
+                    # Give up after 5 attempts — mark as enriched so the query moves on.
+                    ioc.enriched_at = datetime.now(timezone.utc)
+                    logger.warning("ipinfo_gave_up", ip=ioc.value, attempts=attempts)
                 continue
 
             cc = data.get("country", "")
@@ -843,9 +1036,12 @@ def enrich_ips_ipinfo(batch_size: int = 100) -> dict:
         return {"enriched": enriched, "errors": errors, "total": len(ips)}
 
     except Exception as e:
-        logger.error("ipinfo_enrichment_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("ipinfo_enrichment_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -995,9 +1191,12 @@ def enrich_ips_internetdb(batch_size: int = 100) -> dict:
         return {"enriched": enriched, "errors": errors, "total": len(rows)}
 
     except Exception as e:
-        logger.error("internetdb_enrichment_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("internetdb_enrichment_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -1183,9 +1382,12 @@ def enrich_epss_scores(batch_size: int = 5000) -> dict:
         }
 
     except Exception as e:
-        logger.error("epss_enrichment_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("epss_enrichment_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -1303,10 +1505,6 @@ def ingest_news() -> dict:
                         + new_content
                     )
                     # Cap merged content at 15 000 chars
-                    session.execute(
-                        select(NewsItem)
-                        .where(NewsItem.id == mid)
-                    )
                     existing_item = session.get(NewsItem, mid)
                     if existing_item:
                         existing_item.raw_content = merged_content[:15000]
@@ -1399,9 +1597,12 @@ def ingest_news() -> dict:
         }
 
     except Exception as e:
-        logger.error("news_ingest_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("news_ingest_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -1409,38 +1610,76 @@ def ingest_news() -> dict:
 def cleanup_stale_news(max_age_hours: int = 6) -> dict:
     """Delete unenriched news items older than max_age_hours.
 
-    Keeps the pipeline lean — if an article wasn't enriched within a few hours
-    it's stale and should be replaced by fresher content in the next cycle.
+    Race-safe: only deletes stale items if the enrichment pipeline has made
+    progress on *newer* items since. If no newer item has been successfully
+    enriched, we assume the enrichment worker is backed up (rate-limited,
+    down, or slow) and defer the cleanup — better to keep unenriched items
+    than silently discard news that never had a real chance to be enriched.
     """
     from app.models.models import NewsItem
+    from sqlalchemy import exists as sa_exists
 
     session = SyncSession()
     try:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
-        result = session.execute(
+
+        # Proof-of-progress probe: is there any successfully enriched article
+        # newer than our cutoff? If not, enrichment is stalled — skip delete.
+        progress = session.execute(
+            select(func.count(NewsItem.id))
+            .where(NewsItem.ai_enriched == True, NewsItem.created_at >= cutoff)
+        ).scalar() or 0
+
+        # Count candidates (unenriched + older than cutoff) for reporting
+        stale_count = session.execute(
             select(func.count(NewsItem.id))
             .where(NewsItem.ai_enriched == False, NewsItem.created_at < cutoff)
-        )
-        stale_count = result.scalar() or 0
+        ).scalar() or 0
 
-        if stale_count > 0:
-            session.execute(
-                NewsItem.__table__.delete().where(
-                    NewsItem.ai_enriched == False,
-                    NewsItem.created_at < cutoff,
-                )
-            )
-            session.commit()
-            logger.info("news_cleanup_purged", count=stale_count, max_age_hours=max_age_hours)
-        else:
+        if stale_count == 0:
             logger.info("news_cleanup_none")
+            return {"purged": 0, "deferred": 0, "progress_items": progress}
 
-        return {"purged": stale_count}
+        if progress == 0:
+            logger.warning(
+                "news_cleanup_deferred",
+                reason="no newer enriched items — enrichment pipeline may be stalled",
+                stale_candidates=stale_count,
+                max_age_hours=max_age_hours,
+            )
+            return {"purged": 0, "deferred": stale_count, "progress_items": 0}
+
+        # Per-row safety: only delete a stale item when at least one newer
+        # item has been successfully enriched. This prevents purging a batch
+        # that happened to land right when the pipeline was paused.
+        inner_alias = NewsItem.__table__.alias("newer")
+        purge_stmt = NewsItem.__table__.delete().where(
+            NewsItem.ai_enriched == False,
+            NewsItem.created_at < cutoff,
+            sa_exists().where(
+                inner_alias.c.ai_enriched == True,
+                inner_alias.c.created_at > NewsItem.created_at,
+            ),
+        )
+        res = session.execute(purge_stmt)
+        session.commit()
+        purged = res.rowcount or 0
+        logger.info(
+            "news_cleanup_purged",
+            purged=purged,
+            deferred=max(stale_count - purged, 0),
+            progress_items=progress,
+            max_age_hours=max_age_hours,
+        )
+        return {"purged": purged, "deferred": max(stale_count - purged, 0), "progress_items": progress}
 
     except Exception as e:
-        logger.error("news_cleanup_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("news_cleanup_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -1506,9 +1745,12 @@ def enrich_news_batch(batch_size: int = 10) -> dict:
         return {"enriched": enriched_count, "errors": errors}
 
     except Exception as e:
-        logger.error("news_enrich_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("news_enrich_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -1601,9 +1843,12 @@ def re_enrich_fallback_news(batch_size: int = 10) -> dict:
         return {"re_enriched": re_enriched, "total": len(items)}
 
     except Exception as e:
-        logger.error("news_re_enrich_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("news_re_enrich_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -1723,9 +1968,12 @@ def generate_kql_rules_batch(batch_size: int = 5) -> dict:
         return {"generated": generated_count, "errors": errors}
 
     except Exception as e:
-        logger.error("kql_gen_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("kql_gen_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -1748,9 +1996,12 @@ def extract_intel_from_news(lookback_hours: int = 2) -> dict:
         logger.info("intel_extraction_done", **result)
         return result
     except Exception as e:
-        logger.error("intel_extraction_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("intel_extraction_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()
 
@@ -1773,8 +2024,11 @@ def enrich_products_nvd() -> dict:
         logger.info("nvd_enrichment_done", **result)
         return result
     except Exception as e:
-        logger.error("nvd_enrichment_error", error=str(e))
-        session.rollback()
-        return {"error": str(e)}
+        logger.error("nvd_enrichment_error", error=str(e), exc_info=True)
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         session.close()

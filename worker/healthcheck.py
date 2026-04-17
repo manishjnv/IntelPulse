@@ -17,7 +17,10 @@ from redis import Redis
 from rq_scheduler import Scheduler
 from app.core.config import get_settings
 
-EXPECTED_JOBS = 14
+# Minimum job count fallback if scheduler hasn't written its live count yet
+# (e.g. during the first 30s after container start). Kept low to avoid
+# false alarms; the real check uses the live count.
+MIN_JOBS_FALLBACK = 1
 
 try:
     settings = get_settings()
@@ -29,14 +32,17 @@ try:
         print(f"UNHEALTHY: no scheduler heartbeat in Redis")
         sys.exit(1)
 
-    # 2. Check job count
+    # 2. Check job count against the live expected-count published by scheduler
+    expected_raw = r.get("scheduler:expected_job_count")
+    expected = int(expected_raw) if expected_raw else MIN_JOBS_FALLBACK
+
     s = Scheduler(queue_name="default", connection=r)
     jobs = list(s.get_jobs())
-    if len(jobs) < EXPECTED_JOBS:
-        print(f"UNHEALTHY: {len(jobs)}/{EXPECTED_JOBS} jobs in Redis")
+    if len(jobs) < expected:
+        print(f"UNHEALTHY: {len(jobs)}/{expected} jobs in Redis")
         sys.exit(1)
 
-    print(f"HEALTHY: {len(jobs)} jobs, heartbeat OK")
+    print(f"HEALTHY: {len(jobs)}/{expected} jobs, heartbeat OK")
     sys.exit(0)
 
 except Exception as e:

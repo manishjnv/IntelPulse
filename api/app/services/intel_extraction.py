@@ -279,7 +279,7 @@ def _upsert_campaign_sync(
             "targeted_sectors": func.array_cat(ThreatCampaign.targeted_sectors, item.targeted_sectors or []),
             "targeted_regions": func.array_cat(ThreatCampaign.targeted_regions, item.targeted_regions or []),
             "malware_used": func.array_cat(ThreatCampaign.malware_used, item.malware_families or []),
-            "techniques_used": func.array_cat(ThreatCampaign.techniques_used, item.tactics_techniques or []),
+            "techniques_used": func.array_cat(ThreatCampaign.techniques_used, normalised_techniques),
             "cves_exploited": func.array_cat(ThreatCampaign.cves_exploited, item.cves or []),
             "updated_at": now,
         },

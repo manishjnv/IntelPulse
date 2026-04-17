@@ -26,6 +26,33 @@ class ShodanConnector(BaseFeedConnector):
     FEED_NAME = "shodan"
     SOURCE_RELIABILITY = 80
 
+    @staticmethod
+    def _extract_cves(payload, endpoint_label: str) -> list[dict]:
+        """Defensively pull the ``cves`` list out of a CVEDB response.
+
+        Previously the code did ``data.get("cves", [])`` on whatever came
+        back — if Shodan changed the envelope to a list or error object the
+        feed silently returned 0 items, indistinguishable from a legitimate
+        empty result. Now we warn on schema drift so operators can act.
+        """
+        if not isinstance(payload, dict):
+            logger.warning("shodan_schema_drift", endpoint=endpoint_label,
+                           got_type=type(payload).__name__)
+            return []
+        cves = payload.get("cves")
+        if cves is None:
+            # Empty response is fine; missing envelope key is suspicious
+            if payload:
+                logger.warning("shodan_schema_drift", endpoint=endpoint_label,
+                               reason="missing 'cves' key",
+                               keys=list(payload.keys())[:10])
+            return []
+        if not isinstance(cves, list):
+            logger.warning("shodan_schema_drift", endpoint=endpoint_label,
+                           field="cves", got_type=type(cves).__name__)
+            return []
+        return cves
+
     async def fetch(self, last_cursor: str | None = None) -> list[dict]:
         all_items: list[dict] = []
 
@@ -35,15 +62,18 @@ class ShodanConnector(BaseFeedConnector):
                 f"{CVEDB_URL}/cves",
                 params={"limit": 100, "sort_by_epss": True},
             )
-            if response.status_code == 200:
-                data = response.json()
-                cves = data.get("cves", [])
+            if response.status_code == 429:
+                logger.warning("shodan_rate_limited", endpoint="cvedb_epss")
+            elif response.status_code == 200:
+                cves = self._extract_cves(response.json(), "cvedb_epss")
                 for cve in cves:
                     cve["_shodan_type"] = "cvedb"
                 all_items.extend(cves)
                 logger.info("shodan_cvedb_epss", count=len(cves))
+            else:
+                logger.warning("shodan_cvedb_epss_http", status=response.status_code)
         except Exception as e:
-            logger.error("shodan_cvedb_epss_error", error=str(e))
+            logger.error("shodan_cvedb_epss_error", error=str(e)[:300])
 
         # 2. CVEDB: KEV entries (known exploited vulns)
         try:
@@ -51,18 +81,20 @@ class ShodanConnector(BaseFeedConnector):
                 f"{CVEDB_URL}/cves",
                 params={"limit": 50, "is_kev": True},
             )
-            if response.status_code == 200:
-                data = response.json()
-                cves = data.get("cves", [])
-                # Avoid duplicates — only add CVEs not already fetched
+            if response.status_code == 429:
+                logger.warning("shodan_rate_limited", endpoint="cvedb_kev")
+            elif response.status_code == 200:
+                cves = self._extract_cves(response.json(), "cvedb_kev")
                 existing_ids = {item.get("cve_id") for item in all_items}
                 new_cves = [c for c in cves if c.get("cve_id") not in existing_ids]
                 for cve in new_cves:
                     cve["_shodan_type"] = "cvedb"
                 all_items.extend(new_cves)
                 logger.info("shodan_cvedb_kev", count=len(new_cves))
+            else:
+                logger.warning("shodan_cvedb_kev_http", status=response.status_code)
         except Exception as e:
-            logger.error("shodan_cvedb_kev_error", error=str(e))
+            logger.error("shodan_cvedb_kev_error", error=str(e)[:300])
 
         # 3. CVEDB: Recent CVEs with high CVSS
         for year in ["2025", "2024"]:
@@ -71,16 +103,18 @@ class ShodanConnector(BaseFeedConnector):
                     f"{CVEDB_URL}/cves",
                     params={"limit": 30, "sort_by_epss": True, "start_date": f"{year}-01-01"},
                 )
+                if response.status_code == 429:
+                    logger.warning("shodan_rate_limited", endpoint=f"cvedb_year_{year}")
+                    continue
                 if response.status_code == 200:
-                    data = response.json()
-                    cves = data.get("cves", [])
+                    cves = self._extract_cves(response.json(), f"cvedb_year_{year}")
                     existing_ids = {item.get("cve_id") for item in all_items}
                     new_cves = [c for c in cves if c.get("cve_id") not in existing_ids]
                     for cve in new_cves:
                         cve["_shodan_type"] = "cvedb"
                     all_items.extend(new_cves)
             except Exception as e:
-                logger.debug("shodan_cvedb_year_error", year=year, error=str(e))
+                logger.debug("shodan_cvedb_year_error", year=year, error=str(e)[:300])
 
         logger.info("shodan_fetch", total=len(all_items))
         return all_items

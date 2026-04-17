@@ -40,8 +40,21 @@ def mock_user():
 
 
 @pytest.fixture(autouse=True)
-def _mock_redis():
-    """Patch the Redis client to prevent real connections in tests."""
+def _mock_redis(request):
+    """Patch the Redis client to prevent real connections in tests.
+
+    Tests marked with @pytest.mark.no_redis_stub skip the patch entirely
+    — useful for lightweight unit tests that don't touch the Redis client
+    and shouldn't require the `redis` package to be installed.
+    """
+    if "no_redis_stub" in request.keywords:
+        yield
+        return
+    # Ensure the submodule is imported before patching; `patch("a.b.c", ...)`
+    # resolves `a.b` via import, not getattr, so if `app.core.redis` has
+    # never been imported (via `from app.core.redis import ...`) the patch
+    # fails with AttributeError on newer Pythons.
+    import app.core.redis  # noqa: F401
     mock_redis = AsyncMock()
     mock_redis.get.return_value = None
     mock_redis.set.return_value = True

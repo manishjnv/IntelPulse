@@ -35,10 +35,12 @@ redis_conn = Redis.from_url(settings.redis_url)
 scheduler = Scheduler(queue_name="default", connection=redis_conn)
 
 # ── Constants ────────────────────────────────────────────
-EXPECTED_JOB_COUNT = 28          # total scheduled jobs we register
+# Watchdog reads the live registered-count after setup_schedules() completes,
+# so adding or removing schedules here never requires updating a magic number.
 WATCHDOG_INTERVAL = 120          # seconds between health checks
 HEARTBEAT_KEY = "scheduler:heartbeat"
 HEARTBEAT_TTL = 300              # seconds — expires if scheduler dies
+EXPECTED_JOB_COUNT_KEY = "scheduler:expected_job_count"
 
 
 _shutdown = threading.Event()
@@ -79,28 +81,36 @@ def _write_heartbeat():
 
 # ── Self-healing Watchdog ────────────────────────────────
 
+def _get_expected_job_count() -> int:
+    """Read the expected count stored by setup_schedules()."""
+    try:
+        val = redis_conn.get(EXPECTED_JOB_COUNT_KEY)
+        return int(val) if val else 0
+    except Exception:
+        return 0
+
+
 def _watchdog_loop():
     """Background thread: every WATCHDOG_INTERVAL seconds, verify that the
     expected number of jobs exist in Redis.  If jobs have disappeared
     (Redis flush, bug, race condition), re-register them automatically.
     """
-    print(f"Watchdog started — checking every {WATCHDOG_INTERVAL}s for {EXPECTED_JOB_COUNT} jobs")
+    expected = _get_expected_job_count()
+    print(f"Watchdog started — checking every {WATCHDOG_INTERVAL}s for {expected} jobs")
     while not _shutdown.is_set():
         _shutdown.wait(WATCHDOG_INTERVAL)
         if _shutdown.is_set():
             break
         try:
             _write_heartbeat()
+            expected = _get_expected_job_count()
             current = list(scheduler.get_jobs())
-            if len(current) < EXPECTED_JOB_COUNT:
+            if expected > 0 and len(current) < expected:
                 print(
-                    f"WATCHDOG: only {len(current)}/{EXPECTED_JOB_COUNT} jobs in Redis — "
+                    f"WATCHDOG: only {len(current)}/{expected} jobs in Redis — "
                     f"re-registering all schedules"
                 )
                 setup_schedules()
-            else:
-                # Periodic health log (every check)
-                pass
         except Exception as e:
             print(f"WATCHDOG error: {e}")
     print("Watchdog stopped")
@@ -407,14 +417,21 @@ def setup_schedules():
         meta={"task": "nvd_enrichment"},
     )
 
-    print(f"Scheduled {len(list(scheduler.get_jobs()))} jobs")
+    registered = list(scheduler.get_jobs())
+    print(f"Scheduled {len(registered)} jobs")
 
     # Log each registered job for debugging
-    for job in scheduler.get_jobs():
+    for job in registered:
         func_name = getattr(job, "func_name", "?")
         meta = getattr(job, "meta", {})
         label = meta.get("task") or meta.get("feed") or func_name
         print(f"  → {label} ({func_name})")
+
+    # Persist the live count so watchdog and healthcheck can read it
+    try:
+        redis_conn.set(EXPECTED_JOB_COUNT_KEY, len(registered))
+    except Exception as e:
+        print(f"Warning: could not persist expected job count: {e}")
 
     # Write initial heartbeat
     _write_heartbeat()

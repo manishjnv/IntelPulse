@@ -28,7 +28,15 @@ class CISAAdvisoriesConnector(BaseFeedConnector):
     SOURCE_RELIABILITY = 90
 
     async def fetch(self, last_cursor: str | None = None) -> list[dict]:
-        """Fetch recent reviewed advisories from GitHub Advisory DB."""
+        """Fetch recent reviewed advisories from GitHub Advisory DB.
+
+        GitHub's global advisories API uses `modified` (not `updated`) with a
+        date-comparison operator prefix (e.g. `>YYYY-MM-DDTHH:MM:SSZ`) to
+        filter to advisories changed after a given instant. Passing the bare
+        ISO timestamp as `updated=...` is silently ignored by the API, which
+        means every poll returned the same 100 most-recently-updated
+        advisories regardless of cursor.
+        """
         params: dict = {
             "per_page": 100,
             "type": "reviewed",
@@ -36,7 +44,9 @@ class CISAAdvisoriesConnector(BaseFeedConnector):
             "sort": "updated",
         }
         if last_cursor:
-            params["updated"] = last_cursor
+            cursor_filter = self._format_modified_filter(last_cursor)
+            if cursor_filter:
+                params["modified"] = cursor_filter
 
         response = await self.client.get(
             GHSA_API_URL,
@@ -50,7 +60,12 @@ class CISAAdvisoriesConnector(BaseFeedConnector):
         response.raise_for_status()
         items = response.json()
 
-        logger.info("github_advisories_fetch", total=len(items))
+        logger.info(
+            "github_advisories_fetch",
+            total=len(items),
+            cursor=last_cursor,
+            modified_filter=params.get("modified"),
+        )
 
         if items:
             dates = [self._parse_iso(i.get("updated_at")) for i in items]
@@ -59,6 +74,21 @@ class CISAAdvisoriesConnector(BaseFeedConnector):
                 self._next_cursor = max(valid).isoformat()
 
         return items
+
+    @staticmethod
+    def _format_modified_filter(cursor: str) -> str | None:
+        """Convert an ISO cursor into GitHub's `>YYYY-MM-DDTHH:MM:SSZ` format.
+
+        Returns None on malformed input — we'd rather over-fetch than silently
+        send an invalid parameter (which GitHub drops without complaint).
+        """
+        try:
+            dt = datetime.fromisoformat(cursor.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return ">" + dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        except Exception:
+            return None
 
     def _parse_iso(self, s: str | None) -> datetime | None:
         if not s:
