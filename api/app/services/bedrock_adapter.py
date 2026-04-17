@@ -73,52 +73,42 @@ class BedrockAdapter:
             Generated text content or None on error
         """
         try:
-            # Build request body for Claude models
-            body = {
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-                "system": system_prompt,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": user_prompt,
-                    }
-                ],
-            }
+            # Different Bedrock model families use different request/response
+            # schemas. Dispatch on the model family so this adapter can serve
+            # both Anthropic Claude and Amazon Nova without the caller having
+            # to know the difference.
+            family = self._model_family()
+            body = self._build_request_body(
+                family, system_prompt, user_prompt, max_tokens, temperature
+            )
 
             logger.info(
                 "bedrock_invoke_request",
                 model=self.model_id,
+                family=family,
                 max_tokens=max_tokens,
                 temperature=temperature,
             )
 
-            # Invoke model
             response = self.client.invoke_model(
                 modelId=self.model_id,
                 body=json.dumps(body),
             )
-
-            # Parse response
             response_body = json.loads(response["body"].read())
-            
-            # Extract content from Claude response format
-            content = response_body.get("content", [])
-            if content and isinstance(content, list) and len(content) > 0:
-                text = content[0].get("text", "")
-                
+            text, usage = self._extract_text_and_usage(family, response_body)
+
+            if text:
                 logger.info(
                     "bedrock_invoke_success",
                     model=self.model_id,
+                    family=family,
                     chars=len(text),
-                    input_tokens=response_body.get("usage", {}).get("input_tokens", 0),
-                    output_tokens=response_body.get("usage", {}).get("output_tokens", 0),
+                    input_tokens=usage.get("input_tokens", 0),
+                    output_tokens=usage.get("output_tokens", 0),
                 )
-                
                 return text.strip()
-            
-            logger.warning("bedrock_empty_response", model=self.model_id)
+
+            logger.warning("bedrock_empty_response", model=self.model_id, family=family)
             return None
 
         except ClientError as e:
@@ -149,6 +139,100 @@ class BedrockAdapter:
                 model=self.model_id,
             )
             return None
+
+    def _model_family(self) -> str:
+        """Classify the configured model into a request-schema family.
+
+        - "anthropic": Claude 3/4 via Bedrock (with or without `us./global.`
+          inference-profile prefix). Expects the `anthropic_version` body.
+        - "nova": Amazon Nova (Lite/Micro/Pro). Expects the
+          `inferenceConfig` body with role-content lists.
+        - "titan": Amazon Titan Text. Expects the `inputText` body.
+        - "unknown": falls back to the Anthropic schema.
+        """
+        mid = (self.model_id or "").lower()
+        # Strip optional cross-region inference-profile prefix ("us." / "global.")
+        bare = mid.split(".", 1)[1] if mid.startswith(("us.", "global.", "eu.", "apac.")) else mid
+        if bare.startswith("anthropic.") or "claude" in bare:
+            return "anthropic"
+        if bare.startswith("amazon.nova") or "nova" in bare:
+            return "nova"
+        if bare.startswith("amazon.titan"):
+            return "titan"
+        return "unknown"
+
+    def _build_request_body(
+        self,
+        family: str,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> dict:
+        """Produce the invoke_model body for the given family."""
+        if family == "nova":
+            msgs: list[dict] = []
+            # Nova accepts an optional top-level `system` field as a list of
+            # SystemContentBlock; fold the system prompt there so we don't
+            # conflate roles.
+            body: dict = {
+                "messages": [
+                    {"role": "user", "content": [{"text": user_prompt}]}
+                ],
+                "inferenceConfig": {
+                    "maxTokens": max_tokens,
+                    "temperature": temperature,
+                },
+            }
+            if system_prompt:
+                body["system"] = [{"text": system_prompt}]
+            return body
+        if family == "titan":
+            return {
+                "inputText": (
+                    (system_prompt + "\n\n" if system_prompt else "") + user_prompt
+                ),
+                "textGenerationConfig": {
+                    "maxTokenCount": max_tokens,
+                    "temperature": temperature,
+                },
+            }
+        # Default: Anthropic Claude (messages API)
+        return {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "system": system_prompt,
+            "messages": [{"role": "user", "content": user_prompt}],
+        }
+
+    @staticmethod
+    def _extract_text_and_usage(family: str, response_body: dict) -> tuple[str, dict]:
+        """Pull the generated text + usage metadata out of the response.
+
+        Returns a (text, usage_dict) tuple; both empty on parse failure.
+        """
+        if family == "nova":
+            msg = (response_body.get("output") or {}).get("message") or {}
+            parts = msg.get("content") or []
+            text = "".join(p.get("text", "") for p in parts if isinstance(p, dict))
+            usage = response_body.get("usage") or {}
+            return text, {
+                "input_tokens": usage.get("inputTokens", 0),
+                "output_tokens": usage.get("outputTokens", 0),
+            }
+        if family == "titan":
+            results = response_body.get("results") or []
+            text = results[0].get("outputText", "") if results else ""
+            return text, {}
+        # Anthropic/default
+        content = response_body.get("content") or []
+        text = content[0].get("text", "") if content and isinstance(content, list) else ""
+        usage = response_body.get("usage") or {}
+        return text, {
+            "input_tokens": usage.get("input_tokens", 0),
+            "output_tokens": usage.get("output_tokens", 0),
+        }
 
     async def ai_analyze_structured(
         self,
@@ -233,18 +317,11 @@ class BedrockAdapter:
             Dict with health status and details
         """
         try:
-            # Try a minimal invocation to test connectivity
-            body = {
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 10,
-                "temperature": 0.0,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": "test",
-                    }
-                ],
-            }
+            family = self._model_family()
+            body = self._build_request_body(
+                family, system_prompt="", user_prompt="test",
+                max_tokens=10, temperature=0.0,
+            )
 
             response = self.client.invoke_model(
                 modelId=self.model_id,
