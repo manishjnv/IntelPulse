@@ -790,7 +790,9 @@ async def _ai_analyze(query: str, ioc_type: str, results: list[dict]) -> dict[st
     Returns a dict with keys: summary, threat_actors, timeline, affected_products,
     fix_remediation, known_breaches, key_findings.
     """
-    if not settings.ai_api_key:
+    # Agent path doesn't need ai_api_key (uses EC2 IAM for Bedrock).
+    # Legacy httpx path does. Skip the whole function only if neither is usable.
+    if not settings.ai_api_key and not settings.ai_use_agents_for_ioc:
         return None
 
     # Build context from results
