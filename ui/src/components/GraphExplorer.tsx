@@ -36,6 +36,47 @@ const EDGE_COLORS: Record<string, string> = {
   "related-to": "#06b6d4",
 };
 
+/* ── Edge evidence extractor ──────────────────────────
+ * Relationship metadata populated by the worker tasks —
+ * shapes we handle:
+ *   shares-ioc   → { shared_ioc_count: n }
+ *   indicates    → { ioc_value, ioc_type }
+ *   shares-cve   → { cve_id } / { shared_cve_count }
+ *   shares-technique → { technique_id } / { shared_technique_count }
+ * Returns at most 3 human-readable lines.
+ */
+function extractEvidence(edge: GraphEdge): Array<{ label: string; value: string }> {
+  const m = (edge.metadata || {}) as Record<string, unknown>;
+  const out: Array<{ label: string; value: string }> = [];
+  const push = (label: string, value: unknown) => {
+    if (value === undefined || value === null || value === "") return;
+    out.push({ label, value: String(value) });
+  };
+
+  if (typeof m.ioc_value === "string") {
+    const t = typeof m.ioc_type === "string" ? m.ioc_type : "ioc";
+    push(`via ${t}:`, m.ioc_value);
+  }
+  if (typeof m.shared_ioc_count === "number" && m.shared_ioc_count > 0) {
+    push("shared iocs:", m.shared_ioc_count);
+  }
+  if (typeof m.cve_id === "string") push("via cve:", m.cve_id);
+  if (typeof m.shared_cve_count === "number" && m.shared_cve_count > 0) {
+    push("shared cves:", m.shared_cve_count);
+  }
+  if (typeof m.technique_id === "string") push("via technique:", m.technique_id);
+  if (typeof m.shared_technique_count === "number" && m.shared_technique_count > 0) {
+    push("shared techniques:", m.shared_technique_count);
+  }
+
+  if (edge.first_seen) {
+    const d = new Date(edge.first_seen);
+    if (!isNaN(d.getTime())) push("first seen:", d.toLocaleDateString());
+  }
+
+  return out.slice(0, 3);
+}
+
 /* ── force-directed simulation ────────────────────────── */
 interface SimNode extends GraphNode {
   x: number;
@@ -670,33 +711,51 @@ export function GraphExplorer({
                     className="pointer-events-none"
                   />
                 )}
-                {isActive && hoveredEdge === edge.id && (
-                  <g>
-                    <rect
-                      x={(s.x + t.x) / 2 - 55}
-                      y={(s.y + t.y) / 2 - 19}
-                      width={110}
-                      height={22}
-                      rx={6}
-                      fill="#0f172a"
-                      fillOpacity={0.92}
-                      stroke={color}
-                      strokeWidth={0.5}
+                {isActive && hoveredEdge === edge.id && (() => {
+                  const mx = (s.x + t.x) / 2;
+                  const my = (s.y + t.y) / 2;
+                  const evidence = extractEvidence(edge);
+                  const lineCount = evidence.length;
+                  const cardW = 220;
+                  const cardH = 30 + Math.max(0, lineCount) * 14;
+                  return (
+                    <foreignObject
+                      x={mx - cardW / 2}
+                      y={my - cardH - 8}
+                      width={cardW}
+                      height={cardH}
                       className="pointer-events-none"
-                    />
-                    <text
-                      x={(s.x + t.x) / 2}
-                      y={(s.y + t.y) / 2 - 5}
-                      fontSize={9}
-                      fill={color}
-                      textAnchor="middle"
-                      className="pointer-events-none"
-                      fontFamily="monospace"
                     >
-                      {edge.type.replace(/[_-]/g, " ")} · {edge.confidence}%
-                    </text>
-                  </g>
-                )}
+                      <div
+                        style={{
+                          background: "rgba(15,23,42,0.95)",
+                          border: `1px solid ${color}99`,
+                          boxShadow: `0 4px 12px ${color}40`,
+                          borderRadius: 6,
+                          padding: "5px 8px",
+                          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                          fontSize: 10,
+                          color: "#e2e8f0",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: evidence.length ? 3 : 0 }}>
+                          <span style={{ color, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            {edge.type.replace(/[_-]/g, " ")}
+                          </span>
+                          <span style={{ color: "#94a3b8", fontSize: 9 }}>
+                            {edge.confidence}%
+                          </span>
+                        </div>
+                        {evidence.map((e, i) => (
+                          <div key={i} style={{ color: "#cbd5e1", lineHeight: 1.35, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            <span style={{ color: "#64748b" }}>{e.label}</span>{" "}
+                            <span style={{ color: "#e2e8f0" }}>{e.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </foreignObject>
+                  );
+                })()}
               </g>
             );
           })}
