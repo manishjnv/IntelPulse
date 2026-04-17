@@ -11,6 +11,19 @@ APP_DIR="/opt/IntelPulse"
 COMPOSE_FILE="docker-compose.yml"
 LOG_FILE="/opt/IntelPulse/deploy.log"
 
+# Prefer the `docker compose` v2 plugin if present, fall back to the legacy
+# `docker-compose` v1 binary. Some hosts (notably the Ubuntu-packaged Docker
+# 29.x) ship without the compose plugin and only have v1 installed, which
+# caused every auto-deploy to fail with "docker: unknown command: docker compose".
+if docker compose version >/dev/null 2>&1; then
+    COMPOSE="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE="docker-compose"
+else
+    echo "FATAL: neither 'docker compose' (v2 plugin) nor 'docker-compose' (v1) is available" >&2
+    exit 1
+fi
+
 cd "$APP_DIR"
 
 echo "=======================================" | tee -a "$LOG_FILE"
@@ -25,11 +38,11 @@ echo "  Commit: $(git rev-parse --short HEAD)" | tee -a "$LOG_FILE"
 
 # ── 2. Build images ───────────────────────────────────
 echo "[2/5] Building Docker images..." | tee -a "$LOG_FILE"
-docker compose -f "$COMPOSE_FILE" build --parallel 2>&1 | tail -5 | tee -a "$LOG_FILE"
+$COMPOSE -f "$COMPOSE_FILE" build --parallel 2>&1 | tail -5 | tee -a "$LOG_FILE"
 
 # ── 3. Run SQL migrations ─────────────────────────────
 echo "[3/6] Running SQL migrations..." | tee -a "$LOG_FILE"
-POSTGRES_CONTAINER=$(docker compose ps -q postgres 2>/dev/null || echo "")
+POSTGRES_CONTAINER=$($COMPOSE ps -q postgres 2>/dev/null || echo "")
 if [ -n "$POSTGRES_CONTAINER" ]; then
     for migration in db/migrations/*.sql; do
         if [ -f "$migration" ]; then
@@ -44,15 +57,15 @@ fi
 
 # ── 4. Restart services ───────────────────────────────
 echo "[4/6] Starting services..." | tee -a "$LOG_FILE"
-docker compose -f "$COMPOSE_FILE" up -d --remove-orphans 2>&1 | tee -a "$LOG_FILE"
+$COMPOSE -f "$COMPOSE_FILE" up -d --remove-orphans 2>&1 | tee -a "$LOG_FILE"
 
 # ── 5. Wait for health checks ─────────────────────────
 echo "[5/6] Waiting for health checks..." | tee -a "$LOG_FILE"
 MAX_WAIT=120
 ELAPSED=0
 while [ $ELAPSED -lt $MAX_WAIT ]; do
-    HEALTHY=$(docker compose ps --format json 2>/dev/null | grep -c '"healthy"' || true)
-    TOTAL=$(docker compose ps --format json 2>/dev/null | wc -l || true)
+    HEALTHY=$($COMPOSE ps --format json 2>/dev/null | grep -c '"healthy"' || true)
+    TOTAL=$($COMPOSE ps --format json 2>/dev/null | wc -l || true)
     echo "  Health: $HEALTHY/$TOTAL services healthy ($ELAPSED s)" | tee -a "$LOG_FILE"
     if [ "$HEALTHY" -ge 3 ]; then
         break
@@ -68,7 +81,7 @@ docker image prune -f --filter "until=48h" 2>&1 | tail -1 | tee -a "$LOG_FILE"
 # ── Summary ────────────────────────────────────────────
 echo "" | tee -a "$LOG_FILE"
 echo "Deploy complete! Services:" | tee -a "$LOG_FILE"
-docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null | tee -a "$LOG_FILE"
+$COMPOSE ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null | tee -a "$LOG_FILE"
 
 # Quick health check
 API_STATUS=$(curl -sf http://localhost:8000/api/v1/health | head -c 200 || echo "UNREACHABLE")
