@@ -616,23 +616,36 @@ async def get_pipeline_config():
                 "collaborators": len(collabs),
             })
 
-            # Collaborators — pull their names / statuses too
+            # Collaborators — pull their names / statuses too.
+            # aliasArn shape is:
+            #   arn:aws:bedrock:<region>:<acct>:agent-alias/<agentId>/<aliasId>
+            # So split('/')[-2] is the collaborator's real agentId.
             for sub in collabs:
-                cid = sub.get("agentDescriptor", {}).get("aliasArn", "").split("/")[-3] if sub.get("agentDescriptor") else None
+                alias_arn = (sub.get("agentDescriptor") or {}).get("aliasArn", "")
+                cid = ""
+                if "/agent-alias/" in alias_arn:
+                    parts = alias_arn.split("/")
+                    if len(parts) >= 3:
+                        cid = parts[-2]
+
                 sub_name = sub.get("collaboratorName") or "Collaborator"
-                sub_status = "LINKED"
-                if cid and len(cid) == 10:  # rough agentId shape
+                sub_status = "UNKNOWN"
+                if cid:
                     try:
                         sa = c.get_agent(agentId=cid)["agent"]
                         sub_name = sa.get("agentName", sub_name)
                         sub_status = sa.get("agentStatus", sub_status)
-                    except Exception:
-                        pass
-                # Count action groups on this collaborator
+                    except Exception as sub_e:
+                        logger.debug("collab_get_agent_failed", cid=cid, error=str(sub_e))
+
+                # Count action groups on this collaborator. Action groups
+                # live on the DRAFT agent version in our deploy.
                 ag_count = 0
                 if cid:
                     try:
-                        ags = c.list_agent_action_groups(agentId=cid, agentVersion="DRAFT").get("actionGroupSummaries", [])
+                        ags = c.list_agent_action_groups(
+                            agentId=cid, agentVersion="DRAFT"
+                        ).get("actionGroupSummaries", [])
                         ag_count = len(ags)
                         for ag in ags:
                             action_groups.append({
@@ -640,13 +653,13 @@ async def get_pipeline_config():
                                 "state": ag.get("actionGroupState", "UNKNOWN"),
                                 "agent": sub_name,
                             })
-                    except Exception:
-                        pass
+                    except Exception as ag_e:
+                        logger.debug("collab_list_action_groups_failed", cid=cid, error=str(ag_e))
 
                 agents.append({
                     "name": sub_name,
                     "role": sub.get("relayConversationHistory") or "collaborator",
-                    "agent_id": cid or "",
+                    "agent_id": cid,
                     "status": sub_status,
                     "action_groups": ag_count,
                 })
