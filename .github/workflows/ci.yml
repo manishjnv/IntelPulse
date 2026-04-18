@@ -10,6 +10,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  id-token: write   # required for ECR OIDC in build-and-push
+  contents: read
+
 jobs:
   # ── Python lint (runs in parallel with ui-lint) ──────────────
   python-lint:
@@ -52,19 +56,73 @@ jobs:
       - name: TypeScript check
         run: cd ui && npx tsc --noEmit
 
+  # ── ECR build + push (parallel matrix; gates the deploy) ─────
+  # Build each application Dockerfile on GH runners and push to ECR
+  # under both `${github.sha}` and `latest`. The deploy step pulls
+  # these tagged images instead of building on the VPS.
+  build-and-push:
+    name: Build + push ${{ matrix.service }}
+    needs: [python-lint, ui-lint]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: api
+            dockerfile: docker/Dockerfile.api
+          - service: ui
+            dockerfile: docker/Dockerfile.ui
+          - service: worker
+            dockerfile: docker/Dockerfile.worker
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ECR_PUSH }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build + push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/intelpulse/${{ matrix.service }}:${{ github.sha }}
+            ${{ steps.ecr-login.outputs.registry }}/intelpulse/${{ matrix.service }}:latest
+          cache-from: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/intelpulse/${{ matrix.service }}:buildcache
+          cache-to: type=registry,ref=${{ steps.ecr-login.outputs.registry }}/intelpulse/${{ matrix.service }}:buildcache,mode=max
+
   # ── Deploy to Hostinger VPS via SSH ──────────────────────────
   deploy:
     name: Deploy to Production
-    needs: [python-lint, ui-lint]
+    needs: [build-and-push]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: production
     steps:
-      - name: Deploy via SSH
+      - name: Deploy via SSH (ECR pull)
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           command_timeout: 15m
-          script: /opt/IntelPulse/scripts/deploy.sh
+          # Pass the commit SHA so deploy-ecr.sh pulls the exact image
+          # this commit produced, not just `latest` (which would race
+          # against a concurrent push).
+          envs: GITHUB_SHA
+          script: IMAGE_TAG="${GITHUB_SHA}" /opt/IntelPulse/scripts/deploy-ecr.sh
+        env:
+          GITHUB_SHA: ${{ github.sha }}
