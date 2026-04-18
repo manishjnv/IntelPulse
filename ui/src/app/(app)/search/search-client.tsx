@@ -20,6 +20,7 @@ import {
 } from "@/lib/api";
 import { StructuredIntelCards } from "@/components/StructuredIntelCards";
 import { HowItWorks } from "@/components/HowItWorks";
+import { useToast } from "@/components/Toast";
 import {
   Search as SearchIcon,
   Loader2,
@@ -190,6 +191,7 @@ export default function SearchClient({
   // If the server provided a seeded search result, skip the first auto-search
   // effect so we don't re-fetch the same query on hydration.
   const skipInitialSearchRef = useRef(initialSearchResult !== null);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -265,12 +267,12 @@ export default function SearchClient({
         const result = await searchIntel(filters);
         setSearchResult(result);
       } catch {
-        /* silent */
+        toast("Search failed — try a different query.", "error");
       } finally {
         setSearchLoading(false);
       }
     },
-    [debouncedQuery, sortBy, sortDir, feedFilter, severityFilter, typeFilter]
+    [debouncedQuery, sortBy, sortDir, feedFilter, severityFilter, typeFilter, toast]
   );
 
   const handlePageChange = (p: number) => {

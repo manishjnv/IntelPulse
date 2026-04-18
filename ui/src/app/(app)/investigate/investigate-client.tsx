@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Loading } from "@/components/Loading";
 import { GraphExplorer } from "@/components/GraphExplorer";
 import { HowItWorks } from "@/components/HowItWorks";
+import { useToast } from "@/components/Toast";
 import { cn, severityColor } from "@/lib/utils";
 import * as api from "@/lib/api";
 import type {
@@ -77,6 +78,8 @@ export function InvestigateClient({
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [featured, setFeatured] = useState<api.GraphFeaturedEntity[]>(initialFeatured ?? []);
 
+  const { toast } = useToast();
+
   // Skip-flags: prevent the on-mount client fetches from re-requesting data
   // that the server already delivered inline. Subsequent calls (e.g. auto-refresh,
   // filter changes, or fallback when server returned null) proceed normally.
@@ -91,8 +94,8 @@ export function InvestigateClient({
     try {
       const s = await api.getGraphStats();
       setStats(s);
-    } catch { /* silent */ }
-  }, []);
+    } catch { toast("Failed to load graph stats", "error"); }
+  }, [toast]);
 
   useEffect(() => {
     if (skipInitialStatsRef.current) {
@@ -107,8 +110,8 @@ export function InvestigateClient({
     try {
       const r = await api.getGraphFeatured(12);
       setFeatured(r.featured || []);
-    } catch { /* silent */ }
-  }, []);
+    } catch { toast("Failed to load featured graphs", "error"); }
+  }, [toast]);
 
   useEffect(() => {
     if (skipInitialFeaturedRef.current) {

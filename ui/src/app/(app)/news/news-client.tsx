@@ -68,6 +68,7 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import * as api from "@/lib/api";
 import { HowItWorks } from "@/components/HowItWorks";
+import { useToast } from "@/components/Toast";
 import type {
   NewsListResponse,
   NewsItem,
@@ -2211,6 +2212,7 @@ export default function NewsClient({
   const skipInitialCategoriesRef = useRef(initialCategories !== null);
   const skipInitialStatsRef = useRef(initialStats !== null);
   const skipInitialPipelineRef = useRef(initialPipelineStatus !== null);
+  const { toast } = useToast();
 
   const fetchCategories = useCallback(async () => {
     setCatLoading(true);
@@ -2279,11 +2281,11 @@ export default function NewsClient({
 
       setNews(data);
     } catch {
-      /* ignore */
+      toast("Failed to load news — check filters.", "error");
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, selectedCategory, searchQuery, selectedTag, sortKey]);
+  }, [page, selectedCategory, searchQuery, selectedTag, sortKey, toast]);
 
   useEffect(() => {
     if (skipInitialCategoriesRef.current) {

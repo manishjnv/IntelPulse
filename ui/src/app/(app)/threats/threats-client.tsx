@@ -40,6 +40,7 @@ import {
   Eye,
 } from "lucide-react";
 import { HowItWorks } from "@/components/HowItWorks";
+import { useToast } from "@/components/Toast";
 import { formatDate, severityBorder, riskColor, riskBg } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -287,6 +288,7 @@ export function ThreatsClient({ initialData, initialStats }: ThreatsClientProps)
   // URL searchParams. Skip the first client-side fetchData() on mount so we
   // don't re-request the identical page; subsequent filter changes still fetch.
   const skipInitialFetchRef = useRef(initialData !== null);
+  const { toast } = useToast();
 
   /* ─── Fetch data ─── */
   const fetchData = useCallback(async () => {
@@ -310,10 +312,10 @@ export function ThreatsClient({ initialData, initialStats }: ThreatsClientProps)
       lastFetchRef.current = Date.now();
       setStale(false);
     } catch {
-      /* silent */
+      toast("Failed to load threats — check filters and try again.", "error");
     }
     setLoading(false);
-  }, [page, selectedSev, selectedFeedType, selectedAsset, kevOnly, exploitOnly, sortKey, searchQ]);
+  }, [page, selectedSev, selectedFeedType, selectedAsset, kevOnly, exploitOnly, sortKey, searchQ, toast]);
 
   const fetchStats = useCallback(async () => {
     try {
