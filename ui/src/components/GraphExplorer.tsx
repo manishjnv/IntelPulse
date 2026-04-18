@@ -771,12 +771,11 @@ export function GraphExplorer({
             <stop offset="0%" stopColor="#3b82f6" />
             <stop offset="100%" stopColor="transparent" />
           </radialGradient>
-          {/* Vignette — transparent middle, deep at corners. Replaces the
-           * old cyber-grid pattern as the canvas overlay; gives the scene a
-           * cinematic focus on the center entity without adding line noise. */}
-          <radialGradient id="vignette" cx="50%" cy="50%" r="75%">
-            <stop offset="50%" stopColor="#000" stopOpacity="0" />
-            <stop offset="100%" stopColor="#000" stopOpacity="0.55" />
+          {/* Vignette — transparent well past the node zone so nothing
+           * in the graph gets tinted; only the outer corners darken. */}
+          <radialGradient id="vignette" cx="50%" cy="50%" r="85%">
+            <stop offset="65%" stopColor="#000" stopOpacity="0" />
+            <stop offset="100%" stopColor="#000" stopOpacity="0.35" />
           </radialGradient>
         </defs>
       </svg>
@@ -1063,9 +1062,10 @@ export function GraphExplorer({
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
       >
-        {/* Soft ambient focus on center, then corner vignette — the only
-            two overlays; grid is gone for a cleaner canvas. */}
-        <circle cx="50%" cy="50%" r="320" fill="url(#center-ambient)" opacity={0.14} />
+        {/* Ambient focus on center + soft corner vignette. Ambient is
+            generous (large radius, noticeable opacity) so the center
+            entity sits in a visible pool of light. */}
+        <circle cx="50%" cy="50%" r="420" fill="url(#center-ambient)" opacity={0.32} />
         <rect width="100%" height="100%" fill="url(#vignette)" pointerEvents="none" />
 
         <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
@@ -1128,8 +1128,8 @@ export function GraphExplorer({
                   d={geom.path}
                   fill="none"
                   stroke={color}
-                  strokeWidth={isActive ? 2 : 1}
-                  strokeOpacity={dimmed ? 0.05 : isActive ? 0.8 : 0.2}
+                  strokeWidth={isActive ? 2.2 : 1.3}
+                  strokeOpacity={dimmed ? 0.05 : isActive ? 0.9 : 0.45}
                   strokeDasharray={edge.type.includes("co") ? "4 4" : "none"}
                   strokeLinecap="round"
                   onMouseEnter={() => setHoveredEdge(edge.id)}
@@ -1205,8 +1205,8 @@ export function GraphExplorer({
             const degBoost = maxDegree > 1 ? (deg / maxDegree) * 12 : 0;
             // Center node is deliberately larger — it's the subject of the
             // investigation and should anchor the eye immediately.
-            const baseR = node.isCenter ? 30 : node.type === "intel" ? 17 : 13;
-            const r = Math.min(node.isCenter ? 44 : 30, baseR + degBoost);
+            const baseR = node.isCenter ? 32 : node.type === "intel" ? 20 : 17;
+            const r = Math.min(node.isCenter ? 46 : 32, baseR + degBoost);
             const isHovered = hoveredNode === node.id;
             const isSelected = selectedNodeId === node.id;
             const isHighlighted = isHovered || isSelected;
@@ -1251,11 +1251,12 @@ export function GraphExplorer({
                     className="animate-pulse"
                   />
                 )}
-                {/* Ambient glow */}
+                {/* Ambient glow — higher default opacity so nodes feel
+                    alive at rest, not just on hover. */}
                 <circle
-                  r={r + 6}
+                  r={r + 8}
                   fill={colorSet.glow}
-                  fillOpacity={isHighlighted ? 0.2 : 0.08}
+                  fillOpacity={isHighlighted ? 0.28 : node.isCenter ? 0.2 : 0.15}
                   className="pointer-events-none"
                 />
                 {/* Search-match halo — only when a filter query is active */}
@@ -1293,13 +1294,15 @@ export function GraphExplorer({
                     strokeDasharray={node.severity === "critical" ? "none" : "3 2"}
                   />
                 )}
-                {/* 3D gradient node */}
+                {/* 3D gradient node — center always uses the bright
+                    "active" gradient so it reads as the focal point even
+                    without hover. */}
                 <circle
                   r={r}
-                  fill={`url(#grad-${node.type}${isHighlighted ? "-active" : ""})`}
-                  stroke={isHighlighted ? "#ffffff" : colorSet.glow}
-                  strokeWidth={isHighlighted ? 2 : 0.5}
-                  strokeOpacity={isHighlighted ? 0.9 : 0.3}
+                  fill={`url(#grad-${node.type}${isHighlighted || node.isCenter ? "-active" : ""})`}
+                  stroke={isHighlighted ? "#ffffff" : node.isCenter ? "#ffffff" : colorSet.glow}
+                  strokeWidth={isHighlighted ? 2 : node.isCenter ? 1.5 : 0.7}
+                  strokeOpacity={isHighlighted ? 0.9 : node.isCenter ? 0.6 : 0.45}
                   filter="url(#node-shadow)"
                 />
                 {/* Specular highlight */}
@@ -1329,11 +1332,12 @@ export function GraphExplorer({
                     creating a crisp backdrop so the label reads over edges
                     or node-glow without needing a separate rect behind it. */}
                 <text
-                  y={r + 15}
-                  fontSize={9.5}
-                  fill={isHighlighted ? "#e2e8f0" : "#94a3b8"}
+                  y={r + 17}
+                  fontSize={node.isCenter ? 12.5 : 11}
+                  fill={isHighlighted ? "#f1f5f9" : node.isCenter ? "#e2e8f0" : "#cbd5e1"}
+                  fontWeight={node.isCenter ? 600 : 500}
                   stroke="#0a0e1a"
-                  strokeWidth={3}
+                  strokeWidth={4}
                   strokeLinejoin="round"
                   textAnchor="middle"
                   className="pointer-events-none"
