@@ -6,6 +6,185 @@ to the diff. Production URL: [https://intelpulse.tech/](https://intelpulse.tech/
 
 ---
 
+## 2026-04-18 — five residuals + deploy pipeline rewire
+
+Four security residuals closed (CSP, DNS-rebinding TOCTOU, xlsx CVE,
+Bedrock agent token ceiling) and the deploy pipeline moved from
+"build-in-VPS" to "build-on-GH-push-to-ECR-pull-from-EC2". Production
+stayed green across 13 commits; each deploy stage now runs in ~20 s
+instead of ~60 s. Full end-to-end verification at the end.
+
+### 1. CSP + defense-in-depth headers — `d4e3c1b` `519e30f` `e581b0a`
+
+- [`ui/next.config.js`](../ui/next.config.js) grows a `headers()` block
+  with a comprehensive CSP (`default-src 'self'`, `connect-src 'self'`,
+  `frame-ancestors 'none'`, `frame-src 'none'`, flagcdn.com image
+  allowlist, `object-src 'none'`, COOP/CORP/HSTS, upgrade-insecure-
+  requests). `'unsafe-inline'` and `'unsafe-eval'` stay on scripts
+  because Next.js 14 hydration + recharts d3-scale need them; retiring
+  those is a nonce-middleware follow-up.
+- [`caddy/Caddyfile`](../caddy/Caddyfile) mirrors the full directive list
+  at the edge — the previous `frame-ancestors 'none'`-only header
+  silently overrode whatever Next.js emitted. Applied at both
+  `intelpulse.tech` and the direct-IP fallback.
+- [`scripts/deploy.sh`](../scripts/deploy.sh) learns to restart the
+  Caddy container when `HEAD~1..HEAD` touches `caddy/`. Needed because
+  `git reset --hard` rewrites the Caddyfile with a **new inode**, but
+  the docker bind-mount established at container start points at the
+  **old inode** — so `compose up -d` alone never reloaded the config.
+
+Live verification: `curl -sI https://intelpulse.tech/` carries the full
+directive list on both UI and API routes.
+
+### 2. DNS-rebinding TOCTOU close — `96bab7c`
+
+The prior SSRF guard resolved the hostname once, rejected on any
+private answer, then handed the URL string to httpx — which
+**re-resolved at connect time**. A malicious authoritative DNS could
+return 8.8.8.8 to `getaddrinfo()` and 169.254.169.254 to `connect()`
+milliseconds later, defeating the allowlist.
+
+- [`api/app/core/url_validation.py`](../api/app/core/url_validation.py)
+  adds `resolve_safe_outbound_url()` returning a `ResolvedURL(url,
+  scheme, host, port, pinned_ip)` namedtuple. Multi-answer mixed (one
+  private + one public) now fails-closed — selecting only the safe
+  address would let an attacker's DNS round-robin smuggle in a bad IP
+  on the next refresh.
+- New
+  [`api/app/core/safe_httpx.py`](../api/app/core/safe_httpx.py) wraps
+  that into `PinnedHTTPTransport` / `PinnedAsyncHTTPTransport`. The
+  transport rewrites `request.url.host` to the pinned IP before
+  connect, preserves the original `Host:` header, and sets
+  `extensions["sni_hostname"]` so TLS SNI + cert validation still use
+  the original hostname. `retries=0`, `follow_redirects=False`.
+- Both call sites swapped:
+  [`api/app/routes/ai_settings.py`](../api/app/routes/ai_settings.py)
+  and
+  [`api/app/services/webhook.py`](../api/app/services/webhook.py).
+  22 new unit tests (65 total) pass inside the prod api container.
+
+Live verification: three SSRF vectors (AWS IMDS, 10.0.0.1, localhost)
+rejected with `HTTP 400` and distinct reasons.
+
+### 3. xlsx → exceljs swap — `7df5ff3`
+
+- `xlsx@0.18.5` carried GHSA-4r6h-8v6p-xvw6 (Prototype Pollution) with
+  no patched version on npm — upstream moved to CDN-only. Replaced
+  with `exceljs@^4.4.0`, actively maintained.
+- New
+  [`ui/src/lib/excel-export.ts`](../ui/src/lib/excel-export.ts) wraps
+  exceljs behind a single `exportToExcel(rows, sheetName, filename)`
+  helper. `import("exceljs")` is dynamic so the ~300 KB library stays
+  out of the initial bundle and only loads on the first Export click.
+- Both xlsx call sites in
+  [`ui/src/app/(app)/geo/page.tsx`](../ui/src/app/(app)/geo/page.tsx)
+  swapped. Column-width logic preserved byte-for-byte.
+
+Live verification: 0 xlsx directories in the shipped image; exceljs
+bundled in two chunks (`6edf0643.*.js` + the geo page chunk).
+
+### 4. Bedrock agent `maximumLength` 1024 → 4096 — `0420075`
+
+Amazon Bedrock agents created via the Console default to
+`promptCreationMode=DEFAULT` with an ORCHESTRATION inference cap of
+`maximumLength=1024`. That ceiling was too tight for the 27-field news
+enrichment JSON — the Supervisor kept emitting preamble text instead
+of a clean JSON response, which is why `AI_USE_AGENTS` stayed `false`
+for news.
+
+- New
+  [`infra/scripts/bump_agent_token_ceiling.py`](../infra/scripts/bump_agent_token_ceiling.py)
+  flips the ORCHESTRATION slot to `OVERRIDDEN` + `maximumLength=4096`
+  on all three agents (Supervisor / IOC-Analyst / Risk-Scorer),
+  copying the existing base prompt template verbatim so behavior is
+  unchanged apart from the higher ceiling.
+- Bedrock API quirk the script handles:
+  non-`OVERRIDDEN` prompt configs must **not** carry
+  `basePromptTemplate` / `inferenceConfiguration` / `promptState` —
+  `get_agent` echoes them for readability but `update_agent` rejects
+  them. Every non-ORCHESTRATION slot is stripped to `{promptType,
+  promptCreationMode, parserMode}` on the way out.
+- Run → `prepare_agent` → poll until PREPARED → `update_agent_alias`
+  so `live` / `live-v2` points at the new numbered version.
+  Idempotent; re-running is a no-op once bumped.
+
+Live verification: all 3 agents on `OVERRIDDEN / 4096`; live
+`POST /api/v1/search/live-lookup 8.8.8.8` returns a populated
+`ai_analysis` block (summary + key_findings + threat_actors) in
+~3.9 s via the Supervisor → IOC-Analyst → VirusTotal action group path.
+
+### 5. Deploy pipeline rewire — build on GH, pull from ECR
+
+Consolidates the deploy into a single gated pipeline so every
+production image is an immutable, SHA-tagged ECR artifact. The
+in-VPS `docker build` goes away; the EC2 just `docker pull`s what
+GH Actions already built.
+
+**Phase A — inert scaffolding — `c250fa5`:**
+[`scripts/provision_ecr.py`](../scripts/provision_ecr.py) (idempotent
+boto3 creating 3 ECR repos, GitHub OIDC provider, IAM role for GH
+Actions scoped to this repo, and ECR-pull policy on EC2's
+`BedrockAccessRole` instance profile),
+[`docker-compose.ecr.yml`](../docker-compose.ecr.yml) override mapping
+api/ui/worker/scheduler to ECR URIs, a standalone
+`.github/workflows/ecr-push.yml`, and
+[`scripts/deploy-ecr.sh`](../scripts/deploy-ecr.sh) as the alternate
+deploy entrypoint. Nothing wired into production yet.
+
+**Phase B — the flip — `07ef355` `a37ca4d` `fcabf14` `67ba23d`
+`9404fd9`:**
+
+- Ran `scripts/provision_ecr.py` against account `604275788592`
+  (IntelPulseUser has AdministratorAccess via ti-platform-admin group).
+  Created 3 ECR repos with scan-on-push, AES256, lifecycle rules
+  (expire untagged >7 d, keep last 20 tagged), the OIDC provider,
+  `IntelPulseGitHubActionsECR` role, and attached
+  `ECRPullFromIntelPulseRepos` to `BedrockAccessRole`.
+- Set GH secret `AWS_ROLE_ECR_PUSH` (production-environment-scoped).
+- Consolidated ecr-push.yml INTO
+  [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) so deploy
+  now has a hard `needs: [build-and-push]` dependency — eliminates the
+  race where the SSH deploy could `compose pull` the SHA tag before
+  build-and-push had pushed it.
+- Three new failure modes discovered + captured in the memory RCA
+  `rca_ecr_deploy_pipeline.md`:
+  1. GitHub OIDC `sub` claim shape depends on whether the job has
+     `environment:` — trust policy must allow both
+     `repo:...:ref:refs/heads/main` and
+     `repo:...:environment:production`.
+  2. `git on Windows` drops +x when creating files;
+     `git update-index --chmod=+x` is required pre-commit.
+  3. SSH-action runs the `script:` block **before** the script has a
+     chance to `git reset`, so a new version of the script on disk is
+     never picked up on its own first deploy. Workaround: inline
+     `git fetch + reset` in the SSH command and invoke via
+     `bash scripts/deploy-ecr.sh` so the +x bit is irrelevant.
+
+Ops one-time changes on EC2: `sudo snap install aws-cli --classic`
+(deploy-ecr.sh needs `aws ecr get-login-password | docker login`).
+
+Live verification: all 4 app containers on prod now run
+`intelpulse/<svc>:9404fd9d…` (SHA-tagged ECR images). Deploy stage
+measured at **21 s** on the last run (was 50–60 s with in-VPS build).
+Rollback is a one-line change in `ci.yml` back to
+`scripts/deploy.sh`; the legacy `build:` blocks in
+`docker-compose.yml` still work out of the box.
+
+### End-of-session verification matrix
+
+| Task | Live check | Result |
+| --- | --- | --- |
+| 1. CSP headers | `curl -I` on UI + API | full directive list + 8 siblings on both |
+| 2. SSRF IP-pin | 3 POSTs with IMDS / 10.x / localhost | HTTP 400 × 3, distinct reasons |
+| 3. xlsx → exceljs | chunk + package.json probe | exceljs in 2 chunks, xlsx gone, `exceljs:^4.4.0` only |
+| 4. Agent token ceiling | `get_agent` × 3 + live IOC lookup | all 3 `OVERRIDDEN/4096`; lookup returns populated `ai_analysis` in ~4 s |
+| 5. ECR deploy | `docker ps` image column | 4/4 app containers on `intelpulse/<svc>:9404fd9d…` |
+
+Production green across the whole session: API health 200, 8/8
+containers healthy, dashboard + geo pages 200 in ~380 ms.
+
+---
+
 ## 2026-04-17 — the marathon session
 
 Full-stack push: three security Criticals, multi-agent Bedrock wired
