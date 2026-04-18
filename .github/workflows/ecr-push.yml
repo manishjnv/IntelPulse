@@ -30,9 +30,7 @@ jobs:
   build-and-push:
     name: Build + push ${{ matrix.service }}
     runs-on: ubuntu-latest
-    # Keep ECR failures from blocking the main CI deploy until AWS is
-    # provisioned and at least one successful run exists.
-    continue-on-error: true
+    environment: production
     strategy:
       fail-fast: false
       matrix:
