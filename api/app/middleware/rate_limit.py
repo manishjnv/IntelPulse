@@ -41,6 +41,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Get client IP
         client_ip = request.client.host if request.client else "unknown"
         
+        # RUM beacons are fire-and-forget and fire ~5-8× per pageview —
+        # bucket them separately so normal API traffic isn't starved.
+        if request.url.path == "/api/v1/rum":
+            allowed = await self._check_limit(f"ratelimit:rum:{client_ip}", 200, 60)
+            if not allowed:
+                # Fail silent on RUM — no log spam, just 204 so the browser
+                # doesn't surface an error to the user.
+                return Response(status_code=204)
+            return await call_next(request)
+
         # Special rate limits for auth endpoints
         if request.url.path.startswith("/api/v1/auth/"):
             if request.url.path == "/api/v1/auth/otp/send":

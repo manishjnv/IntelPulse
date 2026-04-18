@@ -11,7 +11,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.middleware.rate_limit import RateLimitMiddleware
-from app.routes import health, intel, search, dashboard, admin, auth, techniques, graph, notifications, reports, iocs, news, cases, enrichment, ai_settings, demo
+from app.routes import health, intel, search, dashboard, admin, auth, techniques, graph, notifications, reports, iocs, news, cases, enrichment, ai_settings, demo, rum
 from app.routes import settings as settings_route
 
 settings = get_settings()
@@ -92,6 +92,7 @@ app.include_router(settings_route.router, prefix=PREFIX)
 app.include_router(enrichment.router, prefix=PREFIX)
 app.include_router(ai_settings.router, prefix=PREFIX)
 app.include_router(demo.router, prefix=PREFIX)
+app.include_router(rum.router, prefix=PREFIX)
 
 
 @app.get("/")
