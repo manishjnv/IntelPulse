@@ -82,8 +82,8 @@ export default function NotificationsPage() {
         setTotal(data.total || 0);
         setUnreadCount(data.unread_count || 0);
       }
-    } catch {
-      /* silent */
+    } catch (err) {
+      console.error("[notifications] loadNotifications failed", err);
     }
     setLoading(false);
   }, [page, unreadOnly, categoryFilter]);
@@ -94,8 +94,8 @@ export default function NotificationsPage() {
         credentials: "include",
       });
       if (res.ok) setStats(await res.json());
-    } catch {
-      /* silent */
+    } catch (err) {
+      console.error("[notifications] loadStats failed", err);
     }
   }, []);
 
@@ -116,8 +116,8 @@ export default function NotificationsPage() {
         body: JSON.stringify({ notification_ids: ids }),
       });
       loadNotifications();
-    } catch {
-      /* silent */
+    } catch (err) {
+      console.error("[notifications] handleMarkRead failed", err);
     }
   };
 
@@ -128,8 +128,8 @@ export default function NotificationsPage() {
         credentials: "include",
       });
       loadNotifications();
-    } catch {
-      /* silent */
+    } catch (err) {
+      console.error("[notifications] handleMarkAllRead failed", err);
     }
   };
 
@@ -140,8 +140,8 @@ export default function NotificationsPage() {
         credentials: "include",
       });
       loadNotifications();
-    } catch {
-      /* silent */
+    } catch (err) {
+      console.error("[notifications] handleDelete failed", err);
     }
   };
 
@@ -153,8 +153,8 @@ export default function NotificationsPage() {
         credentials: "include",
       });
       loadNotifications();
-    } catch {
-      /* silent */
+    } catch (err) {
+      console.error("[notifications] handleClearAll failed", err);
     }
   };
 
