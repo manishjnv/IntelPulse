@@ -729,6 +729,22 @@ export function GraphExplorer({
 
   const activeNode = hoveredNode || selectedNodeId;
 
+  // Center node type color — used for the radial backdrop tint (item #2)
+  const centerNode = nodes.find((n) => n.isCenter);
+  const centerTypeColor = centerNode ? (NODE_COLORS[centerNode.type]?.fill ?? "#3b82f6") : "#3b82f6";
+
+  // Kind legend chips — one per type present, with count (item #1)
+  // Only shown when ≥ 2 types are present.
+  const kindLegend = useMemo(() => {
+    const counts: Record<string, number> = {};
+    data.nodes.forEach((n) => { counts[n.type] = (counts[n.type] ?? 0) + 1; });
+    return Object.entries(counts).map(([type, count]) => ({
+      type,
+      count,
+      color: NODE_COLORS[type]?.fill ?? "#475569",
+    }));
+  }, [data.nodes]);
+
   const svgW = isFullscreen ? "100vw" : width;
   const svgH = isFullscreen ? "calc(100vh - 60px)" : height;
 
@@ -755,6 +771,12 @@ export function GraphExplorer({
           <filter id="node-shadow" x="-50%" y="-50%" width="200%" height="200%">
             <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.5" />
           </filter>
+          {/* Per-type drop-shadow filters for hovered nodes (item #3) */}
+          {Object.entries(NODE_COLORS).map(([type, c]) => (
+            <filter key={`shadow-${type}`} id={`node-shadow-${type}`} x="-60%" y="-60%" width="220%" height="220%">
+              <feDropShadow dx="0" dy="0" stdDeviation="5" floodColor={c.fill} floodOpacity="0.35" />
+            </filter>
+          ))}
           {Object.entries(NODE_COLORS).map(([type, c]) => (
             <React.Fragment key={type}>
               {/* Solid fill at the edge (was 0.8 → ghosted on dark bg). */}
@@ -788,6 +810,13 @@ export function GraphExplorer({
             <stop offset="65%" stopColor="#000" stopOpacity="0" />
             <stop offset="100%" stopColor="#000" stopOpacity="0.35" />
           </radialGradient>
+          {/* Arrow markers (item #7) */}
+          <marker id="arrow-neutral" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" opacity="0.6"/>
+          </marker>
+          <marker id="arrow-hi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+          </marker>
         </defs>
       </svg>
 
@@ -837,6 +866,36 @@ export function GraphExplorer({
           {data.total_nodes}n · {data.total_edges}e
         </span>
       </div>
+
+      {/* Kind legend bar — top-left of SVG canvas, only when ≥2 types (item #1) */}
+      {kindLegend.length >= 2 && (
+        <div className="absolute top-14 left-3 z-20 flex flex-wrap gap-1.5 pointer-events-none">
+          {kindLegend.map(({ type, count, color }) => (
+            <span
+              key={type}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full border text-[10px] uppercase tracking-wider font-mono"
+              style={{
+                background: "rgba(10,14,26,0.6)",
+                backdropFilter: "blur(4px)",
+                borderColor: `${color}55`,
+                color: "#94a3b8",
+              }}
+            >
+              <span
+                className="inline-block rounded-full shrink-0"
+                style={{
+                  width: 6,
+                  height: 6,
+                  background: color,
+                  outline: `1px solid ${color}bb`,
+                  outlineOffset: 1,
+                }}
+              />
+              {type} {count}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Top-right: Controls */}
       <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5">
@@ -1066,7 +1125,9 @@ export function GraphExplorer({
         width={svgW}
         height={svgH}
         className="rounded-xl"
-        style={{ background: "linear-gradient(135deg, #0a0e1a 0%, #0f172a 50%, #0a101f 100%)" }}
+        style={{
+          background: `radial-gradient(ellipse at 50% 50%, ${centerTypeColor}14 0%, transparent 55%), linear-gradient(135deg, #0a0e1a 0%, #0f172a 50%, #0a101f 100%)`,
+        }}
         onMouseDown={handleBgMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -1110,8 +1171,28 @@ export function GraphExplorer({
 
             const isPath = pathEdgeSet.has(edge.id);
 
+            // Edge length — used to gate inline label display (item #4)
+            const edgeLen = Math.sqrt(
+              (t.x - s.x) * (t.x - s.x) + (t.y - s.y) * (t.y - s.y),
+            );
+            // Inline edge label: show on all edges whose length ≥ 60 px;
+            // hide when another node is hovered and this edge is inactive.
+            const showInlineLabel =
+              edge.type &&
+              edgeLen >= 60 &&
+              !dimmed &&
+              !(hoveredNode && !isActive);
+
+            // Item #8: stroke weight/opacity per active state
+            const edgeStrokeWidth = isActive ? 1.8 : 1.2;
+            const edgeStrokeOpacity = dimmed ? 0.35 : isActive ? 0.9 : 0.35;
+
             return (
-              <g key={edge.id}>
+              <g
+                key={edge.id}
+                style={{ transition: "opacity 180ms ease-out" }}
+                opacity={dimmed ? 0.35 : 1}
+              >
                 {/* Path highlight — golden glow under the normal edge */}
                 {isPath && (
                   <path
@@ -1139,10 +1220,12 @@ export function GraphExplorer({
                   d={geom.path}
                   fill="none"
                   stroke={color}
-                  strokeWidth={isActive ? 2.2 : 1.3}
-                  strokeOpacity={dimmed ? 0.05 : isActive ? 0.9 : 0.45}
+                  strokeWidth={edgeStrokeWidth}
+                  strokeOpacity={edgeStrokeOpacity}
                   strokeDasharray={edge.type.includes("co") ? "4 4" : "none"}
                   strokeLinecap="round"
+                  markerEnd={isActive ? `url(#arrow-hi)` : "url(#arrow-neutral)"}
+                  style={{ color, transition: "opacity 180ms ease-out, stroke-width 180ms ease-out" }}
                   onMouseEnter={() => setHoveredEdge(edge.id)}
                   onMouseLeave={() => setHoveredEdge(null)}
                   className="cursor-pointer"
@@ -1156,6 +1239,40 @@ export function GraphExplorer({
                     className="pointer-events-none"
                   />
                 )}
+                {/* Inline edge label (item #4) */}
+                {showInlineLabel && (() => {
+                  const lx = geom.curveMidX;
+                  const ly = geom.curveMidY;
+                  const labelText = edge.type.replace(/[_-]/g, " ").toLowerCase();
+                  const lw = labelText.length * 5.2 + 8;
+                  return (
+                    <g className="pointer-events-none">
+                      <rect
+                        x={lx - lw / 2}
+                        y={ly - 7}
+                        width={lw}
+                        height={12}
+                        rx={3}
+                        fill="rgba(10,14,26,0.85)"
+                        stroke={isActive ? `${color}88` : "#1e293b"}
+                        strokeWidth={0.5}
+                      />
+                      <text
+                        x={lx}
+                        y={ly + 2.5}
+                        textAnchor="middle"
+                        fontSize={9}
+                        fontFamily="Geist Mono, ui-monospace, monospace"
+                        letterSpacing="0.3"
+                        fill={isActive ? color : "#64748b"}
+                        style={{ textTransform: "lowercase" }}
+                      >
+                        {labelText}
+                      </text>
+                    </g>
+                  );
+                })()}
+                {/* Side-panel tooltip on hover (existing behavior preserved) */}
                 {isActive && hoveredEdge === edge.id && (() => {
                   const mx = geom.curveMidX;
                   const my = geom.curveMidY;
@@ -1229,6 +1346,9 @@ export function GraphExplorer({
               (activeNode !== null && !isHighlighted && !isConnected && node.id !== activeNode) ||
               !filterKept;
 
+            // Item #5: center node always full opacity regardless of hover
+            const nodeOpacity = node.isCenter ? 1 : dimmed ? 0.28 : 1;
+
             return (
               <g
                 key={node.id}
@@ -1249,8 +1369,8 @@ export function GraphExplorer({
                   onNodeClick?.(node);
                 }}
                 className="cursor-pointer"
-                opacity={dimmed ? 0.12 : 1}
-                style={{ transition: "opacity 0.3s ease" }}
+                opacity={nodeOpacity}
+                style={{ transition: "opacity 180ms ease-out" }}
               >
                 {/* Centre gets concentric "target" rings so it reads
                     unambiguously as the investigation subject. Sized
@@ -1340,7 +1460,7 @@ export function GraphExplorer({
                   stroke={node.isCenter ? "#ffffff" : isHighlighted ? "#ffffff" : colorSet.glow}
                   strokeWidth={node.isCenter ? 2.2 : isHighlighted ? 2 : 0.8}
                   strokeOpacity={node.isCenter ? 0.85 : isHighlighted ? 0.9 : 0.55}
-                  filter="url(#node-shadow)"
+                  filter={isHighlighted ? `url(#node-shadow-${node.type})` : "url(#node-shadow)"}
                 />
                 {/* Specular highlight */}
                 <ellipse
