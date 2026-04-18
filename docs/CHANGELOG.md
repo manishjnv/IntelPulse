@@ -6,6 +6,181 @@ to the diff. Production URL: [https://intelpulse.tech/](https://intelpulse.tech/
 
 ---
 
+## 2026-04-18 (pt9) — final pt7 carry-forwards closed: notifications silent-catch sweep + `/news` subtopic chunk preload
+
+Final two items from the pt7 "Still open" list closed. Three earlier
+pt7 items had already shipped in pt8 between sessions (`fb10eef`,
+`16b0842`, `08f89ee` — documented in that session's handoff). The
+remaining gaps were UX-observability (silent network failures on the
+notifications page) and UX-perceived-perf (first-click chunk download
+on `/news` subtopic tabs). One environmental item (Windows
+`next build` phantom ENOENT) was acknowledged as non-actionable — the
+project's rule of "Linux CI is the authoritative build" stands.
+
+Two commits, both UI-only, zero load-bearing paths touched, zero
+codex:rescue ceremony. Live-verified on prod.
+
+### 1. `console.error` on 6 notifications silent catches — `18876e3`
+
+[`ui/src/app/(app)/notifications/page.tsx`](../ui/src/app/(app)/notifications/page.tsx)
+had 6 `catch { /* silent */ }` blocks swallowing errors from every
+notification fetch and mutation. Discovered during Phase 0 `grep`
+for `/* silent */` / `/* ignore */` across the `(app)` tree; not
+originally on the carry-forward list but folded in as a bonus under
+the same rationale as the pt7/pt8 silent-catch sweeps (`7116207`,
+`fb10eef`).
+
+Each `catch { /* silent */ }` became
+`catch (err) { console.error("[notifications] <handler> failed", err) }`
+so devtools surfaces the failure in operator/debug context. **Not**
+toasted — this matches the existing rule from pt7 that sidebar
+widgets shouldn't toast (noise); user-initiated mutation handlers
+(mark-read, delete, clear-all) could arguably toast in a future pass,
+noted in the pt9 memory doc.
+
+Six handlers updated:
+
+| Line | Handler | Context |
+| --- | --- | --- |
+| 85 | `loadNotifications` | bulk list fetch (page, filter, unread-only) |
+| 97 | `loadStats` | unread/total counts |
+| 119 | `handleMarkRead` | POST `/notifications/mark-read` |
+| 131 | `handleMarkAllRead` | POST `/notifications/mark-all-read` |
+| 143 | `handleDelete` | DELETE by id |
+| 156 | `handleClearAll` | DELETE all (confirm-gated) |
+
+**Live verification.** Fetched `https://intelpulse.tech/notifications`,
+extracted the deployed chunk URL (`/_next/static/chunks/app/(app)/notifications/page-2ac2ebd4767f3817.js`),
+grepped for `[notifications]`. All 6 distinct context strings present
+verbatim in the minified bundle — string literals survive minification
+because they're argument values, not identifier names.
+
+Cross-check: `grep -r '/\* silent \*/\|/\* ignore \*/'` under
+[`ui/src/app/(app)`](../ui/src/app/(app)/) now returns **zero matches**.
+Every silent catch in the app route tree has been replaced with
+observable logging (pt7 covered `threats` + `news`; pt8 covered
+`feeds` + `settings`; this commit covered `notifications`).
+
+### 2. `/news` subtopic chunk preload on hover/focus — `5e60870`
+
+pt7 commit `892d207` split the `/news` subtopic widgets
+(`VendorStatsWidget`, `VulnerableProductsTable`, `ThreatCampaignsTable`)
+into their own files loaded via `next/dynamic({ ssr: false })`. That
+shaved the `/news` client bundle from 21 kB → 16.7 kB (−4.3 kB), but
+introduced a ~200-500 ms chunk-download lag on the first click of the
+"Vulnerable Products" or "Threat Campaigns" subtopic tab over a slow
+connection. The fallback `<Skeleton />` hides it visually, but the
+interaction still *feels* laggy.
+
+Fix: warm the chunk cache when the user's intent becomes visible —
+typically `onMouseEnter` (pointer devices), with `onFocus` added for
+keyboard nav and touch-hover simulation.
+
+Top-level helper added to
+[`ui/src/app/(app)/news/news-client.tsx`](../ui/src/app/(app)/news/news-client.tsx)
+right after the existing `dynamic(...)` declarations:
+
+```tsx
+// Preload subtopic-tab chunks on hover/focus so the first click doesn't
+// pay the ~200-500ms chunk-download penalty on slow connections.
+const preloadSubtopic = (id: string) => {
+  if (id === "vulnerable-products") {
+    void import("./VulnerableProductsTable");
+    void import("./VendorStatsWidget");
+  } else if (id === "threat-campaigns") {
+    void import("./ThreatCampaignsTable");
+  }
+};
+```
+
+Then each of the 3 subtopic `<button>` elements in the tab bar picks
+up:
+
+```tsx
+onMouseEnter={() => preloadSubtopic(tab.id)}
+onFocus={() => preloadSubtopic(tab.id)}
+```
+
+**Design choice — `void import("./Foo")` not `.preload()`.**
+`next/dynamic`'s returned component does expose a `.preload()` method
+on modern Next.js versions, but the TypeScript surface is inconsistent
+— `LoadableComponent` sometimes omits it and you end up needing a cast
+or `@ts-expect-error`. Calling `import(...)` directly is the same
+webpack machinery `next/dynamic` invokes internally: the module cache
+dedupes repeat calls (idempotent — hover 10 times, download once),
+the chunk-load promise is cached on first resolve. `void` silences
+`no-floating-promises` in 4 characters. Net: 3 lines shorter than the
+`.preload()` route, no typing escape hatches.
+
+**Why scope to only 2 of the 3 tabs.** The "news" subtopic renders
+only in-bundle code (the main news feed + category sidebar + widgets
+already present in the main chunk) — no dynamic import to preload.
+Entering that `if` branch would be a no-op with a runtime cost. The
+function bails on the unhandled id.
+
+**Live verification.** CI run `24603173609` green end-to-end through
+Deploy stage with commit `5e60870`. Chunk hash on deployed HTML
+advanced from pre-deploy version to `page-b9b88210c2609b84.js`.
+
+String-grep for `preloadSubtopic` in the deployed chunk returned
+empty — function names minify to single letters, and dynamic-module
+targets become numeric chunk IDs, so direct identifier verification
+doesn't work for this kind of change. Indirect checks: literal refs
+to `"vulnerable-products"` in the news chunk count 5, `"threat-campaigns"`
+count 4 — consistent with the existing tab-id + conditional-render
+refs plus the new `if (id === "…")` comparisons in `preloadSubtopic`
+(which the minifier keeps as string literals because they're on the
+right-hand side of a `===`).
+
+Smoke-testing the hover preload in an actual browser (DevTools
+Network panel filtered to `chunk`, hover tab → observe a chunk fetch
+*before* click) is the authoritative check and was not performed this
+session. Low risk: 13-line addition, only event handlers, no
+render-path changes, no state mutation, idempotent.
+
+### 3. Windows `next build` phantom ENOENT — acknowledged as environmental
+
+The pt7 "Still open" list flagged an intermittent Windows-only
+failure: `npm run build` in
+[`ui/`](../ui/) sometimes emits
+`ENOENT: no such file or directory, open '.next/build-manifest.json'`
+during the "Collecting page data" phase, even though the file exists
+moments later. Root cause: Next.js + Windows filesystem-timing quirk
+documented in [`rca_perf_measurement_gotchas.md`](../../../Users/manis/.claude/projects/e--code-IntelPulse/memory/rca_perf_measurement_gotchas.md)
+(local memory, not repo-tracked).
+
+**Resolution stance: no code change.** The Linux CI build is the
+authoritative measurement — it runs on every push, it produces the
+bundle-size table the project treats as canonical per
+[`rca_perf_measurement_gotchas.md`](../../../Users/manis/.claude/projects/e--code-IntelPulse/memory/rca_perf_measurement_gotchas.md)
+Trap #2, and it has never exhibited the ENOENT. Skipping local build
+on Windows saves ~2 min per loop. Upgrading Next.js or moving the dev
+loop into WSL would fix it on our side, but neither is warranted for
+a negligible inconvenience that doesn't affect prod.
+
+### End-of-session verification matrix
+
+| Task | Live check | Result |
+| --- | --- | --- |
+| 1. Notifications `console.error` | curl chunk + grep `[notifications]` | 6/6 distinct error strings present |
+| 2. `/news` preload refs | curl chunk + count `"vulnerable-products"` + `"threat-campaigns"` | 5 + 4 refs (tab-id + conditional + preload `===`) |
+| 3. Silent-catch sweep final state | `grep /\* silent \*/\|/\* ignore \*/` under `ui/src/app/(app)` | 0 matches |
+| 4. CI Deploy stage | `gh run view` both commits | both `completed/success` end-to-end |
+
+**Agent utilization this session** — noted here for routing-drift
+auditability per the project overlay:
+
+- Opus (main): Phase 0 self-check (CI status + same-pattern grep);
+  2 direct self-edits (6 Edits on `notifications/page.tsx` in one
+  parallel batch; 2 Edits on `news-client.tsx`); 2 commit/push/verify
+  loops; Phase 6 handoff write. All work self-executed — edits fit
+  well under the overlay's "≤30 lines across ≤2 files, files in hot
+  read cache" threshold for not delegating.
+- Sonnet / Haiku / codex:rescue: n/a — work too small to justify
+  subagent cold-start, and no load-bearing/security paths touched.
+
+---
+
 ## 2026-04-18 — five residuals + deploy pipeline rewire
 
 Four security residuals closed (CSP, DNS-rebinding TOCTOU, xlsx CVE,
