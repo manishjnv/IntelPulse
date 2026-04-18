@@ -9,6 +9,8 @@ import { SeverityStackBar } from "@/components/SeverityStackBar";
 import { HeroBriefingStrip } from "@/components/HeroBriefingStrip";
 import { AttackActivityStrip } from "@/components/AttackActivityStrip";
 import { ActorCards } from "@/components/ActorCards";
+import { CveHeatRail } from "@/components/CveHeatRail";
+import { IngestionTrendChart } from "@/components/IngestionTrendChart";
 import { FeedStatusPanel } from "@/components/FeedStatusPanel";
 import { RankedDataList } from "@/components/RankedDataList";
 import { SectionCard } from "@/components/SectionCard";
@@ -296,6 +298,18 @@ export default function DashboardPage() {
       {/* Top threat actors — live from insights.threat_actors. */}
       {insights?.threat_actors && insights.threat_actors.length > 0 && (
         <ActorCards actors={insights.threat_actors} />
+      )}
+
+      {/* CVE heat rail + Ingestion trend — side-by-side on wide viewports. */}
+      {insights && (insights.top_cves?.length > 0 || insights.ingestion_trend?.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-4">
+          {insights.top_cves && insights.top_cves.length > 0 && (
+            <CveHeatRail cves={insights.top_cves} />
+          )}
+          {insights.ingestion_trend && insights.ingestion_trend.length > 1 && (
+            <IngestionTrendChart data={insights.ingestion_trend} />
+          )}
+        </div>
       )}
 
       {/* KPI Stats Row — each stat is clickable */}

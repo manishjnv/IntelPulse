@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle,
   Clock,
   Database,
   Flame,
@@ -15,8 +14,7 @@ import {
   TrendingDown,
   Minus,
 } from "lucide-react";
-import { getStatusBar } from "@/lib/api";
-import type { StatusBarData } from "@/types";
+import { useAppStore } from "@/store";
 
 /* ─── helpers ─────────────────────────────────────────── */
 function timeAgo(iso: string): string {
@@ -113,18 +111,8 @@ function IconBox({ children, className = "" }: { children: React.ReactNode; clas
 
 /* ─── Main component ──────────────────────────────────── */
 export function HeaderStatusBar() {
-  const [data, setData] = useState<StatusBarData | null>(null);
-  const [error, setError] = useState(false);
-
-  const fetchStatus = useCallback(async () => {
-    try {
-      const d = await getStatusBar();
-      setData(d);
-      setError(false);
-    } catch {
-      setError(true);
-    }
-  }, []);
+  const data = useAppStore((s) => s.statusBar);
+  const fetchStatus = useAppStore((s) => s.fetchStatusBar);
 
   useEffect(() => {
     fetchStatus();
@@ -132,14 +120,8 @@ export function HeaderStatusBar() {
     return () => clearInterval(id);
   }, [fetchStatus]);
 
-  /* Loading / error states */
-  if (error && !data) {
-    return (
-      <Pill className="bg-red-50 dark:bg-red-500/10 border-red-200/60 dark:border-red-500/20 text-red-700 dark:text-red-300">
-        <AlertTriangle className="h-3 w-3" /> Offline
-      </Pill>
-    );
-  }
+  /* Loading skeleton — store swallows errors and retains prior data, so
+     `!data` only fires on true cold first-load. */
   if (!data) {
     return (
       <div className="flex items-center gap-1.5 animate-pulse">

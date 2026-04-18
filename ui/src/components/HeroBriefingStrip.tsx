@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import Link from "next/link";
 import { ChevronRight, AlertTriangle, Flame } from "lucide-react";
-import { getStatusBar } from "@/lib/api";
-import type { StatusBarData } from "@/types";
+import { useAppStore } from "@/store";
 import { SeverityStackBar } from "@/components/SeverityStackBar";
 import { SEVERITY_HEX } from "@/lib/severity";
 
@@ -83,19 +82,13 @@ function utcTimeLabel(): string {
 }
 
 export function HeroBriefingStrip({ severityCounts }: HeroBriefingStripProps) {
-  const [status, setStatus] = useState<StatusBarData | null>(null);
-  const refresh = useCallback(async () => {
-    try {
-      setStatus(await getStatusBar());
-    } catch {
-      // best-effort
-    }
-  }, []);
+  const status = useAppStore((s) => s.statusBar);
+  const fetchStatus = useAppStore((s) => s.fetchStatusBar);
   useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 60_000);
+    fetchStatus();
+    const id = setInterval(fetchStatus, 60_000);
     return () => clearInterval(id);
-  }, [refresh]);
+  }, [fetchStatus]);
 
   const posture = postureLabel(severityCounts.critical, severityCounts.high);
   const criticalCount = severityCounts.critical;

@@ -1,5 +1,9 @@
 import { create } from "zustand";
-import type { IntelItem, DashboardData, User, SearchResponse, IntelListResponse, SearchFilters, Notification, NotificationListResponse, Report, ReportListResponse, ReportStats } from "@/types";
+import type { IntelItem, DashboardData, User, SearchResponse, IntelListResponse, SearchFilters, Notification, NotificationListResponse, Report, ReportListResponse, ReportStats, StatusBarData } from "@/types";
+
+// Shared in-flight promise for /status/bar. Ensures N consumers calling
+// fetchStatusBar() on the same tick share one HTTP request.
+let _statusBarInflight: Promise<void> | null = null;
 import * as api from "@/lib/api";
 
 interface AppState {
@@ -30,6 +34,13 @@ interface AppState {
   dashboardLoading: boolean;
   dashboardUpdatedAt: number | null;
   fetchDashboard: () => Promise<void>;
+
+  // Status bar — one source for HeaderStatusBar + Sidebar footer + HeroBriefingStrip.
+  // The raw fetcher dedupes concurrent callers through a shared promise, so
+  // N consumers mounting on the same tick only trigger one HTTP round-trip.
+  statusBar: StatusBarData | null;
+  statusBarLastFetch: number;
+  fetchStatusBar: () => Promise<void>;
 
   // Search
   searchResult: SearchResponse | null;
@@ -154,6 +165,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e: any) {
       set({ dashboardLoading: false, error: e.message });
     }
+  },
+
+  // Status bar — shared by 3 widgets. Re-fetch coalesced to at most once
+  // per 15s; concurrent callers share an in-flight promise.
+  statusBar: null,
+  statusBarLastFetch: 0,
+  fetchStatusBar: async () => {
+    const now = Date.now();
+    const last = get().statusBarLastFetch;
+    if (_statusBarInflight) return _statusBarInflight;
+    if (now - last < 15_000) return;
+    _statusBarInflight = (async () => {
+      try {
+        const data = await api.getStatusBar();
+        set({ statusBar: data, statusBarLastFetch: Date.now() });
+      } catch {
+        // best-effort; retain previous value
+      } finally {
+        _statusBarInflight = null;
+      }
+    })();
+    return _statusBarInflight;
   },
 
   // Search

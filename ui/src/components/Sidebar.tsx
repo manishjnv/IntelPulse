@@ -1,13 +1,11 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store";
 import { IntelPulseLogo } from "@/components/IntelPulseLogo";
-import { getStatusBar } from "@/lib/api";
-import type { StatusBarData } from "@/types";
 import {
   LayoutDashboard,
   Search,
@@ -90,19 +88,13 @@ function timeAgoShort(iso: string): string {
 }
 
 function SidebarFeedHealthFooter() {
-  const [data, setData] = useState<StatusBarData | null>(null);
-  const refresh = useCallback(async () => {
-    try {
-      setData(await getStatusBar());
-    } catch {
-      // best-effort; keep whatever we had
-    }
-  }, []);
+  const data = useAppStore((s) => s.statusBar);
+  const fetchStatus = useAppStore((s) => s.fetchStatusBar);
   useEffect(() => {
-    refresh();
-    const id = setInterval(refresh, 30_000);
+    fetchStatus();
+    const id = setInterval(fetchStatus, 30_000);
     return () => clearInterval(id);
-  }, [refresh]);
+  }, [fetchStatus]);
 
   if (!data) {
     return (
