@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -77,6 +77,11 @@ export function InvestigateClient({
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [featured, setFeatured] = useState<api.GraphFeaturedEntity[] | null>(initialFeatured);
+  // High-degree hubs (e.g. featured CVE, degree 91) bring back 89 satellites
+  // on one type-ring and the graph becomes unreadable regardless of layout.
+  // Cap the displayed satellites to the top-N most-connected; toggle lifts it
+  // when the user wants the full set.
+  const [displayLimit, setDisplayLimit] = useState(20);
 
   const { toast } = useToast();
 
@@ -204,14 +209,54 @@ export function InvestigateClient({
     explore();
   };
 
-  /* Compute connected edges for selected node */
-  const selectedEdges = graphData && selectedNode
-    ? graphData.edges.filter(
+  /* Client-side degree-based truncation. Keeps the centre plus the top-N
+     neighbours by edge count, and drops any edge whose endpoints are no
+     longer in the kept set. Total counts are rewritten so the in-graph
+     chrome and the toggle bar stay consistent. */
+  const displayedGraph = useMemo<GraphResponse | null>(() => {
+    if (!graphData) return null;
+    const satelliteCount = graphData.nodes.length - 1;
+    if (displayLimit >= satelliteCount) return graphData;
+
+    const deg = new Map<string, number>();
+    graphData.edges.forEach((e) => {
+      deg.set(e.source, (deg.get(e.source) ?? 0) + 1);
+      deg.set(e.target, (deg.get(e.target) ?? 0) + 1);
+    });
+
+    const centerNode = graphData.nodes.find((n) => n.id === graphData.center);
+    const satellites = graphData.nodes
+      .filter((n) => n.id !== graphData.center)
+      .sort((a, b) => (deg.get(b.id) ?? 0) - (deg.get(a.id) ?? 0))
+      .slice(0, displayLimit);
+
+    const keptIds = new Set<string>([graphData.center, ...satellites.map((n) => n.id)]);
+    const filteredEdges = graphData.edges.filter(
+      (e) => keptIds.has(e.source) && keptIds.has(e.target),
+    );
+    const keptNodes = centerNode ? [centerNode, ...satellites] : satellites;
+
+    return {
+      ...graphData,
+      nodes: keptNodes,
+      edges: filteredEdges,
+      total_nodes: keptNodes.length,
+      total_edges: filteredEdges.length,
+    };
+  }, [graphData, displayLimit]);
+
+  const totalSatellites = graphData ? graphData.nodes.length - 1 : 0;
+  const showingAll = !graphData || displayLimit >= totalSatellites;
+
+  /* Compute connected edges for selected node — scoped to the displayed
+     (filtered) graph so the side-panel and the canvas agree. */
+  const selectedEdges = displayedGraph && selectedNode
+    ? displayedGraph.edges.filter(
         (e) => e.source === selectedNode.id || e.target === selectedNode.id,
       )
     : [];
-  const selectedConnections = graphData && selectedNode
-    ? graphData.nodes.filter(
+  const selectedConnections = displayedGraph && selectedNode
+    ? displayedGraph.nodes.filter(
         (n) =>
           n.id !== selectedNode.id &&
           selectedEdges.some((e) => e.source === n.id || e.target === n.id),
@@ -339,15 +384,60 @@ export function InvestigateClient({
             <p className="text-sm">{error}</p>
           </CardContent>
         </Card>
-      ) : graphData ? (
+      ) : graphData && displayedGraph ? (
         <div className="flex flex-col lg:flex-row gap-4">
           {/* Graph area */}
-          <div className="flex-1 min-w-0 transition-all">
+          <div className="flex-1 min-w-0 transition-all space-y-2">
+            {/* Top-N toggle — only when the full graph has more than 20
+                satellites, which is when truncation actually kicks in. */}
+            {totalSatellites > 20 && (
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground px-1">
+                <span className="text-foreground/80 font-medium">
+                  Showing{" "}
+                  <span className="text-primary tabular-nums">
+                    {showingAll ? totalSatellites : displayLimit}
+                  </span>
+                  {" of "}
+                  <span className="tabular-nums">{totalSatellites}</span>{" "}
+                  neighbours
+                </span>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="text-muted-foreground/60">top</span>
+                <div className="inline-flex rounded-md border border-border/50 overflow-hidden">
+                  {[20, 50, 100].filter((n) => n < totalSatellites).map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setDisplayLimit(n)}
+                      className={cn(
+                        "px-2 py-0.5 border-r border-border/50 last:border-r-0 tabular-nums transition-colors",
+                        displayLimit === n && !showingAll
+                          ? "bg-primary/15 text-primary"
+                          : "hover:bg-muted/40 text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setDisplayLimit(totalSatellites)}
+                    className={cn(
+                      "px-2 py-0.5 tabular-nums transition-colors",
+                      showingAll
+                        ? "bg-primary/15 text-primary"
+                        : "hover:bg-muted/40 text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    all
+                  </button>
+                </div>
+                <span className="text-muted-foreground/50">by degree</span>
+              </div>
+            )}
             <Card className="border-border/30 overflow-hidden">
               <CardContent className="p-0">
                 <GraphExplorer
-                  data={graphData}
-                  height={560}
+                  data={displayedGraph}
+                  height={680}
                   onNodeClick={handleNodeClick}
                   onNodeSelect={handleNodeSelect}
                   selectedNodeId={selectedNode?.id}

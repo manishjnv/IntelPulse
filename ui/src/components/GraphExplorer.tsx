@@ -117,10 +117,12 @@ function orbitalLayout(
   Object.keys(byType).forEach((t) => { if (!types.includes(t)) types.push(t); });
 
   const minDim = Math.min(width, height);
-  const firstRing = minDim * 0.22;
-  const ringGap = minDim * 0.14;
-  const subRingGap = 42;     // px between sub-rings of the same type
-  const nodePitch = 42;      // min px between node centers on a sub-ring
+  // Generous inner radius + wide ring gap so the center node sits alone in
+  // a clear "breathing room" disc and each type-ring is visually distinct.
+  const firstRing = minDim * 0.30;
+  const ringGap = minDim * 0.19;
+  const subRingGap = 52;     // px between sub-rings of the same type
+  const nodePitch = 56;      // min px between node centers on a sub-ring
 
   const out: SimNode[] = [];
   if (centerNode) {
@@ -1200,9 +1202,11 @@ export function GraphExplorer({
             // Clamp so a single super-connected node can't fill the canvas
             // and low-degree satellites still stay readable.
             const deg = degreeMap.get(node.id) ?? 0;
-            const degBoost = maxDegree > 1 ? (deg / maxDegree) * 10 : 0;
-            const baseR = node.isCenter ? 22 : node.type === "intel" ? 16 : 12;
-            const r = Math.min(34, baseR + degBoost);
+            const degBoost = maxDegree > 1 ? (deg / maxDegree) * 12 : 0;
+            // Center node is deliberately larger — it's the subject of the
+            // investigation and should anchor the eye immediately.
+            const baseR = node.isCenter ? 30 : node.type === "intel" ? 17 : 13;
+            const r = Math.min(node.isCenter ? 44 : 30, baseR + degBoost);
             const isHovered = hoveredNode === node.id;
             const isSelected = selectedNodeId === node.id;
             const isHighlighted = isHovered || isSelected;
