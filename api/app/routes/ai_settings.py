@@ -14,7 +14,8 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.logging import get_logger
 from app.core.redis import redis_client
-from app.core.url_validation import UnsafeURLError, validate_outbound_url
+from app.core.safe_httpx import build_pinned_async_client
+from app.core.url_validation import UnsafeURLError, resolve_safe_outbound_url
 from app.middleware.auth import require_admin
 from app.models.models import AISetting, User
 
@@ -384,14 +385,15 @@ async def test_ai_provider(
     if not test_url.endswith("/chat/completions"):
         test_url += "/chat/completions"
 
-    # SSRF guard: reject private/internal targets before the outbound request.
+    # SSRF guard: reject private/internal targets AND pin the resolved IP
+    # so the connect-time DNS lookup cannot be rebound to an internal address.
     try:
-        validate_outbound_url(test_url, require_https=True)
+        resolved = resolve_safe_outbound_url(test_url, require_https=True)
     except UnsafeURLError as exc:
         raise HTTPException(400, f"Refusing to contact unsafe URL: {exc}") from exc
 
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with build_pinned_async_client(resolved, timeout=timeout) as client:
             resp = await client.post(
                 test_url,
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},

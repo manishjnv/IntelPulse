@@ -12,16 +12,17 @@ Blocks:
 - Non-http/https schemes (file://, gopher://, etc.)
 - IPv4-mapped IPv6 embeddings of any of the above
 
-DNS rebinding note: we resolve the hostname here and also reject if any
-resolved address is private, but the subsequent httpx call re-resolves, so a
-determined attacker with authoritative DNS could still win the race. Pinning
-resolved IPs into the HTTP client is a follow-up.
+DNS-rebinding hardening: `resolve_safe_outbound_url()` returns the chosen
+safe IP alongside the validated URL so the caller can pin the HTTP connection
+to that IP via `app.core.safe_httpx.build_pinned_*_client()`, eliminating the
+TOCTOU window between SSRF validation and connect-time resolution.
 """
 
 from __future__ import annotations
 
 import ipaddress
 import socket
+from typing import NamedTuple
 from urllib.parse import urlparse
 
 BLOCKED_HOSTNAMES: frozenset[str] = frozenset(
@@ -59,8 +60,44 @@ def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return False
 
 
+class ResolvedURL(NamedTuple):
+    """Result of resolving + validating an outbound URL.
+
+    `pinned_ip` is the safe IP the caller must connect to — using this with
+    a pinned-IP HTTP transport closes the DNS-rebinding TOCTOU window.
+    `host` and `port` carry the original hostname (for Host header / TLS SNI)
+    and the explicit port number to bind on.
+    """
+
+    url: str
+    scheme: str
+    host: str
+    port: int
+    pinned_ip: str
+
+
+def _default_port(scheme: str) -> int:
+    return 443 if scheme == "https" else 80
+
+
 def validate_outbound_url(url: str, *, require_https: bool = False) -> str:
     """Validate `url` is safe to request. Return the URL on success.
+
+    Raises UnsafeURLError on any policy violation. Kept for callers that do
+    not need the pinned IP; new code should prefer `resolve_safe_outbound_url`.
+    """
+    return resolve_safe_outbound_url(url, require_https=require_https).url
+
+
+def resolve_safe_outbound_url(
+    url: str, *, require_https: bool = False
+) -> ResolvedURL:
+    """Validate `url` AND return the chosen safe IP for connection pinning.
+
+    Resolves the hostname once, rejects if any answer is blocked, and returns
+    the first safe address. Callers must pass the returned `pinned_ip` to a
+    pinned-IP HTTP client so that the connect-time resolution cannot be
+    rebound to an internal address by a malicious authoritative DNS server.
 
     Raises UnsafeURLError on any policy violation.
     """
@@ -80,6 +117,13 @@ def validate_outbound_url(url: str, *, require_https: bool = False) -> str:
     if host in BLOCKED_HOSTNAMES:
         raise UnsafeURLError(f"URL hostname '{host}' is blocked")
 
+    try:
+        port = parsed.port if parsed.port is not None else _default_port(scheme)
+    except ValueError as exc:
+        raise UnsafeURLError(f"URL port is invalid: {exc}") from exc
+    if not 1 <= port <= 65535:
+        raise UnsafeURLError(f"URL port {port} is out of range")
+
     # Literal IP: check directly without DNS
     try:
         ip = ipaddress.ip_address(host)
@@ -88,11 +132,13 @@ def validate_outbound_url(url: str, *, require_https: bool = False) -> str:
     if ip is not None:
         if _is_blocked_ip(ip):
             raise UnsafeURLError(f"URL targets private/internal address {ip}")
-        return url
+        return ResolvedURL(
+            url=url, scheme=scheme, host=host, port=port, pinned_ip=str(ip)
+        )
 
     # Hostname: resolve and check every answer
     try:
-        infos = socket.getaddrinfo(host, None)
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
         raise UnsafeURLError(
             f"URL hostname '{host}' could not be resolved: {exc}"
@@ -101,6 +147,7 @@ def validate_outbound_url(url: str, *, require_https: bool = False) -> str:
     if not infos:
         raise UnsafeURLError(f"URL hostname '{host}' resolved to no addresses")
 
+    safe_addrs: list[str] = []
     for _family, _type, _proto, _canon, sockaddr in infos:
         addr = sockaddr[0]
         try:
@@ -110,8 +157,21 @@ def validate_outbound_url(url: str, *, require_https: bool = False) -> str:
                 f"URL hostname '{host}' resolved to invalid address {addr!r}"
             ) from exc
         if _is_blocked_ip(resolved):
+            # Fail-closed: any blocked answer poisons the entire result.
+            # Selecting only the safe ones would let an attacker who controls
+            # the DNS round-robin smuggle in a private-IP answer alongside a
+            # public one — `safe_addrs` would still be non-empty and the URL
+            # would resolve to a usable target on retry.
             raise UnsafeURLError(
                 f"URL hostname '{host}' resolves to blocked address {resolved}"
             )
+        safe_addrs.append(str(resolved))
 
-    return url
+    if not safe_addrs:
+        raise UnsafeURLError(
+            f"URL hostname '{host}' has no usable safe addresses"
+        )
+
+    return ResolvedURL(
+        url=url, scheme=scheme, host=host, port=port, pinned_ip=safe_addrs[0]
+    )

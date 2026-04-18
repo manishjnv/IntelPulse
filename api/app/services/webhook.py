@@ -14,7 +14,8 @@ from typing import Any
 import httpx
 
 from app.core.logging import get_logger
-from app.core.url_validation import UnsafeURLError, validate_outbound_url
+from app.core.safe_httpx import build_pinned_async_client, build_pinned_client
+from app.core.url_validation import UnsafeURLError, resolve_safe_outbound_url
 
 logger = get_logger(__name__)
 
@@ -60,7 +61,7 @@ def deliver_webhook_sync(
 ) -> dict[str, Any]:
     """POST notification payload to a webhook URL (synchronous)."""
     try:
-        validate_outbound_url(url)
+        resolved = resolve_safe_outbound_url(url)
     except UnsafeURLError as exc:
         logger.warning("webhook_blocked_unsafe_url", url=url[:120], error=str(exc))
         return {"success": False, "error": f"Refused unsafe URL: {exc}"}
@@ -69,7 +70,7 @@ def deliver_webhook_sync(
     headers = _build_headers(payload, secret)
 
     try:
-        with httpx.Client(timeout=WEBHOOK_TIMEOUT) as client:
+        with build_pinned_client(resolved, timeout=WEBHOOK_TIMEOUT) as client:
             resp = client.post(url, json=payload, headers=headers)
 
         return {
@@ -96,7 +97,7 @@ async def deliver_webhook_async(
 ) -> dict[str, Any]:
     """POST notification payload to a webhook URL (async)."""
     try:
-        validate_outbound_url(url)
+        resolved = resolve_safe_outbound_url(url)
     except UnsafeURLError as exc:
         logger.warning("webhook_blocked_unsafe_url", url=url[:120], error=str(exc))
         return {"success": False, "error": f"Refused unsafe URL: {exc}"}
@@ -105,7 +106,7 @@ async def deliver_webhook_async(
     headers = _build_headers(payload, secret)
 
     try:
-        async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
+        async with build_pinned_async_client(resolved, timeout=WEBHOOK_TIMEOUT) as client:
             resp = await client.post(url, json=payload, headers=headers)
 
         return {

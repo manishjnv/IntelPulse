@@ -10,7 +10,11 @@ from unittest.mock import patch
 
 import pytest
 
-from app.core.url_validation import UnsafeURLError, validate_outbound_url
+from app.core.url_validation import (
+    UnsafeURLError,
+    resolve_safe_outbound_url,
+    validate_outbound_url,
+)
 
 
 def _fake_addrinfo(ip: str):
@@ -157,4 +161,69 @@ def test_whitespace_trimmed():
         assert (
             validate_outbound_url("  https://example.com/  ")
             == "  https://example.com/  "
+        )
+
+
+# ── resolve_safe_outbound_url — pinned IP for TOCTOU close ──
+
+
+def test_resolve_returns_pinned_literal_ip():
+    r = resolve_safe_outbound_url("https://8.8.8.8/path")
+    assert r.host == "8.8.8.8"
+    assert r.pinned_ip == "8.8.8.8"
+    assert r.scheme == "https"
+    assert r.port == 443
+
+
+def test_resolve_default_ports():
+    assert resolve_safe_outbound_url("http://8.8.8.8/").port == 80
+    assert resolve_safe_outbound_url("https://8.8.8.8/").port == 443
+
+
+def test_resolve_explicit_port_preserved():
+    r = resolve_safe_outbound_url("https://8.8.8.8:8443/")
+    assert r.port == 8443
+
+
+def test_resolve_hostname_pins_first_safe_ip():
+    with patch(
+        "socket.getaddrinfo", return_value=_fake_addrinfo("93.184.216.34")
+    ):
+        r = resolve_safe_outbound_url("https://example.com/foo")
+        assert r.host == "example.com"
+        assert r.pinned_ip == "93.184.216.34"
+
+
+def test_resolve_rejects_if_any_answer_blocked():
+    # Mixed answer: one safe, one private. Must reject — selecting the safe
+    # IP would let an attacker control DNS round-robin to smuggle in a bad
+    # answer that surfaces on the next refresh.
+    infos = _fake_addrinfo("8.8.8.8") + _fake_addrinfo("10.0.0.1")
+    with patch("socket.getaddrinfo", return_value=infos):
+        with pytest.raises(UnsafeURLError, match="blocked"):
+            resolve_safe_outbound_url("https://mixed.example.com/")
+
+
+def test_resolve_ipv6_pinned():
+    with patch("socket.getaddrinfo", return_value=_fake_addrinfo("2001:4860:4860::8888")):
+        r = resolve_safe_outbound_url("https://example.com/")
+        assert r.pinned_ip == "2001:4860:4860::8888"
+
+
+def test_resolve_blocks_aws_metadata_via_dns_rebinding():
+    # The classic rebinding payload — public-looking hostname that resolves
+    # to the AWS IMDS link-local IP.
+    with patch(
+        "socket.getaddrinfo", return_value=_fake_addrinfo("169.254.169.254")
+    ):
+        with pytest.raises(UnsafeURLError, match="blocked"):
+            resolve_safe_outbound_url("https://attacker.com/")
+
+
+def test_validate_outbound_url_still_returns_url():
+    # Backward-compat: existing callers that only want the URL.
+    with patch("socket.getaddrinfo", return_value=_fake_addrinfo("93.184.216.34")):
+        assert (
+            validate_outbound_url("https://example.com/x")
+            == "https://example.com/x"
         )
