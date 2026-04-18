@@ -545,7 +545,7 @@ export function ThreatsClient({ initialData, initialStats }: ThreatsClientProps)
       {/* ─── Main Grid ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* ─── Threat List ─── */}
-        <div className="lg:col-span-3 space-y-2">
+        <div className="lg:col-span-3">
           {data === null ? (
             <table className="w-full">
               <tbody>
@@ -562,15 +562,34 @@ export function ThreatsClient({ initialData, initialStats }: ThreatsClientProps)
             </div>
           ) : (
             <>
-              {items.map((item) => (
-                <Link
-                  key={item.id}
-                  href={`/intel/${item.id}`}
-                  className={cn(
-                    "block border-l-4 rounded-lg border bg-card p-3 hover:shadow-md transition-all group relative",
-                    severityBorder(item.severity)
-                  )}
-                >
+              {/* Timeline spine + severity dots — additive overlay; each Link card below is unchanged. */}
+              <div className="relative">
+                {items.length > 0 && (
+                  <div
+                    className="absolute left-[7px] top-3 bottom-3 w-px bg-border/40 pointer-events-none"
+                    aria-hidden="true"
+                  />
+                )}
+                <div className="space-y-2">
+                  {items.map((item) => (
+                    <div key={item.id} className="relative pl-5">
+                      <div
+                        className="absolute left-0 top-4 z-10 h-3.5 w-3.5 rounded-full border-2 bg-background flex items-center justify-center"
+                        style={{ borderColor: SEV_COLORS[item.severity] ?? SEV_COLORS.info }}
+                        aria-hidden="true"
+                      >
+                        <div
+                          className="h-1.5 w-1.5 rounded-full"
+                          style={{ background: SEV_COLORS[item.severity] ?? SEV_COLORS.info }}
+                        />
+                      </div>
+                      <Link
+                        href={`/intel/${item.id}`}
+                        className={cn(
+                          "block border-l-4 rounded-lg border bg-card p-3 hover:shadow-md transition-all group relative",
+                          severityBorder(item.severity)
+                        )}
+                      >
                   {/* New badge */}
                   {isNewItem(item.ingested_at) && (
                     <span className="absolute -top-1.5 -right-1.5 text-[8px] font-bold bg-emerald-500 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
@@ -766,8 +785,11 @@ export function ThreatsClient({ initialData, initialStats }: ThreatsClientProps)
                       <ChevronRight className="h-4 w-4 text-muted-foreground/30 group-hover:text-primary transition-colors" />
                     </div>
                   </div>
-                </Link>
-              ))}
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
               {items.length === 0 && (
                 <div className="text-center py-16 text-muted-foreground text-sm">
