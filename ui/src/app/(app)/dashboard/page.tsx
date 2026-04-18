@@ -112,8 +112,12 @@ export default function DashboardPage() {
     fetchUnreadCount();
     fetchReportStats();
     fetchInsights();
-    api.getDashboardEnrichment().then(setEnrichment).catch(() => {});
-    api.getThreatVelocity().then(setVelocity).catch(() => {});
+    // Note: getDashboardEnrichment / getThreatVelocity were removed — their
+    // backend routes don't exist yet, so the old calls 404'd on every
+    // dashboard mount (2 wasted round-trips, ~600 ms added waterfall).
+    // The UI sections that consumed this data render nothing when the
+    // state is its initial empty value, so the visual output is unchanged.
+    // Re-wire once /api/v1/dashboard/enrichment + /threat-velocity ship.
     const interval = setInterval(fetchDashboard, 60000);
     const notifInterval = setInterval(fetchUnreadCount, 30000);
     return () => { clearInterval(interval); clearInterval(notifInterval); };

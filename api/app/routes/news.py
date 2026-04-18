@@ -140,22 +140,56 @@ async def list_news(
     total_result = await db.execute(count_q)
     total = total_result.scalar() or 0
 
+    # Slim list-view column set — skip heavy JSONB / Text fields that the
+    # card UI never reads (executive_brief, risk_assessment, attack_narrative,
+    # ioc_summary, timeline, raw_content, notable_campaigns, exploitation_info,
+    # correlated_sources, yara_rule, kql_rule, reference_links, …). Cuts
+    # the SELECT payload by ~80% for a typical enriched article and lets
+    # Pydantic's defaults fill the rest so the response schema is unchanged.
+    list_cols = [
+        NewsItem.id,
+        NewsItem.headline,
+        NewsItem.source,
+        NewsItem.source_url,
+        NewsItem.published_at,
+        NewsItem.category,
+        NewsItem.summary,
+        NewsItem.recommended_priority,
+        NewsItem.tags,
+        NewsItem.threat_actors,
+        NewsItem.malware_families,
+        NewsItem.campaign_name,
+        NewsItem.cves,
+        NewsItem.vulnerable_products,
+        NewsItem.tactics_techniques,
+        NewsItem.targeted_sectors,
+        NewsItem.targeted_regions,
+        NewsItem.confidence,
+        NewsItem.relevance_score,
+        NewsItem.ai_enriched,
+        NewsItem.created_at,
+        NewsItem.updated_at,
+    ]
+    list_q = select(*list_cols)
+    if filters:
+        list_q = list_q.where(*filters)
+
     # Sort
     sort_col = getattr(NewsItem, sort_by, NewsItem.published_at)
     order = desc(sort_col) if sort_order == "desc" else sort_col.asc()
     # Secondary sort for stability
-    base = base.order_by(order, desc(NewsItem.created_at))
+    list_q = list_q.order_by(order, desc(NewsItem.created_at))
 
     # Paginate
     offset = (page - 1) * page_size
-    base = base.offset(offset).limit(page_size)
+    list_q = list_q.offset(offset).limit(page_size)
 
-    result = await db.execute(base)
-    items = result.scalars().all()
+    result = await db.execute(list_q)
+    rows = result.mappings().all()
 
     pages = max(1, (total + page_size - 1) // page_size)
     response = NewsListResponse(
-        items=[NewsItemResponse.model_validate(i) for i in items],
+        items=[NewsItemResponse.model_validate(dict(r)) for r in rows],
         total=total,
         page=page,
         page_size=page_size,

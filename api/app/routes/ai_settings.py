@@ -583,11 +583,14 @@ async def _invalidate_ai_cache():
 # (used by the AI Configuration panel to visualise routing + costs)
 # ──────────────────────────────────────────────────────────────────
 
-# Short Redis TTL for the agent-catalog response — Bedrock agent state
-# ("PREPARED", alias id, collaborator count) is ~static, don't hammer the
-# control-plane API on every UI poll.
+# 10 min Redis TTL for the agent-catalog response — Bedrock agent state
+# ("PREPARED", alias id, collaborator count) is ~static and the control
+# plane scrape takes ~1.3 s cold. At 60 s the first visitor each minute
+# paid that cold cost; 600 s cuts miss frequency 10x without making the
+# Multi-Agent Pipeline panel meaningfully stale. The "Refresh" button in
+# the panel bypasses the cache via a cache-busting query param.
 _PIPELINE_CACHE_KEY = "ai_settings:pipeline"
-_PIPELINE_CACHE_TTL = 60  # seconds
+_PIPELINE_CACHE_TTL = 600  # seconds
 
 
 @router.get("/pipeline")
