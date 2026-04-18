@@ -5,7 +5,8 @@ mode authenticates everyone as the same admin user, so there is no
 per-user variation). For those, a short-TTL `Cache-Control: public`
 header lets Cloudflare serve repeat hits from the edge for all users in
 the s-maxage window, falling back to stale-while-revalidate for another
-5 min. The browser still revalidates per its own freshness window.
+5 min. The browser also caches for max-age (half the s-maxage window) so
+same-tab navigation within ~15 s is instant.
 
 Use as a FastAPI route dependency:
 
@@ -19,7 +20,7 @@ from __future__ import annotations
 
 from fastapi import Response
 
-_EDGE_CACHE_HEADER = "public, s-maxage=30, stale-while-revalidate=300"
+_EDGE_CACHE_HEADER = "public, max-age=15, s-maxage=30, stale-while-revalidate=300"
 
 
 def edge_cacheable(response: Response) -> None:

@@ -4,19 +4,11 @@ import React, { useEffect, useState, useCallback } from "react";
 import { X, ExternalLink, Shield, AlertTriangle, Bug, Globe, Building2, Tag, Zap, ChevronRight, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { severityClasses } from "@/lib/severity";
 import * as api from "@/lib/api";
 import type { InsightDetail, InsightDetailItem } from "@/types";
 import Link from "next/link";
 import { StructuredIntelCards } from "@/components/StructuredIntelCards";
-
-const SEV_COLORS: Record<string, string> = {
-  critical: "bg-red-500/15 text-red-400 border-red-500/20",
-  high: "bg-orange-500/15 text-orange-400 border-orange-500/20",
-  medium: "bg-yellow-500/15 text-yellow-400 border-yellow-500/20",
-  low: "bg-green-500/15 text-green-400 border-green-500/20",
-  info: "bg-blue-500/15 text-blue-400 border-blue-500/20",
-  unknown: "bg-muted text-muted-foreground border-border",
-};
 
 interface InsightDetailModalProps {
   open: boolean;
@@ -131,7 +123,7 @@ export function InsightDetailModal({ open, onClose, type, name }: InsightDetailM
                     {Object.entries(s.severity_distribution)
                       .sort((a, b) => b[1] - a[1])
                       .map(([sev, count]) => (
-                        <span key={sev} className={cn("text-xs px-2.5 py-1 rounded-md font-medium border", SEV_COLORS[sev] || SEV_COLORS.unknown)}>
+                        <span key={sev} className={cn("text-xs px-2.5 py-1 rounded-md font-medium border", severityClasses(sev))}>
                           {sev.charAt(0).toUpperCase() + sev.slice(1)}: {count}
                         </span>
                       ))}

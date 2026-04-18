@@ -175,6 +175,13 @@ export default function DashboardPage() {
       .slice(0, 8);
   }, [dashboard]);
 
+  const criticalCount = useMemo(() => {
+    if (!dashboard?.severity_distribution) return 0;
+    return dashboard.severity_distribution
+      .filter((d) => d.severity === "critical")
+      .reduce((acc, d) => acc + d.count, 0);
+  }, [dashboard]);
+
   if (dashboardLoading && !dashboard) return <Loading text="Loading dashboard..." />;
 
   const totalItems = dashboard?.total_items ?? 0;
@@ -187,7 +194,7 @@ export default function DashboardPage() {
     <div className="p-4 lg:p-6 space-y-5">
       {/* Header Bar */}
       <div className="flex items-center justify-between">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight">Threat Intelligence Dashboard</h1>
             {(dashboardLoading || insightsLoading) && (
@@ -197,6 +204,56 @@ export default function DashboardPage() {
           <p className="text-xs text-muted-foreground mt-0.5">
             Real-time overview{updatedLabel ? ` · Updated ${updatedLabel}` : ""}
           </p>
+          {/* Hero briefing — single-line at-a-glance */}
+          {dashboard && (
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+              <span className="text-muted-foreground">
+                <span className="font-semibold text-foreground tabular-nums">
+                  {(dashboard.items_last_24h ?? 0).toLocaleString()}
+                </span>{" "}
+                new · 24h
+              </span>
+              <span className="text-muted-foreground/40">·</span>
+              <span className="text-red-400">
+                <span className="font-semibold tabular-nums">{criticalCount.toLocaleString()}</span>{" "}
+                critical
+              </span>
+              <span className="text-muted-foreground/40">·</span>
+              <span className="text-orange-400">
+                <span className="font-semibold tabular-nums">
+                  {(dashboard.kev_count ?? 0).toLocaleString()}
+                </span>{" "}
+                KEV
+              </span>
+              <span className="text-muted-foreground/40">·</span>
+              <span className="text-muted-foreground">
+                Avg risk{" "}
+                <span className="font-semibold text-foreground tabular-nums">
+                  {Math.round(dashboard.avg_risk_score ?? 0)}
+                </span>
+              </span>
+              {insights?.threat_actors?.[0] && (
+                <>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span className="text-muted-foreground">
+                    Top actor{" "}
+                    <span className="font-medium text-foreground capitalize">
+                      {insights.threat_actors[0].name.replace(/_/g, " ")}
+                    </span>
+                  </span>
+                </>
+              )}
+              {insights?.top_cves?.[0] && (
+                <>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span className="text-muted-foreground">
+                    Top CVE{" "}
+                    <span className="font-mono text-primary">{insights.top_cves[0].cve_id}</span>
+                  </span>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
