@@ -9,6 +9,7 @@ import { SeverityStackBar } from "@/components/SeverityStackBar";
 import { HeroBriefingStrip } from "@/components/HeroBriefingStrip";
 import { AttackActivityStrip } from "@/components/AttackActivityStrip";
 import { ActorCards } from "@/components/ActorCards";
+import { GeoHeatmapWidget } from "@/components/GeoHeatmapWidget";
 import { CveHeatRail } from "@/components/CveHeatRail";
 import { IngestionTrendChart } from "@/components/IngestionTrendChart";
 import { FeedStatusPanel } from "@/components/FeedStatusPanel";
@@ -61,6 +62,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as api from "@/lib/api";
+import type { IOCStatsResponse } from "@/lib/api";
 import type { DashboardInsights } from "@/types";
 import { cn, formatDate } from "@/lib/utils";
 import {
@@ -89,6 +91,7 @@ export default function DashboardPage() {
   } = useAppStore();
   const [insights, setInsights] = useState<DashboardInsights | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
+  const [iocStats, setIocStats] = useState<IOCStatsResponse | null>(null);
   const [productPeriod, setProductPeriod] = useState<string>("30d");
   const [modal, setModal] = useState<ModalState>(null);
 
@@ -112,6 +115,16 @@ export default function DashboardPage() {
     } finally {
       setInsightsLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getIOCStats().then((data) => {
+      if (!cancelled) setIocStats(data);
+    }).catch((e) => {
+      console.error("[dashboard] iocStats fetch failed", e);
+    });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -295,9 +308,15 @@ export default function DashboardPage() {
           click-through into /techniques. Self-fetches the matrix. */}
       <AttackActivityStrip />
 
-      {/* Top threat actors — live from insights.threat_actors. */}
-      {insights?.threat_actors && insights.threat_actors.length > 0 && (
-        <ActorCards actors={insights.threat_actors} />
+      {/* Top threat actors + Geo heatmap — side-by-side on xl viewports when
+          actors are present; geo widget spans full width otherwise. */}
+      {insights?.threat_actors && insights.threat_actors.length > 0 ? (
+        <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-4">
+          <ActorCards actors={insights.threat_actors} />
+          <GeoHeatmapWidget stats={iocStats} height={260} />
+        </div>
+      ) : (
+        <GeoHeatmapWidget stats={iocStats} height={260} />
       )}
 
       {/* CVE heat rail + Ingestion trend — side-by-side on wide viewports. */}

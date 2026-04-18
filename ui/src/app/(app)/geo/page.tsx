@@ -28,6 +28,7 @@ import { exportToExcel } from "@/lib/excel-export";
 import { getDashboardInsights, getIOCStats, getIOCs, getIntelItems, type IOCStatsResponse, type IOCListResponse } from "@/lib/api";
 import type { DashboardInsights, IntelListResponse } from "@/types";
 import Link from "next/link";
+import { GeoHeatmapWidget } from "@/components/GeoHeatmapWidget";
 
 /* ─── Constants ─────────────────────────────────────────── */
 
@@ -278,6 +279,16 @@ export default function GeoViewPage() {
         <StatMini icon={<AlertTriangle className="h-3.5 w-3.5 text-red-400" />} label="Threat Regions" value={totalThreatRegions} bgClass="bg-red-500/[0.04] border-red-500/10" iconBg="bg-red-500/10" onClick={() => handleStatClick("intel")} />
         <StatMini icon={<Building2 className="h-3.5 w-3.5 text-orange-400" />} label="Industries" value={industries.length} bgClass="bg-orange-500/[0.04] border-orange-500/10" iconBg="bg-orange-500/10" onClick={() => handleStatClick("industries")} />
       </div>
+
+      {/* ── Geo Heatmap Widget ─────────────────────────── */}
+      <GeoHeatmapWidget
+        stats={iocStats}
+        height={340}
+        onCountryClick={(code, name) => {
+          const c = countries.find((x) => x.code === code);
+          handleDrillCountry(name, code, c?.count ?? 0);
+        }}
+      />
 
       {/* ── Tab Navigation ─────────────────────────────── */}
       <div className="flex items-center gap-1 border-b border-border/40 pb-0">
