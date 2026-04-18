@@ -7,7 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Report, ReportItem, ReportStatus, ReportType, Severity } from "@/types";
 import * as api from "@/lib/api";
-import MarkdownContent from "@/components/MarkdownContent";
+import dynamic from "next/dynamic";
+import { Skeleton } from "@/components/Skeleton";
+
+const MarkdownContent = dynamic(() => import("@/components/MarkdownContent"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-24 w-full rounded-md" />,
+});
 import {
   ArrowLeft,
   Save,
