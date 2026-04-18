@@ -117,10 +117,12 @@ function orbitalLayout(
   Object.keys(byType).forEach((t) => { if (!types.includes(t)) types.push(t); });
 
   const minDim = Math.min(width, height);
-  // Generous inner radius + wide ring gap so the center node sits alone in
+  // Generous inner radius + wide ring gap so the centre sits alone in
   // a clear "breathing room" disc and each type-ring is visually distinct.
-  const firstRing = minDim * 0.30;
-  const ringGap = minDim * 0.19;
+  // firstRing 0.36 keeps the first ring well outside the hero's ambient
+  // halo; ringGap 0.20 gives air between type bands.
+  const firstRing = minDim * 0.36;
+  const ringGap = minDim * 0.20;
   const subRingGap = 52;     // px between sub-rings of the same type
   const nodePitch = 56;      // min px between node centers on a sub-ring
 
@@ -1071,10 +1073,10 @@ export function GraphExplorer({
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
       >
-        {/* Ambient focus on center + soft corner vignette. Ambient is
-            generous (large radius, noticeable opacity) so the center
-            entity sits in a visible pool of light. */}
-        <circle cx="50%" cy="50%" r="420" fill="url(#center-ambient)" opacity={0.32} />
+        {/* Tight ambient focus at the very center — just enough to
+            seat the hero node in a soft light without bleeding into
+            the satellite ring. */}
+        <circle cx="50%" cy="50%" r="180" fill="url(#center-ambient)" opacity={0.22} />
         <rect width="100%" height="100%" fill="url(#vignette)" pointerEvents="none" />
 
         <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
@@ -1212,11 +1214,11 @@ export function GraphExplorer({
             // and low-degree satellites still stay readable.
             const deg = degreeMap.get(node.id) ?? 0;
             const degBoost = maxDegree > 1 ? (deg / maxDegree) * 12 : 0;
-            // Center node is dramatically larger than satellites — it is the
-            // subject of the investigation and the whole graph radiates from
-            // it. Clamped so a massive-degree center still fits the viewport.
-            const baseR = node.isCenter ? 52 : node.type === "intel" ? 20 : 17;
-            const r = Math.min(node.isCenter ? 72 : 32, baseR + degBoost);
+            // Centre is visibly the anchor — ~1.7× a satellite — but not
+            // so large that its halo swallows the inner ring. Calibrated
+            // against firstRing=0.36 × minDim so there's clear separation.
+            const baseR = node.isCenter ? 38 : node.type === "intel" ? 20 : 17;
+            const r = Math.min(node.isCenter ? 54 : 32, baseR + degBoost);
             const isHovered = hoveredNode === node.id;
             const isSelected = selectedNodeId === node.id;
             const isHighlighted = isHovered || isSelected;
@@ -1250,26 +1252,27 @@ export function GraphExplorer({
                 opacity={dimmed ? 0.12 : 1}
                 style={{ transition: "opacity 0.3s ease" }}
               >
-                {/* Center gets concentric "target" rings so it reads
-                    unambiguously as the investigation subject. Outer ring
-                    is dashed + animated; inner is a tighter solid halo. */}
+                {/* Centre gets concentric "target" rings so it reads
+                    unambiguously as the investigation subject. Sized
+                    tight to the node so they frame it instead of
+                    bleeding into the satellite ring. */}
                 {node.isCenter && (
                   <>
                     <circle
-                      r={r + 36}
+                      r={r + 22}
                       fill="none"
                       stroke={colorSet.glow}
                       strokeWidth={0.8}
-                      strokeOpacity={0.25}
+                      strokeOpacity={0.28}
                       strokeDasharray="3 6"
                       className="animate-pulse pointer-events-none"
                     />
                     <circle
-                      r={r + 20}
+                      r={r + 13}
                       fill="none"
                       stroke={colorSet.glow}
                       strokeWidth={1.2}
-                      strokeOpacity={0.45}
+                      strokeOpacity={0.5}
                       className="pointer-events-none"
                     />
                   </>
@@ -1286,11 +1289,11 @@ export function GraphExplorer({
                   />
                 )}
                 {/* Ambient glow — generous defaults so nodes feel alive at
-                    rest. Center gets a wider, stronger halo. */}
+                    rest. Centre halo is tight so it doesn't bleed. */}
                 <circle
-                  r={r + (node.isCenter ? 14 : 8)}
+                  r={r + (node.isCenter ? 9 : 8)}
                   fill={colorSet.glow}
-                  fillOpacity={isHighlighted ? 0.35 : node.isCenter ? 0.3 : 0.18}
+                  fillOpacity={isHighlighted ? 0.35 : node.isCenter ? 0.24 : 0.18}
                   className="pointer-events-none"
                 />
                 {/* Search-match halo — only when a filter query is active */}
