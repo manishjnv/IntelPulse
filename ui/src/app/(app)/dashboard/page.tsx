@@ -6,6 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { StatCard } from "@/components/StatCard";
 import { ThreatLevelBar } from "@/components/ThreatLevelBar";
 import { SeverityStackBar } from "@/components/SeverityStackBar";
+import { HeroBriefingStrip } from "@/components/HeroBriefingStrip";
+import { AttackActivityStrip } from "@/components/AttackActivityStrip";
+import { ActorCards } from "@/components/ActorCards";
 import { FeedStatusPanel } from "@/components/FeedStatusPanel";
 import { RankedDataList } from "@/components/RankedDataList";
 import { SectionCard } from "@/components/SectionCard";
@@ -280,6 +283,20 @@ export default function DashboardPage() {
       </div>
 
       <HowItWorks page="dashboard" />
+
+      {/* Situation read — HeroBriefingStrip renders a posture label +
+          templated headline + 24h velocity spark + severity stack. Additive;
+          KPI tiles below stay in place. */}
+      {dashboard && <HeroBriefingStrip severityCounts={severityCounts} />}
+
+      {/* ATT&CK activity strip — tactic-frequency bars feeding the tactic
+          click-through into /techniques. Self-fetches the matrix. */}
+      <AttackActivityStrip />
+
+      {/* Top threat actors — live from insights.threat_actors. */}
+      {insights?.threat_actors && insights.threat_actors.length > 0 && (
+        <ActorCards actors={insights.threat_actors} />
+      )}
 
       {/* KPI Stats Row — each stat is clickable */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
