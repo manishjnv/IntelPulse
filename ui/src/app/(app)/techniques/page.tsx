@@ -358,7 +358,6 @@ export default function TechniquesPage() {
                     href={`/techniques/${tu.technique.split(' - ')[0]}`}
                     className="group relative flex flex-col p-2 rounded-md border transition-colors hover:border-amber-500/40 hover:shadow-md"
                     style={{ backgroundColor: `rgba(245, 158, 11, ${intensity * 0.15})` }}
-                    title={`${tu.technique}\nActors: ${actorList}\nSectors: ${sectorList}\nCampaigns: ${campaignCount}\nArticles: ${tu.article_count}`}
                   >
                     <span className="font-mono text-[10px] text-amber-400">{tu.technique}</span>
                     <span className="text-[10px] font-medium truncate group-hover:text-primary transition-colors">
@@ -372,7 +371,7 @@ export default function TechniquesPage() {
                       <span className="text-[8px] text-teal-400 truncate mt-0.5">{tu.sectors.slice(0, 2).join(", ")}</span>
                     )}
                     {/* Hover detail overlay */}
-                    <div className="absolute z-10 hidden group-hover:block bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-52 p-2.5 rounded-lg border bg-popover text-popover-foreground shadow-xl">
+                    <div className="pointer-events-none absolute z-50 hidden group-hover:block bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-52 p-2.5 rounded-lg border bg-popover text-popover-foreground shadow-xl">
                       <p className="font-mono text-[10px] text-amber-400 font-bold">{tu.technique}</p>
                       <div className="mt-1 space-y-0.5 text-[10px]">
                         <p><span className="text-muted-foreground">Actors:</span> <span className="text-red-400">{actorList}</span></p>

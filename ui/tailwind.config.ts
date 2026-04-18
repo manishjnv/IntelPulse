@@ -43,6 +43,10 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
         sidebar: "hsl(var(--sidebar))",
         chart: {
           "1": "hsl(var(--chart-1))",
