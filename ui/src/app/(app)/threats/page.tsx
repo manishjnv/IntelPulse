@@ -35,7 +35,23 @@ async function fetchInitial(searchParams: Search): Promise<{
     ]);
     const data = dataRes.ok ? ((await dataRes.json()) as IntelListResponse) : null;
     const stats = statsRes.ok ? ((await statsRes.json()) as IntelStatsResponse) : null;
-    return { data, stats };
+    // Project-down: threats-client renders zero of these fields, so keeping
+    // them in the SSR-embedded initialData just bloats HTML. Subsequent
+    // client-side refetches via /api/v1/intel still get the full shape, so
+    // detail links and action buttons continue to work unchanged.
+    const slim = data
+      ? {
+          ...data,
+          items: data.items.map((it) => ({
+            ...it,
+            summary: null,
+            source_url: null,
+            updated_at: null,
+            source_hash: "",
+          })),
+        }
+      : null;
+    return { data: slim, stats };
   } catch {
     return { data: null, stats: null };
   }

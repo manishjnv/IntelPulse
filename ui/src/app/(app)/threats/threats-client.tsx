@@ -579,17 +579,26 @@ export function ThreatsClient({ initialData, initialStats }: ThreatsClientProps)
                   )}
 
                   <div className="flex items-start gap-3">
-                    {/* Risk score + freshness dot */}
+                    {/* Risk score + freshness dot — redesign "RISK pill" treatment:
+                        bordered, vertical stack (number + "RISK" micro-label), monospace,
+                        subtle tint that varies with severity. */}
                     <div className="flex flex-col items-center gap-1 shrink-0">
                       <div
                         className={cn(
-                          "flex items-center justify-center h-10 w-12 rounded-md text-sm font-bold",
+                          "flex flex-col items-center justify-center h-11 w-12 rounded-md border",
                           riskBg(item.risk_score),
                           riskColor(item.risk_score),
-                          item.risk_score >= 80 && "ring-1 ring-red-500/30"
+                          item.risk_score >= 80
+                            ? "border-red-500/30 ring-1 ring-red-500/20"
+                            : "border-border/40"
                         )}
                       >
-                        {item.risk_score}
+                        <span className="text-sm font-bold font-mono tabular-nums leading-none">
+                          {item.risk_score}
+                        </span>
+                        <span className="text-[8px] font-mono uppercase tracking-widest text-muted-foreground/70 mt-0.5">
+                          RISK
+                        </span>
                       </div>
                       <div
                         className={cn("h-1.5 w-1.5 rounded-full", freshnessColor(item.published_at || item.ingested_at))}
