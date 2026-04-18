@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useAppStore } from "@/store";
 import { IntelCard } from "@/components/IntelCard";
 import { Pagination } from "@/components/Pagination";
-import { Loading, IntelCardSkeleton } from "@/components/Loading";
+import { Skeleton } from "@/components/Skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -364,8 +364,26 @@ export default function IntelFeedPage() {
 
       {/* Item List */}
       <div className="space-y-3">
-        {intelLoading && !intelData ? (
-          Array.from({ length: 5 }).map((_, i) => <IntelCardSkeleton key={i} />)
+        {intelData === null ? (
+          Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-lg border border-l-4 border-l-muted p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="flex-1 space-y-2">
+                  <div className="flex gap-2">
+                    <Skeleton className="h-5 w-16" />
+                    <Skeleton className="h-5 w-20" />
+                  </div>
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-3 w-3/4" />
+                </div>
+                <Skeleton className="h-14 w-14 rounded-lg" />
+              </div>
+              <div className="flex gap-3">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            </div>
+          ))
         ) : intelData?.items.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
             <List className="h-12 w-12 mx-auto mb-3 opacity-30" />

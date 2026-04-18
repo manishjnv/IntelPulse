@@ -4,7 +4,14 @@ import React, { useEffect, useCallback, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loading } from "@/components/Loading";
+import {
+  Skeleton,
+  SkeletonStatCard,
+  SkeletonDonut,
+  SkeletonRankedList,
+  SkeletonTableRow,
+  SkeletonCardGrid,
+} from "@/components/Skeleton";
 import { Pagination } from "@/components/Pagination";
 import { DonutChart } from "@/components/charts";
 import { HowItWorks } from "@/components/HowItWorks";
@@ -415,8 +422,6 @@ export default function IOCDatabasePage() {
 
   const types = (stats?.type_distribution || []).map((t) => t.name);
 
-  if (loading && !data) return <Loading text="Loading IOC database..." />;
-
   return (
     <div className="p-4 lg:p-6 space-y-4">
       {/* ── Header ─────────────────────────────────────── */}
@@ -444,7 +449,14 @@ export default function IOCDatabasePage() {
       <HowItWorks page="iocs" />
 
       {/* ── Stat Cards (compact, clickable) ───────────── */}
-      {stats && (
+      {stats === null ? (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <SkeletonStatCard />
+          <SkeletonStatCard />
+          <SkeletonStatCard />
+          <SkeletonStatCard />
+        </div>
+      ) : (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           <Card
             className="bg-blue-500/[0.04] border-blue-500/10 cursor-pointer hover:border-blue-500/30 transition-colors"
@@ -506,10 +518,34 @@ export default function IOCDatabasePage() {
       )}
 
       {/* ── Risk Distribution Bar ──────────────────────── */}
-      {stats && <RiskDistBar dist={stats.risk_distribution} activeFilter={riskFilter} onFilter={setRiskFilter} />}
+      {stats === null ? (
+        <Skeleton className="h-4 w-full" />
+      ) : (
+        <RiskDistBar dist={stats.risk_distribution} activeFilter={riskFilter} onFilter={setRiskFilter} />
+      )}
 
       {/* ── Visualization Row ──────────────────────────── */}
-      {stats && (
+      {stats === null ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Card>
+            <CardContent className="pt-3 pb-2 px-3">
+              <p className="text-[10px] font-semibold text-muted-foreground mb-1">By Type</p>
+              <SkeletonDonut height={160} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-3 pb-2 px-3">
+              <p className="text-[10px] font-semibold text-muted-foreground mb-1">By Risk Level</p>
+              <SkeletonDonut height={160} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-3 pb-2 px-3">
+              <SkeletonRankedList rows={6} />
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {/* Type donut */}
           <Card>
@@ -634,7 +670,11 @@ export default function IOCDatabasePage() {
       )}
 
       {/* ── Hot IOCs ───────────────────────────────────── */}
-      {stats && <HotIOCsStrip items={stats.top_risky} onEnrich={handleEnrich} />}
+      {stats === null ? (
+        <SkeletonCardGrid count={4} height={56} />
+      ) : (
+        <HotIOCsStrip items={stats.top_risky} onEnrich={handleEnrich} />
+      )}
 
       {/* ── Search + Filters ───────────────────────────── */}
       <div className="space-y-2">
@@ -741,7 +781,9 @@ export default function IOCDatabasePage() {
                 </tr>
               </thead>
               <tbody>
-                {data?.items.map((ioc, idx) => {
+                {data === null
+                  ? Array.from({ length: 10 }).map((_, i) => <SkeletonTableRow key={i} cols={10} />)
+                  : data.items.map((ioc, idx) => {
                   const rl = riskLabel(ioc.risk_score);
                   const rCol = RISK_COLORS[rl];
                   const typeIcon = IOC_TYPE_ICONS[ioc.ioc_type] || <Database className="h-3 w-3" />;
@@ -911,7 +953,7 @@ export default function IOCDatabasePage() {
                 })}
               </tbody>
             </table>
-            {data?.items.length === 0 && (
+            {data !== null && data.items.length === 0 && (
               <div className="py-12 text-center text-xs text-muted-foreground/60">No IOCs match your filters</div>
             )}
           </div>

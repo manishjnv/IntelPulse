@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { StatCard } from "@/components/StatCard";
 import type { Report, ReportStatus, ReportType } from "@/types";
 import { HowItWorks } from "@/components/HowItWorks";
+import { SkeletonStatCard, SkeletonCardGrid } from "@/components/Skeleton";
 import {
   FileText,
   Plus,
@@ -157,28 +158,37 @@ export default function ReportsPage() {
       <HowItWorks page="reports" />
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard
-          title="Total"
-          value={reportStats?.total_reports ?? 0}
-          icon={<FileText className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Drafts"
-          value={draftCount}
-          icon={<Clock className="h-4 w-4" />}
-        />
-        <StatCard
-          title="In Review"
-          value={reviewCount}
-          icon={<Eye className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Published"
-          value={publishedCount}
-          icon={<CheckCircle className="h-4 w-4" />}
-        />
-      </div>
+      {reportStats === null ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <SkeletonStatCard />
+          <SkeletonStatCard />
+          <SkeletonStatCard />
+          <SkeletonStatCard />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard
+            title="Total"
+            value={reportStats.total_reports}
+            icon={<FileText className="h-4 w-4" />}
+          />
+          <StatCard
+            title="Drafts"
+            value={draftCount}
+            icon={<Clock className="h-4 w-4" />}
+          />
+          <StatCard
+            title="In Review"
+            value={reviewCount}
+            icon={<Eye className="h-4 w-4" />}
+          />
+          <StatCard
+            title="Published"
+            value={publishedCount}
+            icon={<CheckCircle className="h-4 w-4" />}
+          />
+        </div>
+      )}
 
       {/* Filters */}
       {showFilters && (
@@ -255,11 +265,7 @@ export default function ReportsPage() {
 
       {/* Report List */}
       {reportsLoading && reports.length === 0 ? (
-        <div className="space-y-3">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="h-24 rounded-lg bg-card animate-pulse" />
-          ))}
-        </div>
+        <SkeletonCardGrid count={5} height={96} />
       ) : reports.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">

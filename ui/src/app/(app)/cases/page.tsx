@@ -36,6 +36,7 @@ import type {
 } from "@/types";
 import { ALLOWED_TRANSITIONS } from "@/types";
 import { HowItWorks } from "@/components/HowItWorks";
+import { SkeletonStatCard, SkeletonCardGrid } from "@/components/Skeleton";
 import {
   Briefcase,
   Plus,
@@ -632,8 +633,6 @@ function CasesPageInner() {
       toast(msg, "error");
     }
   };
-  if (loading && cases.length === 0) return <Loading />;
-
   return (
     <div className="space-y-4 pb-10">
       {/* Header */}
@@ -685,7 +684,14 @@ function CasesPageInner() {
       <HowItWorks page="cases" />
 
       {/* Stats */}
-      {stats && (
+      {stats === null ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <SkeletonStatCard />
+          <SkeletonStatCard />
+          <SkeletonStatCard />
+          <SkeletonStatCard />
+        </div>
+      ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatCard title="Total Cases" value={stats.total_cases} icon={<Briefcase className="h-4 w-4" />} />
           <StatCard title="Open Cases" value={stats.open_cases} icon={<Clock className="h-4 w-4" />} />
@@ -936,6 +942,10 @@ function CasesPageInner() {
 
       {/* Case List */}
       <div className="space-y-2">
+        {cases.length === 0 && loading ? (
+          <SkeletonCardGrid count={6} height={72} />
+        ) : (
+        <>
         {cases.length > 0 && (
           <div className="flex items-center gap-2 px-1">
             <button onClick={toggleSelectAll} className="text-muted-foreground hover:text-foreground" aria-label="Select all cases">
@@ -1072,6 +1082,8 @@ function CasesPageInner() {
               </Button>
             </CardContent>
           </Card>
+        )}
+        </>
         )}
       </div>
 
