@@ -25,6 +25,12 @@ intelpulse.tech, www.intelpulse.tech {
 	@www host www.intelpulse.tech
 	redir @www https://intelpulse.tech{uri} permanent
 
+	# / → /dashboard — avoid Next.js SSR round-trip (~1.2s cold) for the
+	# landing request. Named matcher with `path /` ensures exact match
+	# (no glob). 308 preserves method and is cacheable by CF.
+	@root path /
+	redir @root /dashboard 308
+
 	# Security headers on all responses
 	import security-headers
 
@@ -38,6 +44,9 @@ intelpulse.tech, www.intelpulse.tech {
 # Direct IP access (for reviewers)
 :80 {
 	import security-headers
+
+	@root path /
+	redir @root /dashboard 308
 
 	reverse_proxy /api/* api:8000
 	reverse_proxy ui:3000

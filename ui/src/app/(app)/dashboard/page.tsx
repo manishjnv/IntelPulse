@@ -16,8 +16,19 @@ import {
   SkeletonTableRow,
   SkeletonCardGrid,
 } from "@/components/Skeleton";
-import { InsightDetailModal, ViewAllModal } from "@/components/InsightDetailModal";
+import dynamic from "next/dynamic";
 import { DonutChart, TrendLineChart } from "@/components/charts";
+
+// Click-triggered modals — keep out of first-paint chunk. Both exports land
+// in the same async chunk (webpack dedup), so two factories = one fetch.
+const InsightDetailModal = dynamic(
+  () => import("@/components/InsightDetailModal").then((m) => m.InsightDetailModal),
+  { ssr: false, loading: () => null },
+);
+const ViewAllModal = dynamic(
+  () => import("@/components/InsightDetailModal").then((m) => m.ViewAllModal),
+  { ssr: false, loading: () => null },
+);
 import { HowItWorks } from "@/components/HowItWorks";
 import {
   Shield,
@@ -1010,24 +1021,27 @@ export default function DashboardPage() {
         )}
       </SectionCard>
 
-      {/* Modals */}
-      <InsightDetailModal
-        open={modal?.kind === "detail"}
-        onClose={closeModal}
-        type={modal?.kind === "detail" ? modal.type : ""}
-        name={modal?.kind === "detail" ? modal.name : ""}
-      />
-      <ViewAllModal
-        open={modal?.kind === "viewAll"}
-        onClose={closeModal}
-        type={modal?.kind === "viewAll" ? modal.type : ""}
-        title={modal?.kind === "viewAll" ? modal.title : ""}
-        onSelect={(name) => {
-          if (modal?.kind === "viewAll") {
+      {/* Modals — mounted only when active so their chunk downloads on first
+          open, not on initial page render. */}
+      {modal?.kind === "detail" && (
+        <InsightDetailModal
+          open
+          onClose={closeModal}
+          type={modal.type}
+          name={modal.name}
+        />
+      )}
+      {modal?.kind === "viewAll" && (
+        <ViewAllModal
+          open
+          onClose={closeModal}
+          type={modal.type}
+          title={modal.title}
+          onSelect={(name) => {
             setModal({ kind: "detail", type: modal.type, name });
-          }
-        }}
-      />
+          }}
+        />
+      )}
     </div>
   );
 }
