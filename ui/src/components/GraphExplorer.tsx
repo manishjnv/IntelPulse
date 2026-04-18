@@ -755,15 +755,24 @@ export function GraphExplorer({
           </filter>
           {Object.entries(NODE_COLORS).map(([type, c]) => (
             <React.Fragment key={type}>
+              {/* Solid fill at the edge (was 0.8 → ghosted on dark bg). */}
               <radialGradient id={`grad-${type}`} cx="35%" cy="35%">
                 <stop offset="0%" stopColor={c.glow} stopOpacity="1" />
-                <stop offset="70%" stopColor={c.fill} stopOpacity="0.95" />
-                <stop offset="100%" stopColor={c.fill} stopOpacity="0.8" />
+                <stop offset="70%" stopColor={c.fill} stopOpacity="1" />
+                <stop offset="100%" stopColor={c.fill} stopOpacity="1" />
               </radialGradient>
               <radialGradient id={`grad-${type}-active`} cx="35%" cy="35%">
-                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.4" />
+                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.55" />
                 <stop offset="40%" stopColor={c.glow} stopOpacity="1" />
-                <stop offset="100%" stopColor={c.fill} stopOpacity="0.9" />
+                <stop offset="100%" stopColor={c.fill} stopOpacity="1" />
+              </radialGradient>
+              {/* Hero gradient — reserved for the center node. White hot core,
+                  big bright mid, saturated edge; drives the visual anchor. */}
+              <radialGradient id={`grad-${type}-hero`} cx="38%" cy="38%">
+                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.9" />
+                <stop offset="25%" stopColor="#ffffff" stopOpacity="0.4" />
+                <stop offset="55%" stopColor={c.glow} stopOpacity="1" />
+                <stop offset="100%" stopColor={c.fill} stopOpacity="1" />
               </radialGradient>
             </React.Fragment>
           ))}
@@ -1203,10 +1212,11 @@ export function GraphExplorer({
             // and low-degree satellites still stay readable.
             const deg = degreeMap.get(node.id) ?? 0;
             const degBoost = maxDegree > 1 ? (deg / maxDegree) * 12 : 0;
-            // Center node is deliberately larger — it's the subject of the
-            // investigation and should anchor the eye immediately.
-            const baseR = node.isCenter ? 32 : node.type === "intel" ? 20 : 17;
-            const r = Math.min(node.isCenter ? 46 : 32, baseR + degBoost);
+            // Center node is dramatically larger than satellites — it is the
+            // subject of the investigation and the whole graph radiates from
+            // it. Clamped so a massive-degree center still fits the viewport.
+            const baseR = node.isCenter ? 52 : node.type === "intel" ? 20 : 17;
+            const r = Math.min(node.isCenter ? 72 : 32, baseR + degBoost);
             const isHovered = hoveredNode === node.id;
             const isSelected = selectedNodeId === node.id;
             const isHighlighted = isHovered || isSelected;
@@ -1240,23 +1250,47 @@ export function GraphExplorer({
                 opacity={dimmed ? 0.12 : 1}
                 style={{ transition: "opacity 0.3s ease" }}
               >
-                {/* Pulse ring for center/selected */}
-                {(node.isCenter || isSelected) && (
+                {/* Center gets concentric "target" rings so it reads
+                    unambiguously as the investigation subject. Outer ring
+                    is dashed + animated; inner is a tighter solid halo. */}
+                {node.isCenter && (
+                  <>
+                    <circle
+                      r={r + 36}
+                      fill="none"
+                      stroke={colorSet.glow}
+                      strokeWidth={0.8}
+                      strokeOpacity={0.25}
+                      strokeDasharray="3 6"
+                      className="animate-pulse pointer-events-none"
+                    />
+                    <circle
+                      r={r + 20}
+                      fill="none"
+                      stroke={colorSet.glow}
+                      strokeWidth={1.2}
+                      strokeOpacity={0.45}
+                      className="pointer-events-none"
+                    />
+                  </>
+                )}
+                {/* Non-center selection pulse */}
+                {!node.isCenter && isSelected && (
                   <circle
                     r={r + 12}
                     fill="none"
                     stroke={colorSet.glow}
                     strokeWidth={1}
-                    strokeOpacity={0.3}
+                    strokeOpacity={0.5}
                     className="animate-pulse"
                   />
                 )}
-                {/* Ambient glow — higher default opacity so nodes feel
-                    alive at rest, not just on hover. */}
+                {/* Ambient glow — generous defaults so nodes feel alive at
+                    rest. Center gets a wider, stronger halo. */}
                 <circle
-                  r={r + 8}
+                  r={r + (node.isCenter ? 14 : 8)}
                   fill={colorSet.glow}
-                  fillOpacity={isHighlighted ? 0.28 : node.isCenter ? 0.2 : 0.15}
+                  fillOpacity={isHighlighted ? 0.35 : node.isCenter ? 0.3 : 0.18}
                   className="pointer-events-none"
                 />
                 {/* Search-match halo — only when a filter query is active */}
@@ -1294,15 +1328,15 @@ export function GraphExplorer({
                     strokeDasharray={node.severity === "critical" ? "none" : "3 2"}
                   />
                 )}
-                {/* 3D gradient node — center always uses the bright
-                    "active" gradient so it reads as the focal point even
-                    without hover. */}
+                {/* 3D gradient node — center uses the dedicated "hero"
+                    gradient (white-hot core) so it reads instantly as the
+                    focal point; hovered/selected satellites get "active". */}
                 <circle
                   r={r}
-                  fill={`url(#grad-${node.type}${isHighlighted || node.isCenter ? "-active" : ""})`}
-                  stroke={isHighlighted ? "#ffffff" : node.isCenter ? "#ffffff" : colorSet.glow}
-                  strokeWidth={isHighlighted ? 2 : node.isCenter ? 1.5 : 0.7}
-                  strokeOpacity={isHighlighted ? 0.9 : node.isCenter ? 0.6 : 0.45}
+                  fill={`url(#grad-${node.type}${node.isCenter ? "-hero" : isHighlighted ? "-active" : ""})`}
+                  stroke={node.isCenter ? "#ffffff" : isHighlighted ? "#ffffff" : colorSet.glow}
+                  strokeWidth={node.isCenter ? 2.2 : isHighlighted ? 2 : 0.8}
+                  strokeOpacity={node.isCenter ? 0.85 : isHighlighted ? 0.9 : 0.55}
                   filter="url(#node-shadow)"
                 />
                 {/* Specular highlight */}
@@ -1332,12 +1366,12 @@ export function GraphExplorer({
                     creating a crisp backdrop so the label reads over edges
                     or node-glow without needing a separate rect behind it. */}
                 <text
-                  y={r + 17}
-                  fontSize={node.isCenter ? 12.5 : 11}
-                  fill={isHighlighted ? "#f1f5f9" : node.isCenter ? "#e2e8f0" : "#cbd5e1"}
-                  fontWeight={node.isCenter ? 600 : 500}
-                  stroke="#0a0e1a"
-                  strokeWidth={4}
+                  y={r + (node.isCenter ? 20 : 17)}
+                  fontSize={node.isCenter ? 13.5 : 11}
+                  fill={node.isCenter ? "#ffffff" : isHighlighted ? "#f8fafc" : "#e2e8f0"}
+                  fontWeight={node.isCenter ? 700 : 500}
+                  stroke="#050810"
+                  strokeWidth={node.isCenter ? 5 : 4}
                   strokeLinejoin="round"
                   textAnchor="middle"
                   className="pointer-events-none"
