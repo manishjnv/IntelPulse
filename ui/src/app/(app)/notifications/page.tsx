@@ -22,6 +22,7 @@ import {
 import Link from "next/link";
 import { Pagination } from "@/components/Pagination";
 import { HowItWorks } from "@/components/HowItWorks";
+import { useToast } from "@/components/Toast";
 
 interface Notification {
   id: string;
@@ -62,6 +63,7 @@ export default function NotificationsPage() {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [stats, setStats] = useState<any>(null);
   const limit = 20;
+  const { toast } = useToast();
 
   const loadNotifications = useCallback(async () => {
     setLoading(true);
@@ -118,6 +120,7 @@ export default function NotificationsPage() {
       loadNotifications();
     } catch (err) {
       console.error("[notifications] handleMarkRead failed", err);
+      toast("Could not mark as read. Please try again.", "error");
     }
   };
 
@@ -130,6 +133,7 @@ export default function NotificationsPage() {
       loadNotifications();
     } catch (err) {
       console.error("[notifications] handleMarkAllRead failed", err);
+      toast("Could not mark all as read. Please try again.", "error");
     }
   };
 
@@ -142,6 +146,7 @@ export default function NotificationsPage() {
       loadNotifications();
     } catch (err) {
       console.error("[notifications] handleDelete failed", err);
+      toast("Could not delete notification. Please try again.", "error");
     }
   };
 
@@ -155,6 +160,7 @@ export default function NotificationsPage() {
       loadNotifications();
     } catch (err) {
       console.error("[notifications] handleClearAll failed", err);
+      toast("Could not clear notifications. Please try again.", "error");
     }
   };
 
