@@ -4,7 +4,10 @@ import "./globals.css";
 import { DemoBanner } from "@/components/DemoBanner";
 import { WebVitalsReporter } from "@/components/WebVitalsReporter";
 
-const inter = Inter({ subsets: ["latin"] });
+// `display: "swap"` shows fallback text immediately and swaps to Inter when
+// the font loads — avoids flash-of-invisible-text on cold loads. `preload`
+// is Next's default; keeping explicit for clarity.
+const inter = Inter({ subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
   title: "IntelPulse - Enterprise Threat Intelligence Platform",
@@ -17,6 +20,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        {/* Only third-party host in the UI — warm DNS + TLS so first flag
+            image fetch (geo/iocs/intel pages) saves ~100-200ms. */}
+        <link rel="preconnect" href="https://flagcdn.com" />
+        <link rel="dns-prefetch" href="https://flagcdn.com" />
+      </head>
       <body className={inter.className}>
         <WebVitalsReporter />
         <DemoBanner />
