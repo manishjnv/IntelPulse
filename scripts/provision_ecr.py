@@ -155,6 +155,17 @@ def ensure_oidc_provider() -> str:
 
 def ensure_gha_role(oidc_arn: str, repo_uris: list[str]) -> str:
     acct = _account_id()
+    # GitHub OIDC sub claim shape depends on the workflow context:
+    #   - plain ref runs:          repo:<owner>/<repo>:ref:refs/heads/<branch>
+    #   - workflows with an
+    #     `environment:` job key:  repo:<owner>/<repo>:environment:<env>
+    # ecr-push.yml declares `environment: production`, so its sub is the
+    # second shape. Allow both so we don't have to remember which context
+    # a given workflow uses.
+    allowed_subs = [
+        f"repo:{GITHUB_REPO}:ref:{GITHUB_REF}",
+        f"repo:{GITHUB_REPO}:environment:production",
+    ]
     trust = {
         "Version": "2012-10-17",
         "Statement": [
@@ -167,9 +178,7 @@ def ensure_gha_role(oidc_arn: str, repo_uris: list[str]) -> str:
                         f"{OIDC_PROVIDER_URL}:aud": "sts.amazonaws.com",
                     },
                     "StringLike": {
-                        f"{OIDC_PROVIDER_URL}:sub": (
-                            f"repo:{GITHUB_REPO}:ref:{GITHUB_REF}"
-                        ),
+                        f"{OIDC_PROVIDER_URL}:sub": allowed_subs,
                     },
                 },
             }
