@@ -123,7 +123,9 @@ export default function FeedStatusPage() {
     try {
       const data = await api.getNewsPipelineStatus();
       setPipelineStatus(data);
-    } catch { /* silent */ }
+    } catch (err) {
+      console.error("[feeds] loadPipelineStatus failed", err);
+    }
   }
 
   /* ── Intel Feeds data ─────────────────────────────── */

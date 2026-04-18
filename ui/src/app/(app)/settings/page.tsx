@@ -1908,7 +1908,9 @@ function AIConfigSettings() {
     try {
       await api.resetAIUsage();
       setUsageData({});
-    } catch { /* silent */ }
+    } catch (err) {
+      console.error("[settings] handleResetUsage failed", err);
+    }
   };
 
   const handleResetDefaults = async () => {
