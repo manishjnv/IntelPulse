@@ -321,7 +321,7 @@ export function ThreatsClient({ initialData, initialStats }: ThreatsClientProps)
     try {
       const s = await api.getIntelStats();
       setStats(s);
-    } catch { /* silent */ }
+    } catch (err) { console.error("[threats] fetchStats failed", err); }
   }, []);
 
   useEffect(() => {

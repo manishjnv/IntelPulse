@@ -1283,7 +1283,7 @@ function VulnerableProductsTable() {
         window: windowMode,
       });
       setData(result);
-    } catch { /* ignore */ } finally {
+    } catch (err) { console.error("[news/vulnerable-products] fetchData failed", err); } finally {
       setLoading(false);
     }
   }, [search, sevFilter, sortBy, sortOrder, windowMode]);
@@ -1297,7 +1297,7 @@ function VulnerableProductsTable() {
     try {
       const result = await api.bulkCveLookup(cves);
       setCveLookupResult(result);
-    } catch { /* ignore */ } finally {
+    } catch (err) { console.error("[news/vulnerable-products] bulk CVE lookup failed", err); } finally {
       setCveLookupLoading(false);
     }
   };
@@ -1760,7 +1760,7 @@ function ThreatCampaignsTable() {
         window: windowMode,
       });
       setData(result);
-    } catch { /* ignore */ } finally {
+    } catch (err) { console.error("[news/threat-campaigns] fetchData failed", err); } finally {
       setLoading(false);
     }
   }, [search, sevFilter, sortBy, sortOrder, windowMode]);
@@ -2219,8 +2219,8 @@ export default function NewsClient({
     try {
       const data = await api.getNewsCategories();
       setCategories(data);
-    } catch {
-      /* ignore */
+    } catch (err) {
+      console.error("[news] fetchCategories failed", err);
     } finally {
       setCatLoading(false);
     }
@@ -2230,21 +2230,21 @@ export default function NewsClient({
     try {
       const data = await api.getNewsStats();
       setNewsStats(data);
-    } catch { /* ignore */ }
+    } catch (err) { console.error("[news] fetchStats failed", err); }
   }, []);
 
   const fetchExtractionStats = useCallback(async () => {
     try {
       const data = await api.getExtractionStats();
       setExtractionStats(data);
-    } catch { /* ignore */ }
+    } catch (err) { console.error("[news] fetchExtractionStats failed", err); }
   }, []);
 
   const fetchPipelineStatus = useCallback(async () => {
     try {
       const data = await api.getNewsPipelineStatus();
       setPipelineStatus(data);
-    } catch { /* ignore */ }
+    } catch (err) { console.error("[news] fetchPipelineStatus failed", err); }
   }, []);
 
   const fetchNews = useCallback(async (silent = false) => {
@@ -2359,7 +2359,7 @@ export default function NewsClient({
     try {
       const detail = await api.getNewsItem(id);
       setSelectedArticle(detail);
-    } catch { /* ignore */ } finally {
+    } catch (err) { console.error("[news] getNewsItem failed", err); } finally {
       setArticleLoading(false);
     }
   };
