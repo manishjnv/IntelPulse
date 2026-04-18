@@ -21,19 +21,21 @@ const SEVERITY_RING: Record<string, string> = {
   unknown: "#374151",
 };
 
+/* Edge palette — slightly desaturated from the node palette so links
+ * read as "connective tissue" rather than competing with node colour. */
 const EDGE_COLORS: Record<string, string> = {
-  "shares-ioc": "#f97316",
-  shares_ioc: "#f97316",
-  "shares-cve": "#ef4444",
-  shares_cve: "#ef4444",
-  "shares-technique": "#8b5cf6",
-  shares_technique: "#8b5cf6",
-  indicates: "#3b82f6",
-  uses: "#10b981",
-  exploits: "#dc2626",
+  "shares-ioc": "#e8944a",
+  shares_ioc: "#e8944a",
+  "shares-cve": "#d85555",
+  shares_cve: "#d85555",
+  "shares-technique": "#9b82d1",
+  shares_technique: "#9b82d1",
+  indicates: "#6b9ae0",
+  uses: "#4ab88f",
+  exploits: "#c84545",
   "co-occurs": "#6b7280",
   co_occurs: "#6b7280",
-  "related-to": "#06b6d4",
+  "related-to": "#4db6c9",
 };
 
 /* ── Edge evidence extractor ──────────────────────────
@@ -746,64 +748,69 @@ export function GraphExplorer({
               </radialGradient>
             </React.Fragment>
           ))}
-          <pattern id="cyber-grid" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
-            <line x1="40" y1="0" x2="40" y2="40" stroke="#1e293b" strokeWidth="0.5" strokeOpacity="0.3" />
-            <line x1="0" y1="40" x2="40" y2="40" stroke="#1e293b" strokeWidth="0.5" strokeOpacity="0.3" />
-          </pattern>
           <radialGradient id="center-ambient">
             <stop offset="0%" stopColor="#3b82f6" />
             <stop offset="100%" stopColor="transparent" />
           </radialGradient>
+          {/* Vignette — transparent middle, deep at corners. Replaces the
+           * old cyber-grid pattern as the canvas overlay; gives the scene a
+           * cinematic focus on the center entity without adding line noise. */}
+          <radialGradient id="vignette" cx="50%" cy="50%" r="75%">
+            <stop offset="50%" stopColor="#000" stopOpacity="0" />
+            <stop offset="100%" stopColor="#000" stopOpacity="0.55" />
+          </radialGradient>
         </defs>
       </svg>
 
-      {/* Top-left: Legend */}
-      <div className="absolute top-3 left-3 z-20 bg-[#0f172a]/90 backdrop-blur-sm border border-[#1e293b] rounded-xl px-3 py-2 text-[11px] flex items-center gap-3">
+      {/* Top-left: single glass bar — legend + filter + counts. One row of
+          chrome reads more cleanly than two stacked pills, and drops the
+          right-side counts badge for a tighter right-edge. */}
+      <div className="absolute top-3 left-3 z-20 bg-[#0f172a]/85 backdrop-blur-md border border-white/[0.06] rounded-xl px-3 py-1.5 text-[11px] flex items-center gap-3 shadow-lg shadow-black/20">
         {Object.entries(NODE_COLORS).map(([type, c]) => (
           <div key={type} className="flex items-center gap-1.5">
             <span
-              className="w-2.5 h-2.5 rounded-full inline-block ring-1 ring-white/10"
-              style={{ background: c.fill, boxShadow: `0 0 6px ${c.glow}` }}
+              className="w-2 h-2 rounded-full inline-block"
+              style={{ background: c.fill, boxShadow: `0 0 8px ${c.glow}` }}
             />
             <span className="capitalize text-slate-400">{type}</span>
           </div>
         ))}
-      </div>
-
-      {/* Top-left, second row: in-graph search filter */}
-      <div className="absolute top-[52px] left-3 z-20 bg-[#0f172a]/90 backdrop-blur-sm border border-[#1e293b] rounded-xl px-2 py-1 flex items-center gap-1.5">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" className="shrink-0">
-          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
-        </svg>
-        <input
-          value={filterQuery}
-          onChange={(e) => setFilterQuery(e.target.value)}
-          placeholder="Filter graph (CVE, IOC, name…)"
-          className="bg-transparent outline-none border-none text-[11px] text-slate-200 placeholder:text-slate-500 w-44"
-        />
-        {filterQuery && (
-          <button
-            onClick={() => setFilterQuery("")}
-            className="p-0.5 rounded hover:bg-slate-700/50 text-slate-500 hover:text-slate-300"
-            title="Clear filter"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-        )}
-        {filterMatch && (
-          <span className="text-[9px] text-yellow-300 tabular-nums pl-0.5 border-l border-slate-700 ml-0.5">
-            {filterMatch.direct.size}
-          </span>
-        )}
+        <span className="h-3.5 w-px bg-white/10" />
+        <div className="flex items-center gap-1.5">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" className="shrink-0">
+            <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+          </svg>
+          <input
+            value={filterQuery}
+            onChange={(e) => setFilterQuery(e.target.value)}
+            placeholder="Filter…"
+            className="bg-transparent outline-none border-none text-[11px] text-slate-200 placeholder:text-slate-500 w-32"
+          />
+          {filterQuery && (
+            <button
+              onClick={() => setFilterQuery("")}
+              className="p-0.5 rounded hover:bg-slate-700/50 text-slate-500 hover:text-slate-300"
+              title="Clear filter"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+          {filterMatch && (
+            <span className="text-[9px] text-amber-300 tabular-nums">
+              {filterMatch.direct.size}
+            </span>
+          )}
+        </div>
+        <span className="h-3.5 w-px bg-white/10" />
+        <span className="text-slate-500 tabular-nums">
+          {data.total_nodes}n · {data.total_edges}e
+        </span>
       </div>
 
       {/* Top-right: Controls */}
       <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5">
-        <div className="bg-[#0f172a]/90 backdrop-blur-sm border border-[#1e293b] rounded-xl px-2.5 py-1 text-[11px] text-slate-400 mr-1">
-          {data.total_nodes} nodes · {data.total_edges} edges
-        </div>
         {[
           { label: "+", action: zoomIn, title: "Zoom in" },
           { label: "−", action: zoomOut, title: "Zoom out" },
@@ -951,8 +958,10 @@ export function GraphExplorer({
         </div>
       )}
 
-      {/* Mini-map — bottom-left. Click to pan the main view. */}
-      {nodes.length > 0 && (
+      {/* Mini-map — bottom-left. Only shown for graphs big enough to
+          warrant one; below the threshold the overview adds clutter more
+          than it aids navigation. Click to pan the main view. */}
+      {nodes.length > 20 && (
         <div className="absolute bottom-3 left-3 z-20 bg-[#0f172a]/90 backdrop-blur-sm border border-[#1e293b] rounded-lg overflow-hidden shadow-lg">
           <svg
             width={miniW}
@@ -1035,8 +1044,10 @@ export function GraphExplorer({
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
       >
-        <rect width="100%" height="100%" fill="url(#cyber-grid)" opacity={0.6} />
-        <circle cx="50%" cy="50%" r="300" fill="url(#center-ambient)" opacity={0.12} />
+        {/* Soft ambient focus on center, then corner vignette — the only
+            two overlays; grid is gone for a cleaner canvas. */}
+        <circle cx="50%" cy="50%" r="320" fill="url(#center-ambient)" opacity={0.14} />
+        <rect width="100%" height="100%" fill="url(#vignette)" pointerEvents="none" />
 
         <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
           {/* Edges */}
@@ -1293,14 +1304,20 @@ export function GraphExplorer({
                 >
                   {colorSet.icon}
                 </text>
-                {/* Label */}
+                {/* Label — paint-order:stroke draws the dark stroke first,
+                    creating a crisp backdrop so the label reads over edges
+                    or node-glow without needing a separate rect behind it. */}
                 <text
                   y={r + 15}
                   fontSize={9.5}
-                  fill="#94a3b8"
+                  fill={isHighlighted ? "#e2e8f0" : "#94a3b8"}
+                  stroke="#0a0e1a"
+                  strokeWidth={3}
+                  strokeLinejoin="round"
                   textAnchor="middle"
                   className="pointer-events-none"
                   fontFamily="system-ui, sans-serif"
+                  style={{ paintOrder: "stroke" }}
                 >
                   {node.label.length > 32 ? node.label.slice(0, 30) + "…" : node.label}
                 </text>
@@ -1335,10 +1352,6 @@ export function GraphExplorer({
         </g>
       </svg>
 
-      {/* Hints */}
-      <div className="absolute bottom-3 left-3 z-20 text-[10px] text-slate-600 flex items-center gap-3">
-        <span>Click: select · Double-click: open · Drag: move · Scroll: zoom · Drag bg: pan</span>
-      </div>
     </div>
   );
 }
