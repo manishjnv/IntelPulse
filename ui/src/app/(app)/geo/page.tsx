@@ -23,12 +23,15 @@ import {
   Bug,
   Hash,
   Download,
+  Flame,
+  ArrowRight,
 } from "lucide-react";
 import { exportToExcel } from "@/lib/excel-export";
 import { getDashboardInsights, getIOCStats, getIOCs, getIntelItems, type IOCStatsResponse, type IOCListResponse } from "@/lib/api";
 import type { DashboardInsights, IntelListResponse } from "@/types";
 import Link from "next/link";
-import { GeoHeatmapWidget } from "@/components/GeoHeatmapWidget";
+import { GeoHeatmapWidget, deriveFlows, type DerivedFlow } from "@/components/GeoHeatmapWidget";
+import { SectionCard } from "@/components/SectionCard";
 
 /* ─── Constants ─────────────────────────────────────────── */
 
@@ -156,6 +159,44 @@ export default function GeoViewPage() {
     ? Math.round((iocStats.enrichment_coverage.enriched / Math.max(iocStats.enrichment_coverage.total_ips, 1)) * 100)
     : 0;
 
+  /* ── KPI header derivations ──────────────────────────────────────────── */
+
+  // Countries with IOC data (hotspot filter: top 18 with known centroids)
+  const kpiActiveRegions = iocStats?.country_distribution?.length ?? 0;
+
+  // Critical hotspots = countries where intensity >= 0.7
+  const kpiCriticalHotspots = useMemo(() => {
+    const dist = iocStats?.country_distribution ?? [];
+    if (dist.length === 0) return 0;
+    const maxCount = Math.max(1, ...dist.map((c) => c.count));
+    return dist.filter((c) => c.count / maxCount >= 0.7).length;
+  }, [iocStats]);
+
+  // Events (24h) — prefer dashboard.items_last_24h; fall back to IOC sum
+  const kpiEvents24h = dashboard?.items_last_24h ?? totalIOCsWithGeo;
+  const kpiEvents24hLabel = dashboard?.items_last_24h != null ? "Intel events (24h)" : "IOC events (24h)";
+
+  // Top region — largest country by IOC count
+  const kpiTopRegion = useMemo(() => {
+    const dist = iocStats?.country_distribution ?? [];
+    if (dist.length === 0) return null;
+    return dist.reduce((best, c) => (c.count > best.count ? c : best), dist[0]);
+  }, [iocStats]);
+
+  /* ── Below-map panel data ────────────────────────────────────────────── */
+
+  // Top-regions ranked list (same source as heatmap: top 18)
+  const topRegionsRanked = useMemo(() => {
+    const dist = (iocStats?.country_distribution ?? []).slice(0, 18);
+    return [...dist].sort((a, b) => b.count - a.count);
+  }, [iocStats]);
+
+  // Attack corridors — derived from the same slice the widget uses
+  const attackCorridors: DerivedFlow[] = useMemo(() => {
+    const dist = (iocStats?.country_distribution ?? []).slice(0, 18);
+    return deriveFlows(dist);
+  }, [iocStats]);
+
   // Drill-down handlers
   const handleDrillCountry = useCallback(async (name: string, code: string, count: number) => {
     if (drillDown?.type === "country_iocs" && drillDown.filter === code) {
@@ -280,14 +321,151 @@ export default function GeoViewPage() {
         <StatMini icon={<Building2 className="h-3.5 w-3.5 text-orange-400" />} label="Industries" value={industries.length} bgClass="bg-orange-500/[0.04] border-orange-500/10" iconBg="bg-orange-500/10" onClick={() => handleStatClick("industries")} />
       </div>
 
+      {/* ── KPI Header ─────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <GeoKpiCard
+          label="Active regions"
+          value={kpiActiveRegions}
+          sub="Tracked hotspots"
+          color="#60a5fa"
+        />
+        <GeoKpiCard
+          label="Critical hotspots"
+          value={kpiCriticalHotspots}
+          sub="Intensity ≥ 70 %"
+          color="#ef4444"
+        />
+        <GeoKpiCard
+          label={kpiEvents24hLabel}
+          value={kpiEvents24h}
+          sub="Last 24 hours"
+          color="#f97316"
+        />
+        <GeoKpiCard
+          label="Top region"
+          value={kpiTopRegion?.name ?? "—"}
+          sub={kpiTopRegion ? `${kpiTopRegion.count.toLocaleString()} IOCs · ${kpiTopRegion.code}` : "No data"}
+          color="#a855f7"
+          mono={false}
+        />
+      </div>
+
       {/* ── Geo Heatmap Widget ─────────────────────────── */}
       <GeoHeatmapWidget
         stats={iocStats}
+        threatActors={insights?.threat_actors}
         onCountryClick={(code, name) => {
           const c = countries.find((x) => x.code === code);
           handleDrillCountry(name, code, c?.count ?? 0);
         }}
       />
+
+      {/* ── Below-map panels ───────────────────────────── */}
+      {(topRegionsRanked.length > 0 || attackCorridors.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-4">
+          {/* Top regions */}
+          <SectionCard
+            title="Top regions"
+            icon={<Flame className="h-4 w-4 text-orange-400" />}
+            meta="By IOC volume"
+            contentClassName="px-0 pb-0"
+          >
+            <div>
+              {topRegionsRanked.slice(0, 8).map((c, i, arr) => {
+                const maxCount = arr[0].count;
+                const pct = maxCount > 0 ? (c.count / maxCount) * 100 : 0;
+                const intensity = Math.max(0.18, Math.min(1.0, c.count / maxCount));
+                const sev = intensity >= 0.7 ? "critical" : intensity >= 0.4 ? "high" : intensity >= 0.2 ? "medium" : "low";
+                const col = SEV_COLORS_GEO[sev];
+                return (
+                  <div
+                    key={c.code}
+                    className="flex items-center gap-3 px-5 py-2.5"
+                    style={{ borderBottom: i < arr.slice(0, 8).length - 1 ? "1px solid hsl(var(--border) / 0.3)" : "none" }}
+                  >
+                    <span className="font-mono text-[10px] text-muted-foreground w-5 shrink-0 tabular-nums">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <div className="w-28 shrink-0">
+                      <div className="text-xs font-medium truncate">{c.name}</div>
+                      <div className="font-mono text-[9px] text-muted-foreground">{c.code}</div>
+                    </div>
+                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "hsl(var(--border) / 0.4)" }}>
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${pct}%`, background: col, boxShadow: `0 0 6px ${col}66` }}
+                      />
+                    </div>
+                    <span className="font-mono text-xs font-semibold tabular-nums w-10 text-right shrink-0" style={{ color: col }}>
+                      {c.count}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </SectionCard>
+
+          {/* Attack corridors */}
+          <SectionCard
+            title="Attack corridors"
+            icon={<ArrowRight className="h-4 w-4 text-red-400" />}
+            meta="Origin → target · decorative"
+            contentClassName="px-0 pb-0"
+          >
+            <div>
+              {attackCorridors.length > 0 ? attackCorridors.slice(0, 6).map((f, i, arr) => {
+                const col = SEV_COLORS_GEO[f.severity];
+                return (
+                  <div
+                    key={`${f.from.code}-${f.to.code}`}
+                    className="flex items-center gap-3 px-5 py-3"
+                    style={{ borderBottom: i < arr.slice(0, 6).length - 1 ? "1px solid hsl(var(--border) / 0.3)" : "none" }}
+                  >
+                    {/* Origin */}
+                    <div className="w-20 shrink-0">
+                      <div className="text-xs font-medium truncate">{f.from.name}</div>
+                      <div className="font-mono text-[9px] text-muted-foreground">{f.from.code}</div>
+                    </div>
+                    {/* Arrow bar */}
+                    <div className="flex-1 relative h-[2px] flex items-center">
+                      <div className="absolute inset-0 rounded-full" style={{ background: "hsl(var(--border) / 0.4)" }} />
+                      <div className="absolute inset-0 rounded-full" style={{ background: col, boxShadow: `0 0 6px ${col}` }} />
+                      {/* Arrowhead */}
+                      <div
+                        className="absolute right-0 -translate-y-1/2"
+                        style={{
+                          top: "50%",
+                          width: 0,
+                          height: 0,
+                          borderTop: "4px solid transparent",
+                          borderBottom: "4px solid transparent",
+                          borderLeft: `6px solid ${col}`,
+                        }}
+                      />
+                    </div>
+                    {/* Target */}
+                    <div className="w-20 shrink-0 text-right">
+                      <div className="text-xs font-medium truncate">{f.to.name}</div>
+                      <div className="font-mono text-[9px] text-muted-foreground">{f.to.code}</div>
+                    </div>
+                    {/* Severity pill */}
+                    <span
+                      className="font-mono text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded shrink-0"
+                      style={{ color: col, background: `${col}22`, border: `1px solid ${col}55` }}
+                    >
+                      {f.severity}
+                    </span>
+                  </div>
+                );
+              }) : (
+                <div className="px-5 py-8 text-xs text-muted-foreground/60 text-center">
+                  Not enough data to derive corridors
+                </div>
+              )}
+            </div>
+          </SectionCard>
+        </div>
+      )}
 
       {/* ── Tab Navigation ─────────────────────────────── */}
       <div className="flex items-center gap-1 border-b border-border/40 pb-0">
@@ -733,7 +911,43 @@ export default function GeoViewPage() {
   );
 }
 
+/* ── Severity colour map (mirrors GeoHeatmapWidget's SEV_COLORS) ─────────── */
+
+const SEV_COLORS_GEO: Record<string, string> = {
+  critical: "#ef4444",
+  high: "#f97316",
+  medium: "#eab308",
+  low: "#60a5fa",
+};
+
 /* ── Helper Components ─────────────────────────────────── */
+
+function GeoKpiCard({
+  label,
+  value,
+  sub,
+  color,
+  mono = true,
+}: {
+  label: string;
+  value: string | number;
+  sub: string;
+  color: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-border/40 bg-card p-3.5 flex flex-col gap-0.5">
+      <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">{label}</span>
+      <span
+        className={`text-2xl font-semibold leading-none mt-1 ${mono ? "font-mono tabular-nums" : ""}`}
+        style={{ color }}
+      >
+        {typeof value === "number" ? value.toLocaleString() : value}
+      </span>
+      <span className="text-[11px] text-muted-foreground mt-1 truncate">{sub}</span>
+    </div>
+  );
+}
 
 function StatMini({ icon, label, value, bgClass, iconBg, onClick }: { icon: React.ReactNode; label: string; value: number; bgClass: string; iconBg: string; onClick?: () => void }) {
   return (

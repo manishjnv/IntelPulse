@@ -171,10 +171,60 @@ interface Flow {
   seed: number;
 }
 
+/* ─── Exported helpers for the /geo page panels ──────────────────────────── */
+
+export interface DerivedFlow {
+  from: { code: string; name: string; count: number };
+  to: { code: string; name: string; count: number };
+  severity: Severity;
+}
+
+/** Derive the same decorative flow arcs that GeoHeatmapWidget renders.
+ *  Call with `iocStats.country_distribution.slice(0, 18)` to stay in sync. */
+export function deriveFlows(
+  countries: Array<{ code: string; name: string; count: number }>
+): DerivedFlow[] {
+  // Only include countries that have a known centroid (same filter as hotspots)
+  const dist = countries.filter((c) => ISO2_CENTROIDS[c.code] !== undefined);
+  if (dist.length < 2) return [];
+
+  const maxCount = Math.max(1, ...dist.map((c) => c.count));
+  const sorted = [...dist].sort((a, b) => b.count - a.count);
+  const hub = sorted[0];
+  const out: DerivedFlow[] = [];
+
+  // Hub → top 4 other countries
+  for (let i = 1; i < Math.min(5, sorted.length); i++) {
+    const target = sorted[i];
+    const intensity = Math.max(0.18, Math.min(1.0, target.count / maxCount));
+    const rawSev = intensityToSeverity(intensity);
+    const sev: Severity = rawSev === "low" ? "medium" : rawSev;
+    out.push({ from: hub, to: target, severity: sev });
+  }
+
+  // Secondary links between ranks 2-3, 3-5 if present
+  if (sorted.length >= 3) {
+    out.push({ from: sorted[1], to: sorted[2], severity: "high" });
+  }
+  if (sorted.length >= 5) {
+    out.push({ from: sorted[2], to: sorted[4], severity: "medium" });
+  }
+
+  return out;
+}
+
 interface TooltipState {
   hotspot: Hotspot;
   anchorX: number; // fractional position (0-1) inside container
   anchorY: number;
+}
+
+/** Minimal shape we need from DashboardInsights.threat_actors — avoids a
+ *  cross-module type dependency. */
+export interface ThreatActorMini {
+  name: string;
+  regions?: string[];
+  count?: number;
 }
 
 export interface GeoHeatmapWidgetProps {
@@ -187,6 +237,40 @@ export interface GeoHeatmapWidgetProps {
   compact?: boolean;
   /** Accent color used for continent stipple + graticule (defaults to ember). */
   accent?: string;
+  /** Optional threat-actor feed. When provided, the hover tooltip lists up to
+   *  3 actors whose `regions` array contains the hotspot country. Actors whose
+   *  names look like tag placeholders (pure lowercase, literal "threat_actor",
+   *  or < 3 chars) are filtered out. */
+  threatActors?: ThreatActorMini[];
+}
+
+/** Build a name → sorted actor-names map from the raw threat_actors feed.
+ *  Drops obvious junk names so the tooltip stays clean. */
+function buildActorsByRegion(
+  actors: ThreatActorMini[] | undefined,
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  if (!actors || actors.length === 0) return out;
+  const isCleanName = (n: string): boolean => {
+    if (!n || n.length < 3) return false;
+    if (n === "threat_actor") return false;
+    // drop pure-lowercase single-token names that look like tags
+    if (/^[a-z][a-z0-9_]*$/.test(n)) return false;
+    return true;
+  };
+  // Sort by count desc so the most-referenced actor lands first per region
+  const sorted = [...actors].sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
+  for (const a of sorted) {
+    if (!isCleanName(a.name)) continue;
+    for (const region of a.regions ?? []) {
+      if (!region) continue;
+      const key = region.toLowerCase();
+      const list = out.get(key) ?? [];
+      if (!list.includes(a.name)) list.push(a.name);
+      out.set(key, list);
+    }
+  }
+  return out;
 }
 
 /* ─── Component ──────────────────────────────────────────────────────────── */
@@ -199,6 +283,7 @@ export function GeoHeatmapWidget({
   onCountryClick,
   compact = false,
   accent = "#f97316",
+  threatActors,
 }: GeoHeatmapWidgetProps) {
   const [internalStats, setInternalStats] = useState<IOCStatsResponse | null>(null);
   const [loading, setLoading] = useState(statsProp === undefined);
@@ -269,40 +354,37 @@ export function GeoHeatmapWidget({
       });
   }, [stats]);
 
-  /* Derive decorative flow arcs — top critical hotspot to the next 4 highest-
-     count countries, plus a few cross-links. These are visual only; they do
-     not represent live attack paths. */
+  /* Region (country-name) → actor names. Lowercase-keyed for case-insensitive
+     lookup against hotspot names. */
+  const actorsByRegion = useMemo(
+    () => buildActorsByRegion(threatActors),
+    [threatActors],
+  );
+
+  /* Derive decorative flow arcs — delegates to the exported deriveFlows helper
+     so the widget and the /geo Attack Corridors panel share a single source of
+     truth. These are visual only; they do not represent live attack paths. */
   const flows: Flow[] = useMemo(() => {
     if (hotspots.length < 2) return [];
-    const sorted = [...hotspots].sort((a, b) => b.count - a.count);
-    const hub = sorted[0];
-    const out: Flow[] = [];
-    // Hub → top 4 other countries
-    for (let i = 1; i < Math.min(5, sorted.length); i++) {
-      const target = sorted[i];
-      const sev = target.severity === "low" ? "medium" : target.severity;
-      out.push({
-        from: hub,
-        to: target,
-        severity: sev,
-        color: SEV_COLORS[sev],
-        seed: i,
-      });
-    }
-    // A few secondary links between ranks 2-3, 3-5 if present
-    if (sorted.length >= 3) {
-      out.push({
-        from: sorted[1], to: sorted[2],
-        severity: "high", color: SEV_COLORS.high, seed: 7,
-      });
-    }
-    if (sorted.length >= 5) {
-      out.push({
-        from: sorted[2], to: sorted[4],
-        severity: "medium", color: SEV_COLORS.medium, seed: 11,
-      });
-    }
-    return out;
+    // Build a minimal country array from the current hotspots (already filtered
+    // to ISO2_CENTROIDS keys) and re-map back to internal Flow shape.
+    const hotspotInput = hotspots.map((h) => ({
+      code: h.code,
+      name: h.name,
+      count: h.count,
+    }));
+    return deriveFlows(hotspotInput).map((df, i) => {
+      // Re-resolve Hotspot objects so the SVG positions are correct.
+      const fromH = hotspots.find((h) => h.code === df.from.code)!;
+      const toH = hotspots.find((h) => h.code === df.to.code)!;
+      return {
+        from: fromH,
+        to: toH,
+        severity: df.severity,
+        color: SEV_COLORS[df.severity],
+        seed: i < 5 ? i + 1 : i === 5 ? 7 : 11,
+      };
+    });
   }, [hotspots]);
 
   /* Hover handlers — position tooltip relative to the container (not viewport),
@@ -633,6 +715,23 @@ export function GeoHeatmapWidget({
                 </div>
               </div>
             </div>
+            {(() => {
+              const actors = actorsByRegion.get(tooltip.hotspot.name.toLowerCase());
+              if (!actors || actors.length === 0) return null;
+              return (
+                <div
+                  className="mt-2 pt-2"
+                  style={{ borderTop: "1px solid rgba(148,163,184,0.2)" }}
+                >
+                  <div className="font-mono text-[9px] uppercase text-muted-foreground" style={{ letterSpacing: 0.5 }}>
+                    Top actors
+                  </div>
+                  <div className="text-xs text-foreground/90 mt-1 leading-snug">
+                    {actors.slice(0, 3).join(", ")}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         );
       })()}
