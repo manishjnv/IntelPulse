@@ -67,6 +67,7 @@ import {
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import * as api from "@/lib/api";
+import { timeAgo, formatPublishDate } from "@/lib/news-helpers";
 import { HowItWorks } from "@/components/HowItWorks";
 import { useToast } from "@/components/Toast";
 import { Skeleton, SkeletonStatCard, SkeletonTableRow } from "@/components/Skeleton";
@@ -239,27 +240,6 @@ const SORT_OPTIONS = [
 type ViewMode = "grid" | "list" | "compact";
 
 // ── Helpers ──────────────────────────────────────────────
-function timeAgo(dateStr: string | null): string {
-  if (!dateStr) return "";
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
-
-function formatPublishDate(dateStr: string | null): string {
-  if (!dateStr) return "";
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function formatDate(d: string | null) {
   if (!d) return "\u2014";
   return new Date(d).toLocaleDateString("en-US", {
