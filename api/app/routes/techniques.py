@@ -214,7 +214,12 @@ async def get_attack_matrix(
         detection_gaps=detection_gaps,
     )
 
-    await set_cached(ck, response.model_dump(), ttl=120)
+    # 15 min TTL — the matrix is a heavy outer-join + aggregation over 800+
+    # ATT&CK techniques cross intel links (cold ~580 ms). Intel lands every
+    # few minutes but per-technique counts don't change meaningfully at
+    # sub-15-min resolution, so the longer TTL cuts cache-miss frequency 7.5x
+    # without making the heatmap visibly stale.
+    await set_cached(ck, response.model_dump(), ttl=900)
     return response
 
 
