@@ -263,34 +263,45 @@ export function InvestigateClient({
       )
     : [];
 
+  /* ── Derive center node for EntityHeaderCard ───────── */
+  const centerNode = graphData?.nodes.find((n) => n.id === graphData.center) ?? null;
+
   return (
     <div className="p-4 md:p-6 space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <Share2 className="h-5 w-5 text-primary" />
-            Investigate — Relationship Graph
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Explore connections between intel items, IOCs, CVEs and ATT&CK techniques
-          </p>
+      {/* Header — entity card when a center node is known, plain header otherwise */}
+      {centerNode ? (
+        <EntityHeaderCard
+          centerNode={centerNode}
+          graphData={graphData!}
+          stats={stats}
+        />
+      ) : (
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold flex items-center gap-2">
+              <Share2 className="h-5 w-5 text-primary" />
+              Investigate — Relationship Graph
+            </h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Explore connections between intel items, IOCs, CVEs and ATT&CK techniques
+            </p>
+          </div>
+          {stats === null ? (
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-14 w-28 rounded-md" />
+              <Skeleton className="h-14 w-28 rounded-md" />
+            </div>
+          ) : (
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Layers className="h-3.5 w-3.5" />
+                {stats.total_relationships.toLocaleString()} relationships
+              </span>
+              <span>avg {stats.avg_confidence}% confidence</span>
+            </div>
+          )}
         </div>
-        {stats === null ? (
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-14 w-28 rounded-md" />
-            <Skeleton className="h-14 w-28 rounded-md" />
-          </div>
-        ) : (
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Layers className="h-3.5 w-3.5" />
-              {stats.total_relationships.toLocaleString()} relationships
-            </span>
-            <span>avg {stats.avg_confidence}% confidence</span>
-          </div>
-        )}
-      </div>
+      )}
 
       <HowItWorks page="investigate" />
 
@@ -503,6 +514,175 @@ export function InvestigateClient({
             )}
           </CardContent>
         </Card>
+      )}
+    </div>
+  );
+}
+
+/* ── Entity Header Card ───────────────────────────────── */
+interface EntityHeaderCardProps {
+  centerNode: GraphNode;
+  graphData: GraphResponse;
+  stats: GraphStatsResponse | null;
+}
+
+function EntityHeaderCard({ centerNode, graphData, stats }: EntityHeaderCardProps) {
+  const meta = NODE_TYPE_META[centerNode.type] ?? NODE_TYPE_META.intel;
+  const accent = meta.color;
+  const IconComp = meta.icon;
+
+  /* Sub-metadata line (monospace, right of name) */
+  const subMeta = (() => {
+    if (centerNode.type === "technique" && centerNode.tactic) return centerNode.tactic;
+    if (centerNode.type === "ioc" && centerNode.ioc_type) return centerNode.ioc_type;
+    if (centerNode.type === "cve" && centerNode.risk_score != null) return `CVSS ${centerNode.risk_score}`;
+    return null;
+  })();
+
+  /* Tag chips — built from available GraphNode fields */
+  const chips: Array<{ label: string; color?: string; bg?: string }> = [];
+
+  if (centerNode.type === "intel") {
+    if (centerNode.severity) {
+      const sevColors: Record<string, { color: string; bg: string }> = {
+        critical: { color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+        high:     { color: "#f97316", bg: "rgba(249,115,22,0.12)" },
+        medium:   { color: "#eab308", bg: "rgba(234,179,8,0.12)" },
+        low:      { color: "#22c55e", bg: "rgba(34,197,94,0.12)" },
+        info:     { color: "#3b82f6", bg: "rgba(59,130,246,0.12)" },
+      };
+      const sc = sevColors[centerNode.severity] ?? { color: "#6b7280", bg: "rgba(107,114,128,0.12)" };
+      chips.push({ label: centerNode.severity.toUpperCase(), color: sc.color, bg: sc.bg });
+    }
+    if (centerNode.source) chips.push({ label: centerNode.source });
+    if (centerNode.feed_type) chips.push({ label: centerNode.feed_type.replace(/_/g, " ") });
+  } else if (centerNode.type === "ioc") {
+    if (centerNode.ioc_type) chips.push({ label: centerNode.ioc_type, color: accent, bg: `${accent}1a` });
+    if (centerNode.severity) chips.push({ label: centerNode.severity.toUpperCase() });
+    if (centerNode.risk_score != null && centerNode.risk_score > 0) {
+      chips.push({ label: `Risk ${centerNode.risk_score}` });
+    }
+  } else if (centerNode.type === "technique") {
+    if (centerNode.tactic) chips.push({ label: centerNode.tactic, color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" });
+  } else if (centerNode.type === "cve") {
+    if (centerNode.severity) {
+      const sevColors: Record<string, { color: string; bg: string }> = {
+        critical: { color: "#ef4444", bg: "rgba(239,68,68,0.12)" },
+        high:     { color: "#f97316", bg: "rgba(249,115,22,0.12)" },
+        medium:   { color: "#eab308", bg: "rgba(234,179,8,0.12)" },
+        low:      { color: "#22c55e", bg: "rgba(34,197,94,0.12)" },
+      };
+      const sc = sevColors[centerNode.severity] ?? { color: "#6b7280", bg: "rgba(107,114,128,0.12)" };
+      chips.push({ label: centerNode.severity.toUpperCase(), color: sc.color, bg: sc.bg });
+    }
+    if (centerNode.risk_score != null && centerNode.risk_score > 0) {
+      chips.push({ label: `CVSS ${centerNode.risk_score}`, color: accent, bg: `${accent}1a` });
+    }
+  }
+
+  /* Metric strip — counts of satellite nodes by type + total edges */
+  const satellites = graphData.nodes.filter((n) => n.id !== graphData.center);
+  const countByType = (t: string) => satellites.filter((n) => n.type === t).length;
+
+  const metrics: Array<{ label: string; value: number; highlight: boolean }> = [
+    { label: "Intel items",  value: countByType("intel"),     highlight: centerNode.type === "intel" },
+    { label: "IOCs",         value: countByType("ioc"),       highlight: centerNode.type === "ioc" },
+    { label: "Techniques",   value: countByType("technique"), highlight: centerNode.type === "technique" },
+    { label: "CVEs",         value: countByType("cve"),       highlight: centerNode.type === "cve" },
+    { label: "Links",        value: graphData.edges.length,   highlight: false },
+  ];
+
+  return (
+    <div className="rounded-xl border bg-card p-5 flex gap-5 items-start">
+      {/* Icon box */}
+      <div
+        className="w-14 h-14 rounded-lg flex items-center justify-center shrink-0 text-2xl font-bold"
+        style={{
+          background: `linear-gradient(135deg, ${accent}33, ${accent}11)`,
+          border: `1px solid ${accent}44`,
+          color: accent,
+        }}
+      >
+        <IconComp className="h-7 w-7" style={{ color: accent }} />
+      </div>
+
+      {/* Middle — name + chips + metrics */}
+      <div className="flex-1 min-w-0">
+        {/* Line 1: name + sub-meta */}
+        <div className="flex items-baseline gap-2.5 mb-1.5 flex-wrap">
+          <span
+            className="font-semibold leading-tight"
+            style={{ fontSize: 22, letterSpacing: -0.3 }}
+          >
+            {centerNode.label}
+          </span>
+          {subMeta && (
+            <span className="text-xs text-muted-foreground font-mono truncate">
+              {subMeta}
+            </span>
+          )}
+        </div>
+
+        {/* Line 2: tag chips */}
+        {chips.length > 0 && (
+          <div className="flex gap-1.5 flex-wrap mb-3">
+            {chips.map((chip, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border"
+                style={
+                  chip.color
+                    ? { color: chip.color, background: chip.bg ?? `${chip.color}1a`, borderColor: `${chip.color}33` }
+                    : undefined
+                }
+              >
+                {chip.label}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Line 3: metric strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-5 max-w-[640px]">
+          {metrics.map((m) => (
+            <div key={m.label}>
+              <div
+                className="text-muted-foreground font-mono uppercase"
+                style={{ fontSize: 10, letterSpacing: 0.3 }}
+              >
+                {m.label}
+              </div>
+              <div
+                className="font-semibold font-mono tabular-nums"
+                style={{ fontSize: 22, color: m.highlight ? accent : undefined }}
+              >
+                {m.value.toLocaleString()}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Right — global stats (relationship count + avg confidence), shown when loaded */}
+      {stats && (
+        <div className="shrink-0 hidden sm:flex flex-col gap-2 text-right text-xs text-muted-foreground">
+          <div>
+            <div className="font-mono uppercase" style={{ fontSize: 10, letterSpacing: 0.3 }}>
+              Relationships
+            </div>
+            <div className="font-semibold text-foreground tabular-nums">
+              {stats.total_relationships.toLocaleString()}
+            </div>
+          </div>
+          <div>
+            <div className="font-mono uppercase" style={{ fontSize: 10, letterSpacing: 0.3 }}>
+              Avg Confidence
+            </div>
+            <div className="font-semibold text-foreground tabular-nums">
+              {stats.avg_confidence}%
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
