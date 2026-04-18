@@ -1391,12 +1391,43 @@ export default function NewsClient({
     }
     if (viewMode === "list") {
       return (
-        <div className="space-y-2">
-          {items.map((item) => (
-            <div key={item.id} className={cn(newItemIds.has(item.id) && "animate-in slide-in-from-top-2 fade-in duration-500")}>
-              <NewsCardList item={item} onSelect={handleArticleSelect} isActive={selectedArticle?.id === item.id} />
-            </div>
-          ))}
+        <div className="relative">
+          {items.length > 0 && (
+            <div
+              className="absolute left-[7px] top-3 bottom-3 w-px bg-border/40 pointer-events-none"
+              aria-hidden="true"
+            />
+          )}
+          <div className="space-y-2">
+            {items.map((item) => {
+              const dotColor =
+                item.relevance_score >= 80
+                  ? "#ef4444"
+                  : item.relevance_score >= 60
+                    ? "#f97316"
+                    : item.relevance_score >= 40
+                      ? "#eab308"
+                      : "#22c55e";
+              return (
+                <div
+                  key={item.id}
+                  className={cn(
+                    "relative pl-5",
+                    newItemIds.has(item.id) && "animate-in slide-in-from-top-2 fade-in duration-500",
+                  )}
+                >
+                  <div
+                    className="absolute left-0 top-5 z-10 h-3.5 w-3.5 rounded-full border-2 bg-background flex items-center justify-center"
+                    style={{ borderColor: dotColor }}
+                    aria-hidden="true"
+                  >
+                    <div className="h-1.5 w-1.5 rounded-full" style={{ background: dotColor }} />
+                  </div>
+                  <NewsCardList item={item} onSelect={handleArticleSelect} isActive={selectedArticle?.id === item.id} />
+                </div>
+              );
+            })}
+          </div>
         </div>
       );
     }
