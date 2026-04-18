@@ -5,6 +5,7 @@ import { useAppStore } from "@/store";
 import { Badge } from "@/components/ui/badge";
 import { StatCard } from "@/components/StatCard";
 import { ThreatLevelBar } from "@/components/ThreatLevelBar";
+import { SeverityStackBar } from "@/components/SeverityStackBar";
 import { FeedStatusPanel } from "@/components/FeedStatusPanel";
 import { RankedDataList } from "@/components/RankedDataList";
 import { SectionCard } from "@/components/SectionCard";
@@ -153,20 +154,25 @@ export default function DashboardPage() {
     }));
   }, [dashboard]);
 
-  const threatLevels = useMemo(() => {
-    if (!dashboard) return [];
-    const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+  const severityCounts = useMemo(() => {
+    const base = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+    if (!dashboard) return base;
     dashboard.severity_distribution.forEach((d) => {
-      if (d.severity in counts) {
-        counts[d.severity as keyof typeof counts] += d.count;
+      if (d.severity in base) {
+        base[d.severity as keyof typeof base] += d.count;
       }
     });
-    return [
-      { label: "High", value: counts.critical + counts.high, color: SEVERITY_HEX.critical },
-      { label: "Medium", value: counts.medium, color: SEVERITY_HEX.medium },
-      { label: "Low", value: counts.low + counts.info, color: SEVERITY_HEX.low },
-    ];
+    return base;
   }, [dashboard]);
+
+  const threatLevels = useMemo(() => {
+    if (!dashboard) return [];
+    return [
+      { label: "High", value: severityCounts.critical + severityCounts.high, color: SEVERITY_HEX.critical },
+      { label: "Medium", value: severityCounts.medium, color: SEVERITY_HEX.medium },
+      { label: "Low", value: severityCounts.low + severityCounts.info, color: SEVERITY_HEX.low },
+    ];
+  }, [dashboard, severityCounts]);
 
   const topSources = useMemo(() => {
     if (!dashboard?.top_risks) return [];
@@ -337,7 +343,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Threat Level Bar */}
+      {/* Threat Level Bar + dense 4-bucket Severity Posture strip */}
       {!dashboard ? (
         <SectionCard title="Threat Level Distribution">
           <Skeleton className="h-10 rounded-lg" />
@@ -345,7 +351,15 @@ export default function DashboardPage() {
       ) : (
         threatLevels.length > 0 && (
           <SectionCard title="Threat Level Distribution">
-            <ThreatLevelBar levels={threatLevels} />
+            <div className="space-y-4">
+              <ThreatLevelBar levels={threatLevels} />
+              <div className="pt-4 border-t border-border/30">
+                <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground/70 mb-2">
+                  Severity posture · 4-tier
+                </p>
+                <SeverityStackBar counts={severityCounts} />
+              </div>
+            </div>
           </SectionCard>
         )
       )}

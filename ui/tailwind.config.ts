@@ -58,6 +58,26 @@ const config: Config = {
           low: "#22c55e",
           info: "#3b82f6",
         },
+        // "Obsidian" design-system tokens ported from docs/IntelPulse Redesign.html.
+        // Opt-in utility classes (e.g. `bg-obsidian-bg`, `text-ember`) — no
+        // existing component references these yet; the current CSS-variable
+        // theme stays primary. Available as building blocks for incremental
+        // visual upgrades.
+        obsidian: {
+          bg: "#0a0d12",
+          panel: "#0f141b",
+          panel2: "#141a22",
+          line: "rgba(255,255,255,0.06)",
+          lineHi: "rgba(255,255,255,0.10)",
+          text: "#e8ecef",
+          textDim: "#8a94a1",
+          textFaint: "#5c6572",
+        },
+        ember: {
+          DEFAULT: "#ff6a3d",
+          glow: "rgba(255,106,61,0.18)",
+          soft: "rgba(255,106,61,0.10)",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

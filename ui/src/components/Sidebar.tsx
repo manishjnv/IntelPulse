@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store";
 import { IntelPulseLogo } from "@/components/IntelPulseLogo";
+import { getStatusBar } from "@/lib/api";
+import type { StatusBarData } from "@/types";
 import {
   LayoutDashboard,
   Search,
@@ -72,6 +74,72 @@ const NAV_SECTIONS = [
   },
 ];
 
+/* ── Feed-health footer (lives at bottom of expanded sidebar) ──
+   Reads /api/v1/status/bar on its own 30s interval. The header already
+   fetches the same endpoint — both hit CF's 30s edge cache so the second
+   fetch is ~60ms. Deduping to the store would save one call but needs a
+   broader refactor; keep simple while behavior is fine. */
+function timeAgoShort(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  return `${Math.floor(hrs / 24)}d`;
+}
+
+function SidebarFeedHealthFooter() {
+  const [data, setData] = useState<StatusBarData | null>(null);
+  const refresh = useCallback(async () => {
+    try {
+      setData(await getStatusBar());
+    } catch {
+      // best-effort; keep whatever we had
+    }
+  }, []);
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 30_000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  if (!data) {
+    return (
+      <div className="px-2 pb-2">
+        <div className="rounded-md border border-border/40 bg-muted/20 px-2.5 py-2">
+          <div className="h-1.5 w-16 rounded bg-muted/40 animate-pulse" />
+          <div className="mt-2 h-1 w-24 rounded bg-muted/30 animate-pulse" />
+        </div>
+      </div>
+    );
+  }
+
+  const ok = data.status === "ok" && data.active_feeds > 0;
+  const dotColor = ok ? "bg-emerald-500" : "bg-amber-500";
+
+  return (
+    <div className="px-2 pb-2">
+      <div className="rounded-md border border-border/40 bg-muted/20 px-2.5 py-2 text-[11px]">
+        <div className="flex items-center gap-1.5">
+          <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotColor)} />
+          <span className="font-semibold tabular-nums text-foreground">
+            {data.active_feeds}
+          </span>
+          <span className="text-muted-foreground">
+            feed{data.active_feeds === 1 ? "" : "s"} · {ok ? "healthy" : "degraded"}
+          </span>
+        </div>
+        {data.last_feed_at && (
+          <div className="mt-1 font-mono text-[10px] tabular-nums text-muted-foreground/70">
+            last {timeAgoShort(data.last_feed_at)} ago
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── Desktop Sidebar ─────────────────────────────────── */
 function DesktopSidebar() {
   const pathname = usePathname();
@@ -102,7 +170,7 @@ function DesktopSidebar() {
         {NAV_SECTIONS.map((section) => (
           <div key={section.label}>
             {sidebarOpen && (
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/90 px-2 mb-1">
+              <p className="px-2 mb-1 text-[10px] font-mono font-semibold uppercase tracking-widest text-muted-foreground/70">
                 {section.label}
               </p>
             )}
@@ -117,13 +185,20 @@ function DesktopSidebar() {
                     href={item.href}
                     title={!sidebarOpen ? item.label : undefined}
                     className={cn(
-                      "flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] font-medium transition-all duration-150",
+                      "relative flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] font-medium transition-all duration-150",
                       !sidebarOpen && "justify-center px-0",
                       active
                         ? "bg-primary/10 text-primary shadow-sm"
                         : "text-foreground/85 hover:bg-accent/50 hover:text-foreground"
                     )}
                   >
+                    {/* 2px accent bar on the left edge when active */}
+                    {active && sidebarOpen && (
+                      <span
+                        aria-hidden
+                        className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-primary"
+                      />
+                    )}
                     <Icon className={cn("h-4 w-4 shrink-0", active ? "text-primary" : item.color)} />
                     {sidebarOpen && <span className="truncate">{item.label}</span>}
                   </Link>
@@ -133,6 +208,9 @@ function DesktopSidebar() {
           </div>
         ))}
       </nav>
+
+      {/* Feed-health footer — only shown expanded */}
+      {sidebarOpen && <SidebarFeedHealthFooter />}
 
       {/* Bottom collapse/expand bar */}
       <div className="border-t border-border/50 px-2 py-1.5">
