@@ -19,7 +19,7 @@ from app.services.enrichment import enrich_ioc
 router = APIRouter(prefix="/iocs", tags=["iocs"])
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(edge_cacheable)])
 async def list_iocs(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],

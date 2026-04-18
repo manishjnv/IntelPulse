@@ -34,7 +34,7 @@ settings = get_settings()
 logger = get_logger("intel")
 
 
-@router.get("", response_model=IntelItemListResponse)
+@router.get("", response_model=IntelItemListResponse, dependencies=[Depends(edge_cacheable)])
 async def list_intel_items(
     user: Annotated[User, Depends(require_viewer)],
     db: Annotated[AsyncSession, Depends(get_db)],

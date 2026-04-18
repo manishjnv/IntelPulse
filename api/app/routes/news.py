@@ -92,7 +92,7 @@ async def news_pipeline_status(
     return NewsPipelineStatusResponse(**data)
 
 
-@router.get("", response_model=NewsListResponse)
+@router.get("", response_model=NewsListResponse, dependencies=[Depends(edge_cacheable)])
 async def list_news(
     user: Annotated[User, Depends(require_viewer)],
     db: Annotated[AsyncSession, Depends(get_db)],
