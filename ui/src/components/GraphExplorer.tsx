@@ -117,33 +117,50 @@ function orbitalLayout(
   Object.keys(byType).forEach((t) => { if (!types.includes(t)) types.push(t); });
 
   const minDim = Math.min(width, height);
-  const firstRing = minDim * 0.24;
-  const ringGap = minDim * 0.15;
+  const firstRing = minDim * 0.22;
+  const ringGap = minDim * 0.14;
+  const subRingGap = 42;     // px between sub-rings of the same type
+  const nodePitch = 42;      // min px between node centers on a sub-ring
 
   const out: SimNode[] = [];
   if (centerNode) {
     out.push({ ...centerNode, x: cx, y: cy, vx: 0, vy: 0, isCenter: true });
   }
 
+  // Walk each type outward; when a type has more nodes than fit on one
+  // circle at the current radius, split across concentric sub-rings so
+  // labels don't collide. The next type then starts outside this type's
+  // outermost sub-ring to prevent cross-type overlap.
+  let currentR = firstRing;
   types.forEach((type, ti) => {
     const group = byType[type];
     const count = group.length;
-    const r = firstRing + ti * ringGap;
-    // Stagger start-angle so the first node of ring N+1 doesn't land on
-    // the same bearing as the first node of ring N — kills the
-    // "radial-spoke" look when all rings share start angle 0.
-    const startAngle = ti * 0.45;
+    const circumference = 2 * Math.PI * currentR;
+    const maxPerRing = Math.max(8, Math.floor(circumference / nodePitch));
+    const subRings = Math.ceil(count / maxPerRing);
+    const perSub = Math.ceil(count / subRings);
+
     for (let i = 0; i < count; i++) {
-      const angle = startAngle + (i / count) * 2 * Math.PI;
+      const subIdx = Math.floor(i / perSub);
+      const subR = currentR + subIdx * subRingGap;
+      const idxInSub = i % perSub;
+      const countInSub = Math.min(perSub, count - subIdx * perSub);
+      // Stagger start-angle per type and per sub-ring so nothing aligns
+      // into radial spokes.
+      const startAngle = ti * 0.45 + subIdx * 0.21;
+      const angle = startAngle + (idxInSub / countInSub) * 2 * Math.PI;
       out.push({
         ...group[i],
-        x: cx + r * Math.cos(angle),
-        y: cy + r * Math.sin(angle),
+        x: cx + subR * Math.cos(angle),
+        y: cy + subR * Math.sin(angle),
         vx: 0,
         vy: 0,
         isCenter: false,
       });
     }
+
+    // Advance past this type's outermost sub-ring before laying the next.
+    currentR += (subRings - 1) * subRingGap + ringGap;
   });
 
   return out;
