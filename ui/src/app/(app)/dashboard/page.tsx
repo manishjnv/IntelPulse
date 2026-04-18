@@ -313,10 +313,10 @@ export default function DashboardPage() {
       {insights?.threat_actors && insights.threat_actors.length > 0 ? (
         <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-4">
           <ActorCards actors={insights.threat_actors} />
-          <GeoHeatmapWidget stats={iocStats} height={260} />
+          <GeoHeatmapWidget stats={iocStats} compact height={320} />
         </div>
       ) : (
-        <GeoHeatmapWidget stats={iocStats} height={260} />
+        <GeoHeatmapWidget stats={iocStats} compact height={320} />
       )}
 
       {/* CVE heat rail + Ingestion trend — side-by-side on wide viewports. */}

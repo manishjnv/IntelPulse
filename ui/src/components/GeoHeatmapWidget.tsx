@@ -70,53 +70,111 @@ const ISO2_CENTROIDS: Record<string, [number, number]> = {
   KP: [127.51, 40.34],
 };
 
-/* ─── Helpers ────────────────────────────────────────────────────────────── */
+/* ─── Colors ─────────────────────────────────────────────────────────────── */
 
-function lngLatToViewBox(lng: number, lat: number): [number, number] {
-  const x = Math.max(2, Math.min(98, ((lng + 180) / 360) * 100));
-  const y = Math.max(2, Math.min(98, ((90 - lat) / 180) * 100));
-  return [x, y];
+const SEV_COLORS = {
+  critical: "#ef4444",
+  high: "#f97316",
+  medium: "#eab308",
+  low: "#60a5fa",
+} as const;
+
+type Severity = keyof typeof SEV_COLORS;
+
+function intensityToSeverity(intensity: number): Severity {
+  if (intensity >= 0.7) return "critical";
+  if (intensity >= 0.4) return "high";
+  if (intensity >= 0.2) return "medium";
+  return "low";
 }
 
-function intensityToColor(intensity: number): string {
-  if (intensity >= 0.7) return "#ef4444"; // critical red
-  if (intensity >= 0.4) return "#f97316"; // high orange
-  if (intensity >= 0.2) return "#eab308"; // medium yellow
-  return "#60a5fa";                        // low gray-blue
-}
+/* ─── Projection ─────────────────────────────────────────────────────────── */
 
-/** Pre-computed dot positions for the decorative land mask. Seeded so SSR
- *  and CSR produce the same markup (no Math.random in render path). */
-const LAND_DOTS: Array<{ x: number; y: number }> = (() => {
-  const dots: Array<{ x: number; y: number }> = [];
-  // Simple linear congruential generator so output is deterministic.
-  let seed = 42;
-  const rand = () => {
-    seed = (seed * 1664525 + 1013904223) & 0xffffffff;
-    return (seed >>> 0) / 0xffffffff;
+const MAP_W = 960;
+const MAP_H = 480;
+
+function proj(lat: number, lng: number): { x: number; y: number } {
+  return {
+    x: ((lng + 180) / 360) * MAP_W,
+    y: ((90 - lat) / 180) * MAP_H,
   };
-  for (let x = 4; x < 100; x += 3) {
-    for (let y = 10; y < 75; y += 3) {
-      const inLand =
-        (x > 15 && x < 32 && y > 18 && y < 60) || // Americas
-        (x > 42 && x < 58 && y > 20 && y < 58) || // Europe/Africa
-        (x > 60 && x < 90 && y > 22 && y < 55) || // Asia
-        (x > 22 && x < 36 && y > 55 && y < 72) || // South America
-        (x > 48 && x < 62 && y > 55 && y < 72);   // Southern Africa
-      if (inLand && rand() > 0.35) dots.push({ x, y });
-    }
+}
+
+/* ─── Deterministic starfield ────────────────────────────────────────────── */
+
+const STARS: Array<{ x: number; y: number; r: number; seed: number }> = (() => {
+  const out: Array<{ x: number; y: number; r: number; seed: number }> = [];
+  for (let i = 0; i < 120; i++) {
+    out.push({
+      x: (i * 71) % MAP_W,
+      y: (i * 113) % MAP_H,
+      r: 0.5 + (i % 3) * 0.3,
+      seed: i,
+    });
   }
-  return dots;
+  return out;
 })();
 
-/* ─── Props ──────────────────────────────────────────────────────────────── */
+/* ─── Stylized continent silhouettes (from redesign) ────────────────────── */
 
-interface TooltipState {
+const CONTINENT_PATHS: string[] = [
+  // North America
+  "M 140,100 Q 170,70 220,80 L 280,100 L 300,130 L 290,170 L 270,200 L 240,220 L 200,240 L 170,230 L 150,200 L 135,160 Z",
+  // Central America
+  "M 200,240 L 230,250 L 245,275 L 240,290 L 220,285 L 205,270 Z",
+  // South America
+  "M 260,290 Q 290,280 310,300 L 320,340 L 310,380 L 290,420 L 270,430 L 255,400 L 250,360 L 255,320 Z",
+  // Europe
+  "M 450,110 Q 480,100 510,115 L 530,130 L 525,160 L 500,170 L 470,165 L 450,145 Z",
+  // Africa
+  "M 470,185 Q 510,180 540,200 L 560,240 L 555,290 L 535,330 L 510,340 L 490,320 L 475,280 L 465,230 Z",
+  // Middle East
+  "M 540,170 L 580,180 L 590,210 L 570,225 L 545,215 Z",
+  // Russia / N. Asia
+  "M 520,80 Q 600,70 720,85 L 810,100 L 820,130 L 770,140 L 700,135 L 620,130 L 550,125 L 520,115 Z",
+  // China / SE Asia
+  "M 700,150 Q 750,145 790,165 L 810,195 L 795,220 L 760,225 L 725,210 L 705,185 Z",
+  // India
+  "M 650,180 L 680,185 L 690,210 L 680,235 L 665,230 L 655,210 Z",
+  // SE Asia islands
+  "M 780,240 L 820,245 L 840,260 L 820,275 L 790,270 Z",
+  "M 820,280 L 850,285 L 855,300 L 835,305 Z",
+  // Australia
+  "M 800,340 Q 840,335 870,350 L 885,370 L 870,390 L 830,395 L 805,380 Z",
+  // Japan
+  "M 830,150 L 845,155 L 850,175 L 840,185 L 828,170 Z",
+  // UK / Ireland
+  "M 448,120 L 460,118 L 462,135 L 452,140 Z",
+  // Scandinavia
+  "M 470,75 L 510,75 L 515,100 L 485,105 L 470,95 Z",
+];
+
+/* ─── Types ──────────────────────────────────────────────────────────────── */
+
+interface Hotspot {
   code: string;
   name: string;
   count: number;
   x: number;
   y: number;
+  intensity: number;
+  severity: Severity;
+  color: string;
+  pulseSeed: number;
+}
+
+interface Flow {
+  from: Hotspot;
+  to: Hotspot;
+  severity: Severity;
+  color: string;
+  seed: number;
+}
+
+interface TooltipState {
+  hotspot: Hotspot;
+  anchorX: number; // fractional position (0-1) inside container
+  anchorY: number;
 }
 
 export interface GeoHeatmapWidgetProps {
@@ -125,23 +183,30 @@ export interface GeoHeatmapWidgetProps {
   title?: string;
   subtitle?: string;
   onCountryClick?: (code: string, name: string) => void;
+  /** Compact mode for the dashboard: thinner legend, no secondary chrome. */
+  compact?: boolean;
+  /** Accent color used for continent stipple + graticule (defaults to ember). */
+  accent?: string;
 }
 
 /* ─── Component ──────────────────────────────────────────────────────────── */
 
 export function GeoHeatmapWidget({
   stats: statsProp,
-  height = 260,
+  height,
   title = "Geo threat map",
   subtitle = "IOC activity by country",
   onCountryClick,
+  compact = false,
+  accent = "#f97316",
 }: GeoHeatmapWidgetProps) {
   const [internalStats, setInternalStats] = useState<IOCStatsResponse | null>(null);
   const [loading, setLoading] = useState(statsProp === undefined);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
-  const rafRef = useRef<number | null>(null);
+  const [tick, setTick] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Only fetch if caller did not supply stats prop
+  /* Fetch only if caller did not supply stats */
   useEffect(() => {
     if (statsProp !== undefined) return;
     let cancelled = false;
@@ -159,224 +224,474 @@ export function GeoHeatmapWidget({
     return () => { cancelled = true; };
   }, [statsProp]);
 
+  /* Animation tick — throttled to ~30 fps + paused when tab hidden to keep the
+     dashboard cheap. Full 60 fps on this many SVG elements is wasteful. */
+  useEffect(() => {
+    let raf: number | null = null;
+    let frame = 0;
+    const loop = () => {
+      frame++;
+      if (frame % 2 === 0 && !document.hidden) {
+        setTick((t) => (t + 1) % 10_000);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => { if (raf !== null) cancelAnimationFrame(raf); };
+  }, []);
+
   const stats = statsProp !== undefined ? statsProp : internalStats;
 
-  const countries = useMemo(() => {
-    return (stats?.country_distribution ?? []).slice(0, 15);
-  }, [stats]);
-
-  const continents = useMemo(() => {
-    return (stats?.continent_distribution ?? []).filter((c) => c.count > 0);
-  }, [stats]);
-
-  const maxCount = useMemo(() => {
-    return Math.max(1, ...countries.map((c) => c.count));
-  }, [countries]);
-
-  const maxContinentCount = useMemo(() => {
-    return Math.max(1, ...continents.map((c) => c.count));
-  }, [continents]);
-
-  const hotspots = useMemo(() => {
-    return countries
+  /* Build hotspots from real country_distribution */
+  const hotspots: Hotspot[] = useMemo(() => {
+    const dist = (stats?.country_distribution ?? []).slice(0, 18);
+    if (dist.length === 0) return [];
+    const maxCount = Math.max(1, ...dist.map((c) => c.count));
+    return dist
       .filter((c) => ISO2_CENTROIDS[c.code] !== undefined)
-      .map((c) => {
+      .map((c, i) => {
         const [lng, lat] = ISO2_CENTROIDS[c.code];
-        const [svgX, svgY] = lngLatToViewBox(lng, lat);
+        const p = proj(lat, lng);
         const raw = c.count / maxCount;
         const intensity = Math.max(0.18, Math.min(1.0, raw));
-        const color = intensityToColor(intensity);
-        return { code: c.code, name: c.name, count: c.count, svgX, svgY, intensity, color };
+        const severity = intensityToSeverity(intensity);
+        return {
+          code: c.code,
+          name: c.name,
+          count: c.count,
+          x: p.x,
+          y: p.y,
+          intensity,
+          severity,
+          color: SEV_COLORS[severity],
+          pulseSeed: i,
+        };
       });
-  }, [countries, maxCount]);
+  }, [stats]);
 
-  const handleMouseEnter = useCallback(
-    (
-      e: React.MouseEvent<SVGCircleElement>,
-      code: string,
-      name: string,
-      count: number,
-    ) => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-      rafRef.current = requestAnimationFrame(() => {
-        setTooltip({ code, name, count, x: e.clientX, y: e.clientY });
+  /* Derive decorative flow arcs — top critical hotspot to the next 4 highest-
+     count countries, plus a few cross-links. These are visual only; they do
+     not represent live attack paths. */
+  const flows: Flow[] = useMemo(() => {
+    if (hotspots.length < 2) return [];
+    const sorted = [...hotspots].sort((a, b) => b.count - a.count);
+    const hub = sorted[0];
+    const out: Flow[] = [];
+    // Hub → top 4 other countries
+    for (let i = 1; i < Math.min(5, sorted.length); i++) {
+      const target = sorted[i];
+      const sev = target.severity === "low" ? "medium" : target.severity;
+      out.push({
+        from: hub,
+        to: target,
+        severity: sev,
+        color: SEV_COLORS[sev],
+        seed: i,
       });
-    },
-    [],
-  );
+    }
+    // A few secondary links between ranks 2-3, 3-5 if present
+    if (sorted.length >= 3) {
+      out.push({
+        from: sorted[1], to: sorted[2],
+        severity: "high", color: SEV_COLORS.high, seed: 7,
+      });
+    }
+    if (sorted.length >= 5) {
+      out.push({
+        from: sorted[2], to: sorted[4],
+        severity: "medium", color: SEV_COLORS.medium, seed: 11,
+      });
+    }
+    return out;
+  }, [hotspots]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent<SVGCircleElement>) => {
-    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(() => {
-      setTooltip((prev) => prev ? { ...prev, x: e.clientX, y: e.clientY } : prev);
+  /* Hover handlers — position tooltip relative to the container (not viewport),
+     so it tracks the hotspot even during scroll. */
+  const handleHotspotEnter = useCallback((h: Hotspot) => {
+    setTooltip({
+      hotspot: h,
+      anchorX: h.x / MAP_W,
+      anchorY: h.y / MAP_H,
     });
   }, []);
 
-  const handleMouseLeave = useCallback(() => {
-    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(() => setTooltip(null));
+  const handleHotspotLeave = useCallback(() => {
+    setTooltip(null);
   }, []);
 
-  const isEmpty = !loading && countries.length === 0;
-  const BASE_RADIUS = 1.6;
+  const t = tick * 0.03; // tick is ~30/s, t-units are radians-ish
+
+  const isEmpty = !loading && hotspots.length === 0;
+  const effectiveHeight = height ?? (compact ? 300 : undefined);
+  const useAspect = effectiveHeight === undefined;
+
+  const mapContent = (
+    <div
+      ref={containerRef}
+      className="relative overflow-hidden rounded-md"
+      style={{
+        ...(useAspect
+          ? { aspectRatio: `${MAP_W} / ${MAP_H}` }
+          : { height: effectiveHeight }),
+        background:
+          "radial-gradient(ellipse at center, #0c1420 0%, #050810 70%, #030509 100%)",
+      }}
+    >
+      {/* Starfield — painted beneath everything */}
+      <svg
+        className="absolute inset-0"
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${MAP_W} ${MAP_H}`}
+        preserveAspectRatio="xMidYMid slice"
+        aria-hidden="true"
+      >
+        {STARS.map((s) => {
+          const twinkle = 0.15 + 0.25 * Math.abs(Math.sin(t * 1.5 + s.seed));
+          return (
+            <circle
+              key={s.seed}
+              cx={s.x}
+              cy={s.y}
+              r={s.r}
+              fill="#ffffff"
+              opacity={twinkle}
+            />
+          );
+        })}
+      </svg>
+
+      {/* Main map — graticule, continents, flows, halos, markers */}
+      <svg
+        className="absolute inset-0"
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${MAP_W} ${MAP_H}`}
+        preserveAspectRatio="xMidYMid slice"
+      >
+        <defs>
+          <pattern id="geo-dotgrid" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.8" fill={accent} opacity="0.38" />
+          </pattern>
+          <filter id="geo-glow" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="4" result="b" />
+            <feMerge>
+              <feMergeNode in="b" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="geo-glow-big" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="10" result="b" />
+            <feMerge>
+              <feMergeNode in="b" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        {/* Graticule */}
+        {[0, 60, 120, 180, 240, 300, 360, 420, 480].map((y) => (
+          <line
+            key={`lat-${y}`}
+            x1="0"
+            y1={y}
+            x2={MAP_W}
+            y2={y}
+            stroke={accent}
+            strokeWidth="0.3"
+            opacity="0.1"
+          />
+        ))}
+        {[0, 120, 240, 360, 480, 600, 720, 840, 960].map((x) => (
+          <line
+            key={`lng-${x}`}
+            x1={x}
+            y1="0"
+            x2={x}
+            y2={MAP_H}
+            stroke={accent}
+            strokeWidth="0.3"
+            opacity="0.1"
+          />
+        ))}
+        {/* Equator */}
+        <line
+          x1="0"
+          y1="240"
+          x2={MAP_W}
+          y2="240"
+          stroke={accent}
+          strokeWidth="0.5"
+          opacity="0.25"
+          strokeDasharray="4 4"
+        />
+
+        {/* Stippled continent silhouettes */}
+        <g fill="url(#geo-dotgrid)" opacity="0.85">
+          {CONTINENT_PATHS.map((d, i) => (
+            <path key={i} d={d} />
+          ))}
+        </g>
+
+        {/* Decorative great-circle arcs between hub hotspots */}
+        {flows.map((f, i) => {
+          const ax = f.from.x, ay = f.from.y;
+          const bx = f.to.x, by = f.to.y;
+          const mx = (ax + bx) / 2;
+          const my = (ay + by) / 2;
+          const dx = bx - ax;
+          const dy = by - ay;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const lift = Math.min(120, dist * 0.35);
+          const cy = my - lift;
+          const dashOffset = (t * 40 + f.seed * 20) % 40;
+          return (
+            <g key={`flow-${i}`}>
+              <path
+                d={`M ${ax} ${ay} Q ${mx} ${cy} ${bx} ${by}`}
+                fill="none"
+                stroke={f.color}
+                strokeWidth="1.2"
+                opacity="0.4"
+                style={{ filter: "url(#geo-glow)" }}
+              />
+              <path
+                d={`M ${ax} ${ay} Q ${mx} ${cy} ${bx} ${by}`}
+                fill="none"
+                stroke={f.color}
+                strokeWidth="0.7"
+                opacity="0.9"
+                strokeDasharray="4 36"
+                strokeDashoffset={-dashOffset}
+              />
+            </g>
+          );
+        })}
+
+        {/* Heat halos beneath markers */}
+        {hotspots.map((h, i) => {
+          const pulse = 1 + Math.sin(t * 1.5 + h.pulseSeed * 0.4) * 0.25;
+          const baseR = 8 + Math.sqrt(h.count) * 4;
+          const phase = (t * 0.5 + i * 0.3) % 1;
+          const rippleR = baseR + phase * baseR * 2.5;
+          return (
+            <g key={`halo-${h.code}`}>
+              <circle
+                cx={h.x}
+                cy={h.y}
+                r={baseR * 2.5 * pulse}
+                fill={h.color}
+                opacity="0.08"
+              />
+              <circle
+                cx={h.x}
+                cy={h.y}
+                r={baseR * 1.6 * pulse}
+                fill={h.color}
+                opacity="0.14"
+              />
+              {/* Expanding ripple */}
+              <circle
+                cx={h.x}
+                cy={h.y}
+                r={rippleR}
+                fill="none"
+                stroke={h.color}
+                strokeWidth="0.8"
+                opacity={(1 - phase) * 0.6}
+              />
+            </g>
+          );
+        })}
+
+        {/* Hotspot markers */}
+        {hotspots.map((h) => {
+          const isHovered = tooltip?.hotspot.code === h.code;
+          const baseR = 3 + Math.sqrt(h.count) * 0.9;
+          return (
+            <g
+              key={`dot-${h.code}`}
+              onMouseEnter={() => handleHotspotEnter(h)}
+              onMouseLeave={handleHotspotLeave}
+              onClick={() => onCountryClick?.(h.code, h.name)}
+              style={{ cursor: onCountryClick ? "pointer" : "default" }}
+            >
+              <circle
+                cx={h.x}
+                cy={h.y}
+                r={baseR + 4}
+                fill={h.color}
+                opacity={isHovered ? 0.4 : 0.18}
+                style={{ filter: "url(#geo-glow-big)" }}
+              />
+              <circle
+                cx={h.x}
+                cy={h.y}
+                r={baseR}
+                fill={h.color}
+                stroke="#ffffff"
+                strokeWidth={isHovered ? 1.5 : 0.8}
+                opacity="1"
+                style={{ filter: "url(#geo-glow)" }}
+              />
+              <circle
+                cx={h.x}
+                cy={h.y}
+                r={baseR * 0.4}
+                fill="#ffffff"
+                opacity="0.9"
+              />
+              {/* Enlarged invisible hit target */}
+              <circle
+                cx={h.x}
+                cy={h.y}
+                r={Math.max(baseR + 10, 18)}
+                fill="transparent"
+                pointerEvents="all"
+              />
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* Loading state */}
+      {loading && (
+        <div className="absolute top-2 right-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+          <svg className="h-3 w-3 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
+          Loading
+        </div>
+      )}
+
+      {/* Empty state */}
+      {isEmpty && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className="text-xs text-muted-foreground">
+            No geo data yet — waiting for IOC enrichment.
+          </span>
+        </div>
+      )}
+
+      {/* Hover tooltip — anchored to the container so it tracks the hotspot */}
+      {tooltip && (() => {
+        const rightSide = tooltip.anchorX > 0.5;
+        const leftPct = tooltip.anchorX * 100;
+        const topPct = tooltip.anchorY * 100;
+        const col = tooltip.hotspot.color;
+        return (
+          <div
+            className="absolute pointer-events-none z-20"
+            style={{
+              left: `${leftPct}%`,
+              top: `${topPct}%`,
+              transform: rightSide
+                ? "translate(calc(-100% - 14px), -50%)"
+                : "translate(14px, -50%)",
+              background: "rgba(10,13,18,0.95)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              border: `1px solid ${col}66`,
+              borderRadius: 8,
+              padding: "10px 12px",
+              minWidth: 180,
+              maxWidth: 240,
+              boxShadow: `0 12px 40px ${col}33`,
+            }}
+          >
+            <div
+              className="font-mono text-[9px] font-semibold uppercase"
+              style={{ color: col, letterSpacing: 1 }}
+            >
+              {tooltip.hotspot.severity}
+            </div>
+            <div className="text-sm font-semibold mt-0.5 text-foreground">
+              {tooltip.hotspot.name}
+            </div>
+            <div
+              className="flex items-baseline gap-3 mt-2 pt-2"
+              style={{ borderTop: "1px solid rgba(148,163,184,0.2)" }}
+            >
+              <div>
+                <div className="font-mono text-[9px] uppercase text-muted-foreground" style={{ letterSpacing: 0.5 }}>
+                  IOCs
+                </div>
+                <div
+                  className="font-mono text-lg font-semibold"
+                  style={{ color: col }}
+                >
+                  {tooltip.hotspot.count.toLocaleString()}
+                </div>
+              </div>
+              <div className="flex-1">
+                <div className="font-mono text-[9px] uppercase text-muted-foreground" style={{ letterSpacing: 0.5 }}>
+                  Code
+                </div>
+                <div className="text-xs text-foreground/90 mt-1">
+                  {tooltip.hotspot.code}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* LIVE · 24H chip (top-right) */}
+      <div
+        className="absolute top-3 right-3 flex items-center gap-2 font-mono text-[10px] text-muted-foreground rounded-md px-2.5 py-1.5 border"
+        style={{
+          background: "rgba(10,13,18,0.7)",
+          backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)",
+          borderColor: "rgba(148,163,184,0.18)",
+        }}
+      >
+        <span
+          className="h-1.5 w-1.5 rounded-full geo-live-pulse"
+          style={{
+            background: SEV_COLORS.critical,
+            boxShadow: `0 0 6px ${SEV_COLORS.critical}`,
+          }}
+        />
+        LIVE · 24H
+      </div>
+
+      {/* Severity legend (bottom-left). Hidden in compact mode to save space. */}
+      {!compact && (
+        <div
+          className="absolute bottom-3 left-3 flex gap-3 font-mono text-[10px] text-muted-foreground rounded-md px-3 py-2 border"
+          style={{
+            background: "rgba(10,13,18,0.7)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            borderColor: "rgba(148,163,184,0.18)",
+          }}
+        >
+          {(["critical", "high", "medium"] as Severity[]).map((sev) => (
+            <span key={sev} className="flex items-center gap-1.5">
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{
+                  background: SEV_COLORS[sev],
+                  boxShadow: `0 0 8px ${SEV_COLORS[sev]}`,
+                }}
+              />
+              {sev}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <SectionCard
       title={title}
       icon={<Globe className="h-4 w-4" />}
-      meta={
-        <span className="text-[11px] text-muted-foreground">{subtitle}</span>
-      }
+      meta={<span className="text-[11px] text-muted-foreground">{subtitle}</span>}
     >
-      <div className="relative overflow-hidden rounded-md" style={{ height }}>
-        {/* SVG map */}
-        <svg
-          viewBox="0 0 100 80"
-          width="100%"
-          height="100%"
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          {/* Decorative dot land mask */}
-          {LAND_DOTS.map((d, i) => (
-            <circle
-              key={i}
-              cx={d.x}
-              cy={d.y}
-              r="0.4"
-              fill="rgba(148,163,184,0.18)"
-            />
-          ))}
-
-          {/* Hotspots */}
-          {!loading &&
-            hotspots.map((h) => (
-              <g key={h.code}>
-                {/* Outer halo */}
-                <circle
-                  cx={h.svgX}
-                  cy={h.svgY}
-                  r={BASE_RADIUS * h.intensity * 3.2}
-                  fill={h.color}
-                  opacity={0.15}
-                  style={{ pointerEvents: "none" }}
-                />
-                {/* Mid ring */}
-                <circle
-                  cx={h.svgX}
-                  cy={h.svgY}
-                  r={BASE_RADIUS * h.intensity * 1.6}
-                  fill={h.color}
-                  opacity={0.4}
-                  style={{ pointerEvents: "none" }}
-                />
-                {/* Core dot */}
-                <circle
-                  cx={h.svgX}
-                  cy={h.svgY}
-                  r={BASE_RADIUS * 0.8}
-                  fill={h.color}
-                  opacity={1}
-                  style={{ pointerEvents: "none" }}
-                />
-                {/* Invisible hit target */}
-                <circle
-                  cx={h.svgX}
-                  cy={h.svgY}
-                  r={BASE_RADIUS * h.intensity * 3.5}
-                  fill="transparent"
-                  style={{
-                    pointerEvents: "all",
-                    cursor: onCountryClick ? "pointer" : "default",
-                  }}
-                  onMouseEnter={(e) => handleMouseEnter(e, h.code, h.name, h.count)}
-                  onMouseMove={handleMouseMove}
-                  onMouseLeave={handleMouseLeave}
-                  onClick={() => onCountryClick?.(h.code, h.name)}
-                />
-              </g>
-            ))}
-        </svg>
-
-        {/* Loading spinner overlay (top-right) */}
-        {loading && (
-          <div className="absolute top-2 right-2 flex items-center gap-1.5 text-[10px] text-muted-foreground">
-            <svg
-              className="h-3 w-3 animate-spin"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-              />
-            </svg>
-            Loading
-          </div>
-        )}
-
-        {/* Empty state */}
-        {isEmpty && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-xs text-muted-foreground">
-              No geo data yet — waiting for IOC enrichment.
-            </span>
-          </div>
-        )}
-
-        {/* Continent pill overlays at bottom */}
-        {!loading && continents.length > 0 && (
-          <div className="absolute bottom-2 left-2 right-2 flex flex-wrap gap-2">
-            {continents.map((c) => {
-              const intensity = c.count / maxContinentCount;
-              const color = intensityToColor(intensity);
-              return (
-                <div
-                  key={c.code}
-                  className="flex items-center gap-1.5 rounded-md border border-border/40 px-2.5 py-1"
-                  style={{
-                    background: "rgba(10,13,18,0.82)",
-                    backdropFilter: "blur(4px)",
-                    WebkitBackdropFilter: "blur(4px)",
-                  }}
-                >
-                  <span
-                    className="h-1.5 w-1.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: color }}
-                  />
-                  <span className="text-[10px] font-medium text-foreground/90">
-                    {c.name || c.code}
-                  </span>
-                  <span className="font-mono text-[10px] text-muted-foreground">
-                    {c.count.toLocaleString()}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Hover tooltip */}
-      {tooltip && (
-        <div
-          className="fixed z-50 pointer-events-none rounded-md border bg-background/90 px-2.5 py-1.5 text-xs shadow-lg backdrop-blur"
-          style={{ left: tooltip.x + 12, top: tooltip.y + 12 }}
-        >
-          <div className="font-semibold">{tooltip.name}</div>
-          <div className="text-muted-foreground">{tooltip.count.toLocaleString()} IOCs</div>
-        </div>
-      )}
+      {mapContent}
     </SectionCard>
   );
 }

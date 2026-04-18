@@ -283,7 +283,6 @@ export default function GeoViewPage() {
       {/* ── Geo Heatmap Widget ─────────────────────────── */}
       <GeoHeatmapWidget
         stats={iocStats}
-        height={340}
         onCountryClick={(code, name) => {
           const c = countries.find((x) => x.code === code);
           handleDrillCountry(name, code, c?.count ?? 0);

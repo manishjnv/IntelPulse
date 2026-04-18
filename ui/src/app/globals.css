@@ -170,3 +170,15 @@
 .recharts-tooltip-item {
   color: hsl(var(--muted-foreground)) !important;
 }
+
+/* GeoHeatmapWidget: LIVE · 24H indicator dot pulse. */
+@keyframes geo-live-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.geo-live-pulse {
+  animation: geo-live-pulse 1.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .geo-live-pulse { animation: none; }
+}
