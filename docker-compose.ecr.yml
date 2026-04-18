@@ -1,0 +1,27 @@
+# ECR-pull override for the application services.
+#
+# Apply alongside the base compose file:
+#   docker compose -f docker-compose.yml -f docker-compose.ecr.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.ecr.yml up -d
+#
+# Images are built and pushed by .github/workflows/ecr-push.yml on every
+# push to main. The workflow tags each image with both ${GITHUB_SHA} and
+# "latest"; `latest` always points at the head of main.
+#
+# The scheduler service reuses the worker image (it just runs a different
+# command), so there is no separate scheduler repo — mirrors the
+# `dockerfile: docker/Dockerfile.worker` shape in the base compose.
+#
+# When this override is NOT applied, compose falls back to the local `build:`
+# blocks and does an in-VPS docker build (the legacy scripts/deploy.sh path).
+# That fallback stays viable as a rollback.
+
+services:
+  api:
+    image: 604275788592.dkr.ecr.us-east-1.amazonaws.com/intelpulse/api:${IMAGE_TAG:-latest}
+  ui:
+    image: 604275788592.dkr.ecr.us-east-1.amazonaws.com/intelpulse/ui:${IMAGE_TAG:-latest}
+  worker:
+    image: 604275788592.dkr.ecr.us-east-1.amazonaws.com/intelpulse/worker:${IMAGE_TAG:-latest}
+  scheduler:
+    image: 604275788592.dkr.ecr.us-east-1.amazonaws.com/intelpulse/worker:${IMAGE_TAG:-latest}
