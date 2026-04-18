@@ -10,6 +10,7 @@ from sqlalchemy import func, select, case, Integer as SAInteger, text, literal_c
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.http_cache import edge_cacheable
 from app.core.redis import cache_key, get_cached, set_cached
 from app.middleware.auth import require_viewer
 from app.models.models import AttackTechnique, IntelAttackLink, IntelItem, User
@@ -105,7 +106,7 @@ async def list_techniques(
     return response
 
 
-@router.get("/matrix", response_model=AttackMatrixResponse)
+@router.get("/matrix", response_model=AttackMatrixResponse, dependencies=[Depends(edge_cacheable)])
 async def get_attack_matrix(
     user: Annotated[User, Depends(require_viewer)],
     db: Annotated[AsyncSession, Depends(get_db)],

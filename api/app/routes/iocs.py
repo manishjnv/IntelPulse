@@ -11,6 +11,7 @@ from sqlalchemy import func, select, or_, desc, asc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.http_cache import edge_cacheable
 from app.middleware.auth import get_current_user
 from app.models.models import User, IOC, IntelIOCLink
 from app.services.enrichment import enrich_ioc
@@ -164,7 +165,7 @@ async def list_iocs(
     }
 
 
-@router.get("/stats")
+@router.get("/stats", dependencies=[Depends(edge_cacheable)])
 async def ioc_stats(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],

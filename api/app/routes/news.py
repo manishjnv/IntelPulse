@@ -24,6 +24,7 @@ from sqlalchemy import select, func, desc, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.http_cache import edge_cacheable
 from app.core.redis import cache_key, get_cached, set_cached
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -77,7 +78,7 @@ async def news_feed_status(
     return result
 
 
-@router.get("/pipeline-status", response_model=NewsPipelineStatusResponse)
+@router.get("/pipeline-status", response_model=NewsPipelineStatusResponse, dependencies=[Depends(edge_cacheable)])
 async def news_pipeline_status(
     user: Annotated[User, Depends(require_viewer)],
 ):
@@ -246,7 +247,7 @@ async def news_stats(
     return response
 
 
-@router.get("/categories", response_model=NewsCategoriesResponse)
+@router.get("/categories", response_model=NewsCategoriesResponse, dependencies=[Depends(edge_cacheable)])
 async def news_categories(
     user: Annotated[User, Depends(require_viewer)],
     db: Annotated[AsyncSession, Depends(get_db)],

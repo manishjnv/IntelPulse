@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.http_cache import edge_cacheable
 from app.core.redis import cache_key, get_cached, set_cached
 from app.core.config import get_settings
 from app.middleware.auth import require_viewer
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 settings = get_settings()
 
 
-@router.get("", response_model=DashboardResponse)
+@router.get("", response_model=DashboardResponse, dependencies=[Depends(edge_cacheable)])
 async def get_dashboard(
     user: Annotated[User, Depends(require_viewer)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -61,7 +62,7 @@ async def get_dashboard(
     return response
 
 
-@router.get("/insights")
+@router.get("/insights", dependencies=[Depends(edge_cacheable)])
 async def get_dashboard_insights(
     user: Annotated[User, Depends(require_viewer)],
     db: Annotated[AsyncSession, Depends(get_db)],

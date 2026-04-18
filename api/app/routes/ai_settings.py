@@ -12,6 +12,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.http_cache import edge_cacheable
 from app.core.logging import get_logger
 from app.core.redis import redis_client
 from app.core.safe_httpx import build_pinned_async_client
@@ -593,7 +594,7 @@ _PIPELINE_CACHE_KEY = "ai_settings:pipeline"
 _PIPELINE_CACHE_TTL = 600  # seconds
 
 
-@router.get("/pipeline")
+@router.get("/pipeline", dependencies=[Depends(edge_cacheable)])
 async def get_pipeline_config():
     """Return the multi-agent routing + agent-catalog snapshot.
 

@@ -10,6 +10,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.http_cache import edge_cacheable
 from app.core.redis import get_cached, set_cached, cache_key
 from app.middleware.auth import require_viewer
 from app.models.models import User, Relationship
@@ -80,7 +81,7 @@ async def get_related_items(
     return items
 
 
-@router.get("/featured")
+@router.get("/featured", dependencies=[Depends(edge_cacheable)])
 async def graph_featured(
     user: Annotated[User, Depends(require_viewer)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -103,7 +104,7 @@ async def graph_featured(
     return payload
 
 
-@router.get("/stats", response_model=GraphStatsResponse)
+@router.get("/stats", response_model=GraphStatsResponse, dependencies=[Depends(edge_cacheable)])
 async def graph_statistics(
     user: Annotated[User, Depends(require_viewer)],
     db: Annotated[AsyncSession, Depends(get_db)],

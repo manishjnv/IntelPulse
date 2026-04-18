@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import text, select, func
 
 from app.core.config import get_settings
+from app.core.http_cache import edge_cacheable
 from app.core.redis import redis_client, cache_key, get_cached, set_cached
 from app.core.opensearch import opensearch_client
 from app.schemas import HealthResponse
@@ -90,7 +91,7 @@ async def health_check():
     )
 
 
-@router.get("/status/bar", response_model=StatusBarResponse)
+@router.get("/status/bar", response_model=StatusBarResponse, dependencies=[Depends(edge_cacheable)])
 async def status_bar():
     """Lightweight header status bar — health + quick counts (cached 60s)."""
     ck = cache_key("status_bar_v3")

@@ -13,6 +13,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy import Text as SAText
 
 from app.core.database import get_db
+from app.core.http_cache import edge_cacheable
 from app.prompts import (
     INTEL_ENRICHMENT_PROMPT,
     PROMPT_VERSION_INTEL_ENRICHMENT,
@@ -226,7 +227,7 @@ async def export_intel_stix(
     )
 
 
-@router.get("/stats", response_model=IntelStatsResponse)
+@router.get("/stats", response_model=IntelStatsResponse, dependencies=[Depends(edge_cacheable)])
 async def intel_stats(
     user: Annotated[User, Depends(require_viewer)],
     db: Annotated[AsyncSession, Depends(get_db)],
