@@ -20,8 +20,9 @@ async function fetchInitial(searchParams: Search): Promise<{
 }> {
   const id = pickString(searchParams.id);
   const type = pickString(searchParams.type) || "intel";
-  const depthStr = pickString(searchParams.depth);
-  const depth = depthStr && /^\d+$/.test(depthStr) ? depthStr : "2";
+  // Depth is locked to 1 in the UI — multi-hop traversals produced hairball
+  // layouts. Backend still accepts 1-3, but we ignore any higher URL value.
+  const depth = "1";
 
   try {
     const fetches: Promise<Response>[] = [

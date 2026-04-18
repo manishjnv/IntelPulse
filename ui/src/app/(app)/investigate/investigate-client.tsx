@@ -24,8 +24,6 @@ import {
   Shield,
   Layers,
   RefreshCw,
-  Minus,
-  Plus,
   ExternalLink,
   X,
   BarChart3,
@@ -70,7 +68,9 @@ export function InvestigateClient({
 
   const [query, setQuery] = useState(searchParams?.get("id") || "");
   const [entityType, setEntityType] = useState(searchParams?.get("type") || "intel");
-  const [depth, setDepth] = useState(Number(searchParams?.get("depth")) || 2);
+  // Hop depth is locked to 1 — 2+ hops produced a hairball; orbital layout at 1
+  // hop is the intended UX. See GraphExplorer for the layout contract.
+  const depth = 1;
   const [graphData, setGraphData] = useState<GraphResponse | null>(initialGraphData);
   const [stats, setStats] = useState<GraphStatsResponse | null>(initialStats);
   const [loading, setLoading] = useState(false);
@@ -272,23 +272,6 @@ export function InvestigateClient({
               <option value="technique">Technique</option>
               <option value="cve">CVE</option>
             </select>
-            <div className="flex items-center gap-1 border border-input rounded-md px-2 h-10">
-              <button
-                type="button"
-                onClick={() => setDepth((d) => Math.max(1, d - 1))}
-                className="p-0.5 hover:text-primary"
-              >
-                <Minus className="h-3.5 w-3.5" />
-              </button>
-              <span className="text-sm w-14 text-center">{depth} hop{depth > 1 ? "s" : ""}</span>
-              <button
-                type="button"
-                onClick={() => setDepth((d) => Math.min(3, d + 1))}
-                className="p-0.5 hover:text-primary"
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-            </div>
             <Button type="submit" disabled={loading || !query.trim()} className="w-full sm:w-auto">
               {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Explore"}
             </Button>
