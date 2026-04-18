@@ -89,8 +89,8 @@ export function UserManagementSettings() {
       const [u, s] = await Promise.all([api.getAdminUsers(), api.getUserManagementStats()]);
       setUsers(u);
       setStats(s);
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[settings/users] load failed", err);
     }
     setLoading(false);
   };
@@ -108,8 +108,8 @@ export function UserManagementSettings() {
       setAuditTotal(res.total);
       setAuditPage(res.page);
       setAuditPages(res.pages);
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[settings/users] loadAudit failed", err);
     }
     setAuditLoading(false);
   };
@@ -128,8 +128,8 @@ export function UserManagementSettings() {
     try {
       await api.updateAdminUser(userId, { role });
       setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, role: role as any } : u));
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[settings/users] handleRoleChange failed", err);
     }
     setSaving(null);
   };
@@ -139,8 +139,8 @@ export function UserManagementSettings() {
     try {
       await api.updateAdminUser(userId, { is_active: !current });
       setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, is_active: !current } : u));
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[settings/users] handleToggleActive failed", err);
     }
     setSaving(null);
   };

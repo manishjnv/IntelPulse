@@ -112,8 +112,9 @@ export default function FeedStatusPage() {
     try {
       const data = await api.getNewsFeedStatus();
       setNewsFeeds(data);
-    } catch {
-      // silent — show empty
+    } catch (err) {
+      console.error("[feeds] loadNewsFeeds failed", err);
+      // empty array is the intended UI state on failure
     } finally {
       setNewsLoading(false);
     }

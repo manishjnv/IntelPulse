@@ -477,8 +477,8 @@ function NotificationSettings() {
       if (res.ok) {
         setRules(await res.json());
       }
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[settings/rules] loadRules failed", err);
     }
     setLoading(false);
   };
@@ -490,8 +490,8 @@ function NotificationSettings() {
         credentials: "include",
       });
       loadRules();
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[settings/rules] handleToggle failed", err);
     }
   };
 
@@ -502,8 +502,8 @@ function NotificationSettings() {
         credentials: "include",
       });
       loadRules();
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[settings/rules] handleDelete failed", err);
     }
   };
 
@@ -519,8 +519,8 @@ function NotificationSettings() {
       setShowCreate(false);
       setNewRule({ name: "", description: "", rule_type: "threshold", conditions: {}, channels: ["in_app"], cooldown_minutes: 15 });
       loadRules();
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[settings/rules] handleCreate failed", err);
     }
   };
 
@@ -1040,8 +1040,8 @@ function APISettings() {
       ]);
       setKeys(keyData.keys);
       setPlatform(platformData);
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[settings/api-keys] loadKeys failed", err);
     }
     setLoading(false);
   };

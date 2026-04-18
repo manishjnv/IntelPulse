@@ -383,8 +383,8 @@ export default function NewsDetailPage() {
     setReportLoading(true);
     try {
       await api.downloadNewsReport(item.id, format);
-    } catch {
-      // silently fail
+    } catch (err) {
+      console.error("[news/detail] handleDownloadReport failed", err);
     } finally {
       setReportLoading(false);
     }

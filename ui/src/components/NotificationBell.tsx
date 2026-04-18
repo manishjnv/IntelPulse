@@ -101,8 +101,8 @@ export function NotificationBell() {
       await api.deleteNotification(id);
       fetchNotifications({ unread_only: filter === "unread", limit: 30 });
       fetchUnreadCount();
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[NotificationBell] handleDelete failed", err);
     }
   }, [fetchNotifications, fetchUnreadCount, filter]);
 

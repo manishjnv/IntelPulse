@@ -245,8 +245,8 @@ export default function ReportDetailPage() {
     try {
       await api.removeReportItem(reportId, itemId);
       fetchReport();
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[reports/detail] handleRemoveItem failed", err);
     }
   };
 

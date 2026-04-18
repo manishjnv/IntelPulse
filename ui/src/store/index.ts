@@ -212,8 +212,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const data = await api.getUnreadCount();
       set({ unreadCount: data.unread_count });
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[store] fetchUnreadCount failed", err);
     }
   },
   markRead: async (ids) => {
@@ -225,8 +225,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
         unreadCount: Math.max(0, s.unreadCount - ids.length),
       }));
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[store] markRead failed", err);
     }
   },
   markAllRead: async () => {
@@ -236,8 +236,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         notifications: s.notifications.map((n) => ({ ...n, is_read: true })),
         unreadCount: 0,
       }));
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[store] markAllRead failed", err);
     }
   },
 
@@ -267,8 +267,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const stats = await api.getReportStats();
       set({ reportStats: stats });
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("[store] fetchReportStats failed", err);
     }
   },
 
