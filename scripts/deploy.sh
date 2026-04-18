@@ -59,6 +59,16 @@ fi
 echo "[4/5] Starting services..." | tee -a "$LOG_FILE"
 $COMPOSE -f "$COMPOSE_FILE" up -d --remove-orphans 2>&1 | tee -a "$LOG_FILE"
 
+# Caddyfile is bind-mounted as a single file, so `docker compose up -d` will
+# NOT restart caddy when only the Caddyfile contents change — the container
+# keeps the pre-rewrite inode bound and serves the stale config. Force a
+# caddy restart whenever the last commit touched caddy/Caddyfile or any
+# other mounted config file. Cheap (~1s) and idempotent.
+if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -qE '^caddy/'; then
+    echo "  Caddyfile changed — restarting caddy to re-bind mount..." | tee -a "$LOG_FILE"
+    $COMPOSE -f "$COMPOSE_FILE" restart caddy 2>&1 | tail -3 | tee -a "$LOG_FILE"
+fi
+
 # ── 5. Wait for health checks ─────────────────────────
 # 2s poll cadence catches the "all healthy" moment within 2s instead of
 # within 10s. Max wait unchanged at 120s.
