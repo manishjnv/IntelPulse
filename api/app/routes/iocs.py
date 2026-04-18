@@ -46,11 +46,35 @@ async def list_iocs(
         .subquery()
     )
 
+    # Slim list-view column set — skip the `context` JSONB (only rendered
+    # on the IOC detail pane) so the per-row Python-dict assembly and the
+    # JSON serialization don't walk a big nested blob for every card.
+    # Card UI reads value / ioc_type / risk_score / first_seen / last_seen
+    # / sighting_count / tags / geo / source_names / country / asn / as_name.
     base = (
         select(
-            IOC,
+            IOC.id,
+            IOC.value,
+            IOC.ioc_type,
+            IOC.risk_score,
+            IOC.first_seen,
+            IOC.last_seen,
+            IOC.sighting_count,
+            IOC.tags,
+            IOC.geo,
+            IOC.source_names,
+            IOC.created_at,
+            IOC.asn,
+            IOC.as_name,
+            IOC.as_domain,
+            IOC.country_code,
+            IOC.country,
+            IOC.continent_code,
+            IOC.continent,
+            IOC.enriched_at,
             func.coalesce(link_count_sq.c.link_cnt, 0).label("linked_intel_count"),
         )
+        .select_from(IOC)
         .outerjoin(link_count_sq, IOC.id == link_count_sq.c.ioc_id)
     )
     count_q = select(func.count()).select_from(IOC)
@@ -103,28 +127,30 @@ async def list_iocs(
 
     items = [
         {
-            "id": str(r.IOC.id),
-            "value": r.IOC.value,
-            "ioc_type": r.IOC.ioc_type,
-            "risk_score": r.IOC.risk_score,
-            "first_seen": r.IOC.first_seen.isoformat() if r.IOC.first_seen else None,
-            "last_seen": r.IOC.last_seen.isoformat() if r.IOC.last_seen else None,
-            "sighting_count": r.IOC.sighting_count,
-            "tags": r.IOC.tags or [],
-            "geo": r.IOC.geo or [],
-            "source_names": r.IOC.source_names or [],
-            "context": r.IOC.context or {},
-            "created_at": r.IOC.created_at.isoformat() if r.IOC.created_at else None,
+            "id": str(r.id),
+            "value": r.value,
+            "ioc_type": r.ioc_type,
+            "risk_score": r.risk_score,
+            "first_seen": r.first_seen.isoformat() if r.first_seen else None,
+            "last_seen": r.last_seen.isoformat() if r.last_seen else None,
+            "sighting_count": r.sighting_count,
+            "tags": r.tags or [],
+            "geo": r.geo or [],
+            "source_names": r.source_names or [],
+            # context JSONB intentionally omitted in list view (detail pane
+            # fetches /api/v1/iocs/{id} to get it).
+            "context": {},
+            "created_at": r.created_at.isoformat() if r.created_at else None,
             "linked_intel_count": r.linked_intel_count,
             # IPinfo enrichment
-            "asn": r.IOC.asn,
-            "as_name": r.IOC.as_name,
-            "as_domain": r.IOC.as_domain,
-            "country_code": r.IOC.country_code,
-            "country": r.IOC.country,
-            "continent_code": r.IOC.continent_code,
-            "continent": r.IOC.continent,
-            "enriched_at": r.IOC.enriched_at.isoformat() if r.IOC.enriched_at else None,
+            "asn": r.asn,
+            "as_name": r.as_name,
+            "as_domain": r.as_domain,
+            "country_code": r.country_code,
+            "country": r.country,
+            "continent_code": r.continent_code,
+            "continent": r.continent,
+            "enriched_at": r.enriched_at.isoformat() if r.enriched_at else None,
         }
         for r in rows
     ]
