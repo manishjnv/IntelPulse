@@ -46,9 +46,39 @@ async function fetchInitial(searchParams: Search): Promise<{
     const featResp = featRes.ok
       ? ((await featRes.json()) as { featured: GraphFeaturedEntity[] })
       : null;
-    const featured = featResp?.featured ?? null;
-    const graphData =
+
+    // SSR payload trim — same pattern as commit 7077637 (/threats page.tsx).
+    // The featured pills only render: type, raw_id, label, degree.
+    // id / severity / risk_score / source / feed_type / ioc_type / tactic are
+    // never accessed in the SSR shell; zero them here so the embedded JSON is
+    // smaller. Client refetches (api.getGraphFeatured) still get the full shape.
+    const featured = featResp?.featured
+      ? featResp.featured.map((f) => ({
+          ...f,
+          id: "",
+          severity: null,
+          risk_score: null,
+          source: null,
+          feed_type: null,
+          ioc_type: null,
+          tactic: null,
+        }))
+      : null;
+
+    const rawGraphData =
       graphRes && graphRes.ok ? ((await graphRes.json()) as GraphResponse) : null;
+
+    // SSR payload trim — same pattern as commit 7077637 (/threats page.tsx).
+    // GraphEdge.last_seen is present in the type but never accessed by
+    // investigate-client.tsx or GraphExplorer.tsx in the SSR shell; null it.
+    // GraphNode has no unused fields (all 9 fields are rendered) — not trimmed.
+    const graphData = rawGraphData
+      ? {
+          ...rawGraphData,
+          edges: rawGraphData.edges.map((e) => ({ ...e, last_seen: null })),
+        }
+      : null;
+
     return { stats, featured, graphData };
   } catch {
     return { stats: null, featured: null, graphData: null };

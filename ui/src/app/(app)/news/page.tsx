@@ -43,13 +43,34 @@ async function fetchInitial(searchParams: Search): Promise<{
       fetch(`${BACKEND_URL}/api/v1/news/stats`, { cache: "no-store" }),
       fetch(`${BACKEND_URL}/api/v1/news/pipeline-status`, { cache: "no-store" }),
     ]);
-    const news = newsRes.ok ? ((await newsRes.json()) as NewsListResponse) : null;
+    const newsRaw = newsRes.ok ? ((await newsRes.json()) as NewsListResponse) : null;
     const categories = catRes.ok
       ? ((await catRes.json()) as NewsCategoriesResponse)
       : null;
     const stats = statsRes.ok ? ((await statsRes.json()) as NewsStatsResponse) : null;
     const pipelineStatus = pipeRes.ok
       ? ((await pipeRes.json()) as NewsPipelineStatus)
+      : null;
+    // SSR payload trim — mirrors the 7077637 pattern from /threats/page.tsx.
+    // Fields below are never accessed by news-client.tsx in any render path;
+    // nulling them here shrinks the HTML shell. Client-side refetches via
+    // api.getNewsItems() still receive the full shape from the backend.
+    const news = newsRaw
+      ? {
+          ...newsRaw,
+          items: newsRaw.items.map((it) => ({
+            ...it,
+            campaign_name: null,
+            initial_access_vector: null,
+            yara_rule: null,
+            kql_rule: null,
+            post_exploitation: [],
+            impacted_assets: [],
+            reference_links: [],
+            created_at: "",
+            updated_at: "",
+          })),
+        }
       : null;
     return { news, categories, stats, pipelineStatus };
   } catch {
