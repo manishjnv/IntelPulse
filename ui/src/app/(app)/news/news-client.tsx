@@ -1186,7 +1186,6 @@ export default function NewsClient({
   const [newsStats, setNewsStats] = useState<NewsStatsResponse | null>(initialStats);
   const [pipelineStatus, setPipelineStatus] = useState<NewsPipelineStatus | null>(initialPipelineStatus);
   const [loading, setLoading] = useState(initialNews === null);
-  const [catLoading, setCatLoading] = useState(initialCategories === null);
   const [refreshing, setRefreshing] = useState(false);
 
   // Filters
@@ -1224,14 +1223,11 @@ export default function NewsClient({
   const { toast } = useToast();
 
   const fetchCategories = useCallback(async () => {
-    setCatLoading(true);
     try {
       const data = await api.getNewsCategories();
       setCategories(data);
     } catch (err) {
       console.error("[news] fetchCategories failed", err);
-    } finally {
-      setCatLoading(false);
     }
   }, []);
 
@@ -1617,7 +1613,7 @@ export default function NewsClient({
           </button>
 
           <div className="space-y-1">
-            {catLoading
+            {categories === null
               ? Array.from({ length: 10 }).map((_, i) => (
                   <Skeleton key={i} className="h-6 w-full rounded-md" />
                 ))
