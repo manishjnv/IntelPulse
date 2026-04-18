@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useCallback, useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -288,12 +288,23 @@ function HotIOCsStrip({
 
 export default function IOCDatabasePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [data, setData] = useState<IOCListResponse | null>(null);
   const [stats, setStats] = useState<IOCStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [riskFilter, setRiskFilter] = useState<string | null>(null);
+  // Country filter is URL-only: arrives from the dashboard geo widget
+  // as `/iocs?country=XX`. Kept as local state so the close-chip can clear
+  // it without round-tripping the URL.
+  const [countryFilter, setCountryFilter] = useState<string | null>(
+    () => searchParams?.get("country")?.toUpperCase() || null,
+  );
+  useEffect(() => {
+    const q = searchParams?.get("country")?.toUpperCase() || null;
+    setCountryFilter(q);
+  }, [searchParams]);
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState("created_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -343,6 +354,7 @@ export default function IOCDatabasePage() {
       };
       if (debouncedSearch) params.search = debouncedSearch;
       if (typeFilter) params.ioc_type = typeFilter;
+      if (countryFilter) params.country_code = countryFilter;
 
       const [iocs, iocStats] = await Promise.all([
         getIOCs(params as any),
@@ -356,7 +368,7 @@ export default function IOCDatabasePage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, sortBy, sortDir, debouncedSearch, typeFilter, riskRange]);
+  }, [page, pageSize, sortBy, sortDir, debouncedSearch, typeFilter, riskRange, countryFilter]);
 
   useEffect(() => {
     fetchData();
@@ -364,7 +376,7 @@ export default function IOCDatabasePage() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, typeFilter, riskFilter]);
+  }, [debouncedSearch, typeFilter, riskFilter, countryFilter]);
 
   const handleCopy = (text: string, idx: number) => {
     navigator.clipboard.writeText(text);
@@ -447,6 +459,40 @@ export default function IOCDatabasePage() {
       </div>
 
       <HowItWorks page="iocs" />
+
+      {/* ── Active country filter chip (from dashboard geo drill-through) ── */}
+      {countryFilter && (
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-muted-foreground">Filtered by country:</span>
+          <button
+            onClick={() => {
+              setCountryFilter(null);
+              router.replace("/iocs");
+            }}
+            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 hover:bg-emerald-500/15 transition-colors"
+          >
+            {(() => {
+              const match = stats?.country_distribution?.find(
+                (c) => c.code === countryFilter,
+              );
+              return (
+                <>
+                  {countryFilter.length === 2 && (
+                    <img
+                      src={`https://flagcdn.com/16x12/${countryFilter.toLowerCase()}.png`}
+                      alt=""
+                      className="h-2.5 w-auto"
+                    />
+                  )}
+                  <span className="font-mono">{countryFilter}</span>
+                  {match?.name && <span>· {match.name}</span>}
+                  <X className="h-3 w-3 opacity-60" />
+                </>
+              );
+            })()}
+          </button>
+        </div>
+      )}
 
       {/* ── Stat Cards (compact, clickable) ───────────── */}
       {stats === null ? (

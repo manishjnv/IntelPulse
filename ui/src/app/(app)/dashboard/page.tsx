@@ -210,6 +210,36 @@ export default function DashboardPage() {
 
   const topCVEs = insights?.top_cves ?? [];
 
+  // Hero "Top actor" chip: the raw insights.threat_actors list is ordered by
+  // count but includes generic tag-placeholders (literal `threat_actor`, `apt`,
+  // `dprk`, etc.) that aren't real actor names. Skip those + dedupe by a
+  // normalized key so `cobalt_strike`/`CobaltStrike`/`Cobalt Strike` collapse.
+  const topActor = useMemo(() => {
+    const list = insights?.threat_actors ?? [];
+    if (list.length === 0) return null;
+    const JUNK = new Set([
+      "threatactor", "apt", "dprk", "northkorea", "espionage",
+      "cyberespionage", "nationstate", "statesponsor",
+    ]);
+    const seen = new Set<string>();
+    for (const a of list) {
+      if (!a.name || a.name.length < 3) continue;
+      const norm = a.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (JUNK.has(norm)) continue;
+      if (seen.has(norm)) continue;
+      seen.add(norm);
+      return a;
+    }
+    return null;
+  }, [insights]);
+
+  // Hero "KEV CVEs" chip: top 3 KEV-flagged CVEs from insights.top_cves.
+  const topKevCves = useMemo(() => {
+    return (insights?.top_cves ?? [])
+      .filter((c) => c.is_kev)
+      .slice(0, 3);
+  }, [insights]);
+
   const topRiskItems = useMemo(() => {
     if (!dashboard?.top_risks) return [];
     return [...dashboard.top_risks]
@@ -247,11 +277,14 @@ export default function DashboardPage() {
           {/* Hero briefing — single-line at-a-glance */}
           {dashboard && (
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-              <span className="text-muted-foreground">
+              <span
+                className="text-muted-foreground"
+                title="Total intel items (CVEs, news, IOCs, advisories) ingested in the last 24 hours"
+              >
                 <span className="font-semibold text-foreground tabular-nums">
                   {(dashboard.items_last_24h ?? 0).toLocaleString()}
                 </span>{" "}
-                new · 24h
+                intel items · 24h
               </span>
               <span className="text-muted-foreground/40">·</span>
               <span className="text-red-400">
@@ -265,30 +298,50 @@ export default function DashboardPage() {
                 </span>{" "}
                 KEV
               </span>
-              <span className="text-muted-foreground/40">·</span>
-              <span className="text-muted-foreground">
-                Avg risk{" "}
-                <span className="font-semibold text-foreground tabular-nums">
-                  {Math.round(dashboard.avg_risk_score ?? 0)}
-                </span>
-              </span>
-              {insights?.threat_actors?.[0] && (
+              {insights?.exploit_summary && insights.exploit_summary.total > 0 && (
                 <>
                   <span className="text-muted-foreground/40">·</span>
-                  <span className="text-muted-foreground">
-                    Top actor{" "}
-                    <span className="font-medium text-foreground capitalize">
-                      {insights.threat_actors[0].name.replace(/_/g, " ")}
+                  <span
+                    className="text-muted-foreground"
+                    title={`${insights.exploit_summary.with_exploit.toLocaleString()} of ${insights.exploit_summary.total.toLocaleString()} intel items have a public exploit`}
+                  >
+                    Exploitable{" "}
+                    <span className="font-semibold text-red-400 tabular-nums">
+                      {insights.exploit_summary.exploit_pct}%
                     </span>
                   </span>
                 </>
               )}
-              {insights?.top_cves?.[0] && (
+              {topActor && (
                 <>
                   <span className="text-muted-foreground/40">·</span>
-                  <span className="text-muted-foreground">
-                    Top CVE{" "}
-                    <span className="font-mono text-primary">{insights.top_cves[0].cve_id}</span>
+                  <Link
+                    href="/threats?feed_type=threat_actor"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    title={`${topActor.count} intel items reference this actor`}
+                  >
+                    Top actor{" "}
+                    <span className="font-medium text-foreground capitalize">
+                      {topActor.name.replace(/_/g, " ")}
+                    </span>
+                  </Link>
+                </>
+              )}
+              {topKevCves.length > 0 && (
+                <>
+                  <span className="text-muted-foreground/40">·</span>
+                  <span className="text-muted-foreground inline-flex flex-wrap items-center gap-1">
+                    <span>Trending KEV</span>
+                    {topKevCves.map((cve) => (
+                      <button
+                        key={cve.cve_id}
+                        onClick={() => openDetail("cve", cve.cve_id)}
+                        className="font-mono text-primary hover:underline tabular-nums"
+                        title={`${cve.count} references · max risk ${cve.max_risk}`}
+                      >
+                        {cve.cve_id}
+                      </button>
+                    ))}
                   </span>
                 </>
               )}
@@ -302,7 +355,12 @@ export default function DashboardPage() {
       {/* Situation read — HeroBriefingStrip renders a posture label +
           templated headline + 24h velocity spark + severity stack. Additive;
           KPI tiles below stay in place. */}
-      {dashboard && <HeroBriefingStrip severityCounts={severityCounts} />}
+      {dashboard && (
+        <HeroBriefingStrip
+          severityCounts={severityCounts}
+          exploitPct={insights?.exploit_summary?.exploit_pct}
+        />
+      )}
 
       {/* ATT&CK activity strip — tactic-frequency bars feeding the tactic
           click-through into /techniques. Self-fetches the matrix. */}
@@ -313,10 +371,22 @@ export default function DashboardPage() {
       {insights?.threat_actors && insights.threat_actors.length > 0 ? (
         <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-4">
           <ActorCards actors={insights.threat_actors} />
-          <GeoHeatmapWidget stats={iocStats} threatActors={insights?.threat_actors} compact height={320} />
+          <GeoHeatmapWidget
+            stats={iocStats}
+            threatActors={insights?.threat_actors}
+            compact
+            height={320}
+            onCountryClick={(code) => router.push(`/iocs?country=${code}`)}
+          />
         </div>
       ) : (
-        <GeoHeatmapWidget stats={iocStats} threatActors={insights?.threat_actors} compact height={320} />
+        <GeoHeatmapWidget
+            stats={iocStats}
+            threatActors={insights?.threat_actors}
+            compact
+            height={320}
+            onCountryClick={(code) => router.push(`/iocs?country=${code}`)}
+          />
       )}
 
       {/* CVE heat rail + Ingestion trend — side-by-side on wide viewports. */}
