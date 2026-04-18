@@ -20,6 +20,11 @@ import {
 } from "@/lib/api";
 import { StructuredIntelCards } from "@/components/StructuredIntelCards";
 import { HowItWorks } from "@/components/HowItWorks";
+import {
+  SkeletonStatCard,
+  SkeletonDonut,
+  SkeletonTableRow,
+} from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import {
   Search as SearchIcon,
@@ -375,7 +380,13 @@ export default function SearchClient({
             Search by CVE, IP, domain, URL, hash, keyword &mdash; auto-detected with enrichment
           </p>
         </div>
-        {stats && (
+        {stats === null ? (
+          <div className="hidden lg:grid grid-cols-3 gap-2 w-56">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <SkeletonStatCard key={i} />
+            ))}
+          </div>
+        ) : (
           <div className="hidden lg:flex items-center gap-4 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <Database className="h-3.5 w-3.5" />
@@ -548,6 +559,26 @@ export default function SearchClient({
       )}
 
       {/* Charts (collapsible) */}
+      {showCharts && stats === null && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card>
+            <CardHeader className="pb-1 pt-3 px-4">
+              <CardTitle className="text-xs font-semibold">Type Distribution</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              <SkeletonDonut height={180} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-1 pt-3 px-4">
+              <CardTitle className="text-xs font-semibold">Source Distribution</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              <SkeletonDonut height={180} />
+            </CardContent>
+          </Card>
+        </div>
+      )}
       {showCharts && stats && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card>
@@ -581,6 +612,45 @@ export default function SearchClient({
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Cold first-load skeleton: query in URL, SSR failed, client is fetching */}
+      {searchLoading && searchResult === null && (
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border/40 bg-muted/20">
+                    <th className="text-left py-2.5 px-3 text-muted-foreground font-medium w-[35%]">
+                      Title / IOC
+                    </th>
+                    <th className="text-left py-2.5 px-2 text-muted-foreground font-medium">
+                      Type
+                    </th>
+                    {SORT_FIELDS.slice(0, 5).map((sf) => (
+                      <th
+                        key={sf.key}
+                        className="text-left py-2.5 px-2 text-muted-foreground font-medium"
+                      >
+                        {sf.label}
+                      </th>
+                    ))}
+                    <th className="text-left py-2.5 px-2 text-muted-foreground font-medium">
+                      Source
+                    </th>
+                    <th className="py-2.5 px-2 w-20"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <SkeletonTableRow key={i} cols={9} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Results */}
@@ -623,15 +693,8 @@ export default function SearchClient({
             )}
           </div>
 
-          {/* Results Table */}
-          {searchLoading ? (
-            <Card>
-              <CardContent className="py-12 flex items-center justify-center gap-2">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                <span className="text-sm text-muted-foreground">Searching...</span>
-              </CardContent>
-            </Card>
-          ) : searchResult.results.length === 0 ? (
+          {/* Results Table — keep old rows visible during re-search (searchResult !== null) */}
+          {searchResult.results.length === 0 && !searchLoading ? (
             <Card>
               <CardContent className="py-12 text-center text-muted-foreground">
                 <SearchIcon className="h-12 w-12 mx-auto mb-3 opacity-30" />

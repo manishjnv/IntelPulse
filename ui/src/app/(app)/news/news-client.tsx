@@ -69,6 +69,7 @@ import Link from "next/link";
 import * as api from "@/lib/api";
 import { HowItWorks } from "@/components/HowItWorks";
 import { useToast } from "@/components/Toast";
+import { Skeleton, SkeletonStatCard, SkeletonTableRow } from "@/components/Skeleton";
 import type {
   NewsListResponse,
   NewsItem,
@@ -1191,7 +1192,25 @@ function isStaleEntry(lastSeen: string, days = 7): boolean {
 function VendorStatsWidget() {
   const [data, setData] = useState<Array<{ vendor: string; count: number; critical: number; high: number; kev_count: number }> | null>(null);
   useEffect(() => { api.getVendorStats().then(setData).catch(() => {}); }, []);
-  if (!data || data.length === 0) return null;
+  if (data === null) return (
+    <Card className="card-3d mb-3">
+      <CardHeader className="pb-2 pt-3 px-4">
+        <Skeleton className="h-3 w-40" />
+      </CardHeader>
+      <CardContent className="px-4 pb-3">
+        <div className="space-y-1.5">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Skeleton className="h-3 w-[140px]" />
+              <Skeleton className="flex-1 h-3 rounded-full" />
+              <Skeleton className="h-3 w-6" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+  if (data.length === 0) return null;
   const max = data[0]?.count || 1;
   return (
     <Card className="card-3d mb-3">
@@ -1475,8 +1494,14 @@ function VulnerableProductsTable() {
 
       {/* Table */}
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/40" />
+        <div className="rounded-lg border border-border/50 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <tbody>
+                {Array.from({ length: 8 }).map((_, i) => <SkeletonTableRow key={i} cols={10} />)}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : !data || data.items.length === 0 ? (
         <Card className="card-3d">
@@ -1851,8 +1876,14 @@ function ThreatCampaignsTable() {
 
       {/* Table */}
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground/40" />
+        <div className="rounded-lg border border-border/50 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <tbody>
+                {Array.from({ length: 8 }).map((_, i) => <SkeletonTableRow key={i} cols={10} />)}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : !data || data.items.length === 0 ? (
         <Card className="card-3d">
@@ -2465,12 +2496,18 @@ export default function NewsClient({
             </button>
           </div>
         </div>
-        <QuickStatsBar
-          categories={categories}
-          stats={newsStats}
-          onFilterCategory={(cat) => { setSelectedCategory(cat); setPage(1); }}
-          onSortBy={(sort) => { setSortKey(sort); setPage(1); }}
-        />
+        {newsStats === null ? (
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
+            {Array.from({ length: 6 }).map((_, i) => <SkeletonStatCard key={i} />)}
+          </div>
+        ) : (
+          <QuickStatsBar
+            categories={categories}
+            stats={newsStats}
+            onFilterCategory={(cat) => { setSelectedCategory(cat); setPage(1); }}
+            onSortBy={(sort) => { setSortKey(sort); setPage(1); }}
+          />
+        )}
 
         <HowItWorks page="news" />
 
@@ -2603,10 +2640,8 @@ export default function NewsClient({
 
           <div className="space-y-1">
             {catLoading
-              ? Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="rounded-lg border border-border/50 bg-card/50 p-2 animate-pulse">
-                    <div className="h-5 w-full rounded bg-muted/40" />
-                  </div>
+              ? Array.from({ length: 10 }).map((_, i) => (
+                  <Skeleton key={i} className="h-6 w-full rounded-md" />
                 ))
               : ALL_CATEGORIES.map((cat) => (
                   <CategoryWidget

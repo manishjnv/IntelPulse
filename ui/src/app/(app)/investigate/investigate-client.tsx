@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loading } from "@/components/Loading";
+import { Skeleton } from "@/components/Skeleton";
 import { GraphExplorer } from "@/components/GraphExplorer";
 import { HowItWorks } from "@/components/HowItWorks";
 import { useToast } from "@/components/Toast";
@@ -76,7 +76,7 @@ export function InvestigateClient({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [featured, setFeatured] = useState<api.GraphFeaturedEntity[]>(initialFeatured ?? []);
+  const [featured, setFeatured] = useState<api.GraphFeaturedEntity[] | null>(initialFeatured);
 
   const { toast } = useToast();
 
@@ -109,7 +109,7 @@ export function InvestigateClient({
   const fetchFeatured = useCallback(async () => {
     try {
       const r = await api.getGraphFeatured(12);
-      setFeatured(r.featured || []);
+      setFeatured(r.featured ?? []);
     } catch { toast("Failed to load featured graphs", "error"); }
   }, [toast]);
 
@@ -143,7 +143,7 @@ export function InvestigateClient({
   // pre-fetch graph data.
   useEffect(() => {
     if (graphData || loading || searchParams?.get("id") || query.trim()) return;
-    if (featured.length === 0) return;
+    if (!featured || featured.length === 0) return;
     const top = featured[0];
     setQuery(top.raw_id);
     setEntityType(top.type);
@@ -231,7 +231,12 @@ export function InvestigateClient({
             Explore connections between intel items, IOCs, CVEs and ATT&CK techniques
           </p>
         </div>
-        {stats && (
+        {stats === null ? (
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-14 w-28 rounded-md" />
+            <Skeleton className="h-14 w-28 rounded-md" />
+          </div>
+        ) : (
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <Layers className="h-3.5 w-3.5" />
@@ -290,7 +295,19 @@ export function InvestigateClient({
           </form>
 
           {/* Suggested entities — click to auto-load that entity's graph. */}
-          {featured.length > 0 && (
+          {featured === null ? (
+            <div className="mt-3 flex items-start gap-2">
+              <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground pt-1.5 shrink-0">
+                <Sparkles className="h-3 w-3" />
+                Suggested
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} className="h-7 w-28 rounded-md" />
+                ))}
+              </div>
+            </div>
+          ) : featured.length > 0 && (
             <div className="mt-3 flex items-start gap-2">
               <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground pt-1.5 shrink-0">
                 <Sparkles className="h-3 w-3" />
@@ -331,7 +348,7 @@ export function InvestigateClient({
 
       {/* Main content */}
       {loading ? (
-        <Loading text="Querying relationship graph…" />
+        <Skeleton className="h-[560px] w-full rounded-lg" />
       ) : error ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">

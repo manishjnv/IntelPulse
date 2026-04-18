@@ -4,7 +4,12 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loading } from "@/components/Loading";
+import {
+  SkeletonStatCard,
+  SkeletonRankedList,
+  SkeletonDonut,
+  SkeletonTableRow,
+} from "@/components/Skeleton";
 import { DonutChart } from "@/components/charts";
 import { Pagination } from "@/components/Pagination";
 import {
@@ -387,8 +392,6 @@ export function ThreatsClient({ initialData, initialStats }: ThreatsClientProps)
   /* ─── Active filters count ─── */
   const activeFilters = [selectedSev, selectedFeedType, selectedAsset, kevOnly, exploitOnly, searchQ].filter(Boolean).length;
 
-  if (loading && !data) return <Loading text="Loading threat feed..." />;
-
   const items = data?.items || [];
 
   return (
@@ -452,7 +455,15 @@ export function ThreatsClient({ initialData, initialStats }: ThreatsClientProps)
       <HowItWorks page="threats" />
 
       {/* ─── Stats Bar ─── */}
-      <QuickStatsBar stats={stats} onFilter={handleStatsFilter} />
+      {stats === null ? (
+        <div className="flex items-center gap-2 flex-wrap py-1.5 px-3 bg-muted/30 rounded-lg border border-border/40">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonStatCard key={i} />
+          ))}
+        </div>
+      ) : (
+        <QuickStatsBar stats={stats} onFilter={handleStatsFilter} />
+      )}
 
       {/* ─── Search + Filter Row ─── */}
       <div className="flex items-center gap-3 flex-wrap">
@@ -535,7 +546,15 @@ export function ThreatsClient({ initialData, initialStats }: ThreatsClientProps)
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* ─── Threat List ─── */}
         <div className="lg:col-span-3 space-y-2">
-          {loading && data ? (
+          {data === null ? (
+            <table className="w-full">
+              <tbody>
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <SkeletonTableRow key={i} cols={5} />
+                ))}
+              </tbody>
+            </table>
+          ) : loading && data ? (
             <div className="space-y-2">
               {[1, 2, 3, 4, 5].map((i) => (
                 <div key={i} className="h-24 rounded-lg bg-muted/20 animate-pulse" />
@@ -757,16 +776,18 @@ export function ThreatsClient({ initialData, initialStats }: ThreatsClientProps)
         {/* ─── Right Sidebar ─── */}
         <div className="space-y-3">
           {/* Severity Breakdown */}
-          {stats && (
-            <Card>
-              <CardHeader className="pb-1 pt-3 px-4">
-                <CardTitle className="text-xs font-semibold">Severity Breakdown</CardTitle>
-              </CardHeader>
-              <CardContent className="px-4 pb-3">
+          <Card>
+            <CardHeader className="pb-1 pt-3 px-4">
+              <CardTitle className="text-xs font-semibold">Severity Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              {stats === null ? (
+                <SkeletonRankedList rows={5} />
+              ) : (
                 <SeverityMiniBar stats={stats} />
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
 
           {/* Asset Types Donut */}
           <Card>
@@ -782,42 +803,93 @@ export function ThreatsClient({ initialData, initialStats }: ThreatsClientProps)
               )}
             </CardHeader>
             <CardContent className="px-4 pb-3">
-              <DonutChart
-                data={assetDonut}
-                centerValue={stats?.total || data?.total || 0}
-                centerLabel="Items"
-                height={150}
-                innerRadius={38}
-                outerRadius={56}
-                onSegmentClick={handleAssetClick}
-                activeSegment={selectedAsset ? selectedAsset.toUpperCase().replace(/_/g, " ") : null}
-              />
+              {stats === null ? (
+                <SkeletonDonut height={150} />
+              ) : (
+                <DonutChart
+                  data={assetDonut}
+                  centerValue={stats?.total || data?.total || 0}
+                  centerLabel="Items"
+                  height={150}
+                  innerRadius={38}
+                  outerRadius={56}
+                  onSegmentClick={handleAssetClick}
+                  activeSegment={selectedAsset ? selectedAsset.toUpperCase().replace(/_/g, " ") : null}
+                />
+              )}
             </CardContent>
           </Card>
 
           {/* Feed Type Grid */}
-          {stats?.feed_type_counts && <FeedTypeGrid counts={stats.feed_type_counts} />}
+          {stats === null ? (
+            <Card>
+              <CardHeader className="pb-1 pt-3 px-4">
+                <CardTitle className="text-xs font-semibold">Feed Types</CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <SkeletonRankedList rows={5} />
+              </CardContent>
+            </Card>
+          ) : stats.feed_type_counts ? (
+            <FeedTypeGrid counts={stats.feed_type_counts} />
+          ) : null}
 
           {/* Top Sources */}
-          {stats?.top_sources && (
+          {stats === null ? (
+            <Card>
+              <CardHeader className="pb-1 pt-3 px-4">
+                <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                  <Globe className="h-3 w-3 text-muted-foreground" />
+                  Top Sources
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <SkeletonRankedList rows={5} />
+              </CardContent>
+            </Card>
+          ) : stats.top_sources ? (
             <TopList
               title="Top Sources"
               icon={Globe}
               items={stats.top_sources.map((s) => ({ label: s.name, value: s.count }))}
             />
-          )}
+          ) : null}
 
           {/* Top CVEs */}
-          {stats?.top_cves && stats.top_cves.length > 0 && (
+          {stats === null ? (
+            <Card>
+              <CardHeader className="pb-1 pt-3 px-4">
+                <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                  <ShieldAlert className="h-3 w-3 text-muted-foreground" />
+                  Top CVEs
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <SkeletonRankedList rows={5} />
+              </CardContent>
+            </Card>
+          ) : stats.top_cves && stats.top_cves.length > 0 ? (
             <TopList
               title="Top CVEs"
               icon={ShieldAlert}
               items={stats.top_cves.map((c) => ({ label: c }))}
             />
-          )}
+          ) : null}
 
           {/* Top Tags */}
-          {stats?.top_tags && stats.top_tags.length > 0 && (
+          {stats === null ? (
+            <Card>
+              <CardHeader className="pb-1 pt-3 px-4">
+                <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                  <Tag className="h-3 w-3 text-muted-foreground" />
+                  Trending Tags
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <SkeletonRankedList rows={5} />
+              </CardContent>
+            </Card>
+          ) : stats.top_tags && stats.top_tags.length > 0 ? (
             <Card>
               <CardHeader className="pb-1 pt-3 px-4">
                 <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
@@ -839,7 +911,7 @@ export function ThreatsClient({ initialData, initialStats }: ThreatsClientProps)
                 </div>
               </CardContent>
             </Card>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
