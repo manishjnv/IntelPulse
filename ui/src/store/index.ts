@@ -28,6 +28,7 @@ interface AppState {
   // Dashboard
   dashboard: DashboardData | null;
   dashboardLoading: boolean;
+  dashboardUpdatedAt: number | null;
   fetchDashboard: () => Promise<void>;
 
   // Search
@@ -144,11 +145,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Dashboard
   dashboard: null,
   dashboardLoading: false,
+  dashboardUpdatedAt: null,
   fetchDashboard: async () => {
     set({ dashboardLoading: true });
     try {
       const data = await api.getDashboard();
-      set({ dashboard: data, dashboardLoading: false });
+      set({ dashboard: data, dashboardLoading: false, dashboardUpdatedAt: Date.now() });
     } catch (e: any) {
       set({ dashboardLoading: false, error: e.message });
     }

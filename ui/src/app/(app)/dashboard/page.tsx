@@ -2,13 +2,13 @@
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useAppStore } from "@/store";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loading } from "@/components/Loading";
 import { StatCard } from "@/components/StatCard";
 import { ThreatLevelBar } from "@/components/ThreatLevelBar";
 import { FeedStatusPanel } from "@/components/FeedStatusPanel";
 import { RankedDataList } from "@/components/RankedDataList";
+import { SectionCard } from "@/components/SectionCard";
 import { InsightDetailModal, ViewAllModal } from "@/components/InsightDetailModal";
 import { DonutChart, TrendLineChart } from "@/components/charts";
 import { HowItWorks } from "@/components/HowItWorks";
@@ -19,7 +19,6 @@ import {
   Clock,
   Loader2,
   Zap,
-  BarChart3,
   Activity,
   Bell,
   FileText,
@@ -29,71 +28,55 @@ import {
   Lock,
   Globe,
   ChevronRight,
-  ExternalLink,
+  ArrowRight,
   Eye,
   Swords,
   ShieldAlert,
   Flame,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import * as api from "@/lib/api";
-import type { DashboardInsights, DashboardEnrichment, ThreatVelocityItem } from "@/types";
-import { cn } from "@/lib/utils";
+import type { DashboardInsights } from "@/types";
+import { cn, formatDate } from "@/lib/utils";
+import {
+  SEVERITY_HEX,
+  feedTypeHex,
+  riskBucketClasses,
+  severityHex,
+} from "@/lib/severity";
 
-const SEV_COLORS: Record<string, string> = {
-  critical: "#ef4444",
-  high: "#f97316",
-  medium: "#eab308",
-  low: "#22c55e",
-  info: "#3b82f6",
-  unknown: "#6b7280",
-};
-
-const FEED_TYPE_COLORS: Record<string, string> = {
-  vulnerability: "#ef4444",
-  ioc: "#f97316",
-  malware: "#a855f7",
-  exploit: "#ec4899",
-  advisory: "#3b82f6",
-  threat_actor: "#14b8a6",
-  campaign: "#8b5cf6",
-};
-
-const RISK_BG = (score: number) =>
-  score >= 80 ? "bg-red-500/15 text-red-400" :
-  score >= 60 ? "bg-orange-500/15 text-orange-400" :
-  score >= 40 ? "bg-yellow-500/15 text-yellow-400" :
-  "bg-green-500/15 text-green-400";
+type ModalState =
+  | { kind: "detail"; type: string; name: string }
+  | { kind: "viewAll"; type: string; title: string }
+  | null;
 
 export default function DashboardPage() {
-  const { dashboard, dashboardLoading, fetchDashboard, unreadCount, fetchUnreadCount, reportStats, fetchReportStats } = useAppStore();
+  const router = useRouter();
+  const {
+    dashboard,
+    dashboardLoading,
+    dashboardUpdatedAt,
+    fetchDashboard,
+    unreadCount,
+    fetchUnreadCount,
+    reportStats,
+    fetchReportStats,
+  } = useAppStore();
   const [insights, setInsights] = useState<DashboardInsights | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [productPeriod, setProductPeriod] = useState<string>("30d");
-  const [enrichment, setEnrichment] = useState<DashboardEnrichment | null>(null);
-  const [velocity, setVelocity] = useState<ThreatVelocityItem[]>([]);
+  const [modal, setModal] = useState<ModalState>(null);
 
-  // Detail modal state
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [detailType, setDetailType] = useState("");
-  const [detailName, setDetailName] = useState("");
-
-  // View All modal state
-  const [viewAllOpen, setViewAllOpen] = useState(false);
-  const [viewAllType, setViewAllType] = useState("");
-  const [viewAllTitle, setViewAllTitle] = useState("");
-
-  const openDetail = useCallback((type: string, name: string) => {
-    setDetailType(type);
-    setDetailName(name);
-    setDetailOpen(true);
-  }, []);
-
-  const openViewAll = useCallback((type: string, title: string) => {
-    setViewAllType(type);
-    setViewAllTitle(title);
-    setViewAllOpen(true);
-  }, []);
+  const openDetail = useCallback(
+    (type: string, name: string) => setModal({ kind: "detail", type, name }),
+    [],
+  );
+  const openViewAll = useCallback(
+    (type: string, title: string) => setModal({ kind: "viewAll", type, title }),
+    [],
+  );
+  const closeModal = useCallback(() => setModal(null), []);
 
   const fetchInsights = useCallback(async () => {
     setInsightsLoading(true);
@@ -112,18 +95,20 @@ export default function DashboardPage() {
     fetchUnreadCount();
     fetchReportStats();
     fetchInsights();
-    // Note: getDashboardEnrichment / getThreatVelocity were removed — their
-    // backend routes don't exist yet, so the old calls 404'd on every
-    // dashboard mount (2 wasted round-trips, ~600 ms added waterfall).
-    // The UI sections that consumed this data render nothing when the
-    // state is its initial empty value, so the visual output is unchanged.
-    // Re-wire once /api/v1/dashboard/enrichment + /threat-velocity ship.
-    const interval = setInterval(fetchDashboard, 60000);
+    // Refresh the full card grid every 60s (dashboard + insights + reports).
+    // Notifications tick faster at 30s for the bell badge.
+    const dashInterval = setInterval(() => {
+      fetchDashboard();
+      fetchInsights();
+      fetchReportStats();
+    }, 60000);
     const notifInterval = setInterval(fetchUnreadCount, 30000);
-    return () => { clearInterval(interval); clearInterval(notifInterval); };
+    return () => {
+      clearInterval(dashInterval);
+      clearInterval(notifInterval);
+    };
   }, [fetchDashboard, fetchUnreadCount, fetchReportStats, fetchInsights]);
 
-  // Severity distribution for donut chart
   const sevDonut = useMemo(() => {
     if (!dashboard) return [];
     const grouped: Record<string, number> = {};
@@ -133,11 +118,10 @@ export default function DashboardPage() {
     return Object.entries(grouped).map(([severity, count]) => ({
       name: severity.charAt(0).toUpperCase() + severity.slice(1),
       value: count,
-      color: SEV_COLORS[severity] || SEV_COLORS.unknown,
+      color: severityHex(severity),
     }));
   }, [dashboard]);
 
-  // Feed type distribution for donut chart
   const feedTypeDonut = useMemo(() => {
     if (!dashboard) return [];
     const grouped: Record<string, number> = {};
@@ -147,11 +131,10 @@ export default function DashboardPage() {
     return Object.entries(grouped).map(([ft, count]) => ({
       name: ft.charAt(0).toUpperCase() + ft.slice(1).replace(/_/g, " "),
       value: count,
-      color: FEED_TYPE_COLORS[ft] || "#6b7280",
+      color: feedTypeHex(ft),
     }));
   }, [dashboard]);
 
-  // Threat level bar (high/medium/low aggregation)
   const threatLevels = useMemo(() => {
     if (!dashboard) return [];
     const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
@@ -160,19 +143,16 @@ export default function DashboardPage() {
         counts[d.severity as keyof typeof counts] += d.count;
       }
     });
-    const highCount = counts.critical + counts.high;
-    const medCount = counts.medium;
-    const lowCount = counts.low + counts.info;
     return [
-      { label: "High", value: highCount, color: "#ef4444" },
-      { label: "Medium", value: medCount, color: "#eab308" },
-      { label: "Low", value: lowCount, color: "#22c55e" },
+      { label: "High", value: counts.critical + counts.high, color: SEVERITY_HEX.critical },
+      { label: "Medium", value: counts.medium, color: SEVERITY_HEX.medium },
+      { label: "Low", value: counts.low + counts.info, color: SEVERITY_HEX.low },
     ];
   }, [dashboard]);
 
-  // Top sources ranked list
   const topSources = useMemo(() => {
     if (!dashboard?.top_risks) return [];
+    const palette = Object.values(SEVERITY_HEX);
     const sourceMap: Record<string, number> = {};
     dashboard.top_risks.forEach((item) => {
       sourceMap[item.source_name] = (sourceMap[item.source_name] || 0) + 1;
@@ -182,14 +162,12 @@ export default function DashboardPage() {
       .map(([label, value], i) => ({
         label,
         value,
-        color: Object.values(SEV_COLORS)[i % Object.values(SEV_COLORS).length],
+        color: palette[i % palette.length],
       }));
   }, [dashboard]);
 
-  // Top CVEs (from insights endpoint with product + date)
   const topCVEs = insights?.top_cves ?? [];
 
-  // Top risk items for table
   const topRiskItems = useMemo(() => {
     if (!dashboard?.top_risks) return [];
     return [...dashboard.top_risks]
@@ -201,6 +179,9 @@ export default function DashboardPage() {
 
   const totalItems = dashboard?.total_items ?? 0;
   const currentProducts = insights?.trending_products?.[productPeriod] ?? [];
+  const updatedLabel = dashboardUpdatedAt
+    ? formatDate(new Date(dashboardUpdatedAt).toISOString(), { relative: true })
+    : null;
 
   return (
     <div className="p-4 lg:p-6 space-y-5">
@@ -214,10 +195,9 @@ export default function DashboardPage() {
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Real-time overview · Last updated {new Date().toLocaleTimeString()}
+            Real-time overview{updatedLabel ? ` · Updated ${updatedLabel}` : ""}
           </p>
         </div>
-
       </div>
 
       <HowItWorks page="dashboard" />
@@ -244,7 +224,13 @@ export default function DashboardPage() {
           value={Math.round(dashboard?.avg_risk_score ?? 0)}
           subtitle="Across all intel"
           icon={<TrendingUp className="h-5 w-5" />}
-          variant={(dashboard?.avg_risk_score ?? 0) >= 60 ? "danger" : (dashboard?.avg_risk_score ?? 0) >= 40 ? "warning" : "success"}
+          variant={
+            (dashboard?.avg_risk_score ?? 0) >= 60
+              ? "danger"
+              : (dashboard?.avg_risk_score ?? 0) >= 40
+                ? "warning"
+                : "success"
+          }
           href="/threats"
         />
         <StatCard
@@ -272,794 +258,640 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Threat Level Bar (like Payment Fraud ref img) */}
+      {/* Threat Level Bar */}
       {threatLevels.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-5">
-            <CardTitle className="text-sm font-semibold">Threat Level Distribution</CardTitle>
-          </CardHeader>
-          <CardContent className="px-5 pb-4">
-            <ThreatLevelBar levels={threatLevels} />
-          </CardContent>
-        </Card>
+        <SectionCard title="Threat Level Distribution">
+          <ThreatLevelBar levels={threatLevels} />
+        </SectionCard>
       )}
 
       {/* Main Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Severity Donut */}
-        <Card>
-          <CardHeader className="pb-1 pt-4 px-5">
-            <CardTitle className="text-sm font-semibold">Severity Breakdown</CardTitle>
-          </CardHeader>
-          <CardContent className="px-5 pb-4">
-            {sevDonut.length > 0 ? (
-              <DonutChart
-                data={sevDonut}
-                centerValue={totalItems}
-                centerLabel="Total"
-                height={180}
-                innerRadius={50}
-                outerRadius={72}
-              />
-            ) : (
-              <EmptyState />
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Feed Type Donut */}
-        <Card>
-          <CardHeader className="pb-1 pt-4 px-5">
-            <CardTitle className="text-sm font-semibold">Intel by Category</CardTitle>
-          </CardHeader>
-          <CardContent className="px-5 pb-4">
-            {feedTypeDonut.length > 0 ? (
-              <DonutChart
-                data={feedTypeDonut}
-                centerValue={feedTypeDonut.length}
-                centerLabel="Types"
-                height={180}
-                innerRadius={50}
-                outerRadius={72}
-              />
-            ) : (
-              <EmptyState />
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════
-          COMPETITIVE ENRICHMENTS: Trend, Geo, Industries, Techniques, EPSS
-          ═══════════════════════════════════════════════════════ */}
-
-      {/* ── Ingestion Trend (last 30 days) ─────────────── */}
-      {insights?.ingestion_trend && insights.ingestion_trend.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-emerald-400" />
-                <CardTitle className="text-sm font-semibold">Intel Ingestion Trend (30 Days)</CardTitle>
-              </div>
-              {insights.exploit_summary && (
-                <div className="flex gap-3 text-[10px]">
-                  <span className="text-muted-foreground">
-                    <Zap className="h-3 w-3 inline text-red-400 mr-0.5" />
-                    {insights.exploit_summary.exploit_pct}% exploitable
-                  </span>
-                  <span className="text-muted-foreground">
-                    <AlertTriangle className="h-3 w-3 inline text-orange-400 mr-0.5" />
-                    {insights.exploit_summary.kev_pct}% KEV
-                  </span>
-                  {insights.exploit_summary.avg_epss > 0 && (
-                    <span className="text-muted-foreground">
-                      Avg EPSS: <span className="font-mono text-primary">{insights.exploit_summary.avg_epss.toFixed(3)}</span>
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="px-5 pb-4">
-            <TrendLineChart
-              data={insights.ingestion_trend.map((d) => ({
-                date: new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-                items: d.count,
-              }))}
-              series={[{ key: "items", label: "Intel Items", color: "#22c55e" }]}
-              xKey="date"
-              height={200}
-              showLegend={false}
+        <SectionCard title="Severity Breakdown">
+          {sevDonut.length > 0 ? (
+            <DonutChart
+              data={sevDonut}
+              centerValue={totalItems}
+              centerLabel="Total"
+              height={180}
+              innerRadius={50}
+              outerRadius={72}
             />
-          </CardContent>
-        </Card>
-      )}
+          ) : (
+            <EmptyState />
+          )}
+        </SectionCard>
 
-      {/* ═══════════════════════════════════════════════════════
-          CROSS-ENRICHMENT: Active Campaigns, Threat Velocity, Sector Threats
-          ═══════════════════════════════════════════════════════ */}
-
-      {/* ── Active Campaigns from News Intelligence ────── */}
-      {enrichment?.active_campaigns && enrichment.active_campaigns.length > 0 && (
-        <Card className="border-l-2 border-violet-500/40">
-          <CardHeader className="pb-2 pt-4 px-5">
-            <div className="flex items-center gap-2">
-              <Swords className="h-4 w-4 text-violet-400" />
-              <CardTitle className="text-sm font-semibold">Active Campaigns (News Cross-Link)</CardTitle>
-              <Badge variant="outline" className="text-[9px] ml-auto">Live from Cyber News</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="px-5 pb-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {enrichment.active_campaigns.slice(0, 6).map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => openDetail("campaign", c.campaign_name || c.actor_name)}
-                  className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors group text-left w-full"
-                >
-                  <span className="flex items-center justify-center h-9 w-9 rounded-md bg-violet-500/10 text-violet-400 text-xs font-bold shrink-0">
-                    {c.source_count}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold truncate group-hover:text-primary transition-colors">
-                      {c.campaign_name || c.actor_name}
-                    </p>
-                    {/* Threat Actor */}
-                    {c.actor_name && (
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <Skull className="h-2.5 w-2.5 text-red-400" />
-                        <span className="text-[10px] text-red-400 font-medium">{c.actor_name}</span>
-                      </div>
-                    )}
-                    {/* CVEs + Techniques */}
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {c.cves_exploited.slice(0, 3).map((cve) => (
-                        <Link key={cve} href={`/search?q=${cve}`} onClick={(e) => e.stopPropagation()} className="text-[9px] font-mono text-primary bg-primary/10 px-1 rounded hover:bg-primary/20">{cve}</Link>
-                      ))}
-                      {c.techniques_used.slice(0, 2).map((t) => (
-                        <Link key={t} href={`/techniques/${t}`} onClick={(e) => e.stopPropagation()} className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1 rounded hover:bg-amber-500/20">{t}</Link>
-                      ))}
-                    </div>
-                    {/* Targeted sectors, regions, malware */}
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {c.targeted_sectors.slice(0, 2).map((s) => (
-                        <span key={s} className="text-[9px] text-teal-400 bg-teal-500/10 px-1 rounded capitalize">{s}</span>
-                      ))}
-                      {c.targeted_regions.slice(0, 2).map((r) => (
-                        <span key={r} className="text-[9px] text-blue-400 bg-blue-500/10 px-1 rounded">{r}</span>
-                      ))}
-                      {c.malware_used.slice(0, 1).map((m) => (
-                        <span key={m} className="text-[9px] text-purple-400 bg-purple-500/10 px-1 rounded">{m}</span>
-                      ))}
-                    </div>
-                    {/* Date range + severity */}
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] text-muted-foreground">
-                        {new Date(c.first_seen).toLocaleDateString("en-US", { month: "short", day: "numeric" })} — {new Date(c.last_seen).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                      </span>
-                      <Badge variant={c.severity as any} className="text-[8px] px-1 py-0">{c.severity}</Badge>
-                    </div>
-                  </div>
-                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-primary shrink-0 mt-1" />
-                </button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Threat Velocity & Sector Threats ─────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Threat Velocity */}
-        {velocity.length > 0 && (
-          <Card className="border-l-2 border-amber-500/40">
-            <CardHeader className="pb-2 pt-4 px-5">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-amber-400" />
-                <CardTitle className="text-sm font-semibold">Threat Velocity</CardTitle>
-                <Badge variant="outline" className="text-[9px] ml-auto">Accelerating Mentions</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="px-5 pb-4">
-              <div className="space-y-1.5">
-                {velocity.slice(0, 8).map((v) => (
-                  <button
-                    key={v.entity}
-                    onClick={() => openDetail(v.entity_type === "cve" ? "cve" : "threat_actor", v.entity)}
-                    className="flex items-center gap-2 text-xs p-1.5 rounded-md hover:bg-muted/30 transition-colors group w-full text-left"
-                  >
-                    <Badge variant="outline" className="text-[9px] shrink-0 w-14 justify-center">
-                      {v.entity_type === "cve" ? "CVE" : "Actor"}
-                    </Badge>
-                    <div className="flex-1 min-w-0">
-                      <span className="font-mono font-medium truncate block group-hover:text-primary transition-colors">{v.entity}</span>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        {v.entity_type === "cve" && v.product_name && (
-                          <span className="text-[9px] text-blue-400 bg-blue-500/10 px-1 rounded truncate max-w-[100px]">{v.product_name}</span>
-                        )}
-                        {v.entity_type === "cve" && v.is_kev && (
-                          <span className="text-[9px] text-red-400 bg-red-500/10 px-1 rounded font-semibold">KEV</span>
-                        )}
-                        {v.entity_type === "cve" && v.exploit_available && (
-                          <span className="text-[9px] text-orange-400 bg-orange-500/10 px-1 rounded">Exploit</span>
-                        )}
-                        {v.entity_type === "cve" && v.patch_available && (
-                          <span className="text-[9px] text-green-400 bg-green-500/10 px-1 rounded">Patch</span>
-                        )}
-                        {v.entity_type === "actor" && v.targeted_sectors && v.targeted_sectors.length > 0 && (
-                          <span className="text-[9px] text-teal-400 bg-teal-500/10 px-1 rounded truncate">{v.targeted_sectors.slice(0, 2).join(", ")}</span>
-                        )}
-                        {v.published_at && (
-                          <span className="text-[9px] text-muted-foreground">{new Date(v.published_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-muted-foreground">{v.previous_count}→</span>
-                      <span className="font-bold text-amber-400">{v.recent_count}</span>
-                      <span className={cn(
-                        "text-[10px] font-bold px-1 rounded",
-                        v.velocity_change > 3 ? "text-red-400 bg-red-500/10" : "text-amber-400 bg-amber-500/10"
-                      )}>
-                        +{v.velocity_change}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Sector Threats */}
-        {enrichment?.sector_threats && enrichment.sector_threats.length > 0 && (
-          <Card className="border-l-2 border-teal-500/40">
-            <CardHeader className="pb-2 pt-4 px-5">
-              <div className="flex items-center gap-2">
-                <Globe className="h-4 w-4 text-teal-400" />
-                <CardTitle className="text-sm font-semibold">Sector Threat Map</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="px-5 pb-4">
-              <div className="space-y-2">
-                {enrichment.sector_threats.slice(0, 8).map((s) => {
-                  const maxCount = enrichment.sector_threats[0]?.campaign_count ?? 1;
-                  return (
-                    <button
-                      key={s.sector}
-                      onClick={() => openDetail("sector", s.sector)}
-                      className="w-full text-left group hover:bg-muted/20 rounded-md p-1 transition-colors"
-                    >
-                      <div className="flex items-center justify-between text-xs mb-0.5">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-muted-foreground font-medium capitalize group-hover:text-primary transition-colors">{s.sector}</span>
-                          {s.max_severity && (
-                            <Badge variant={s.max_severity as any} className="text-[8px] px-1 py-0">{s.max_severity}</Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {s.actors.length > 0 && (
-                            <span className="text-[9px] text-red-400 truncate max-w-[120px]">{s.actors.slice(0, 2).join(", ")}</span>
-                          )}
-                          <span className="font-semibold">{s.campaign_count} campaigns</span>
-                        </div>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
-                        <div className="h-full rounded-full bg-teal-500 transition-all duration-500" style={{ width: `${(s.campaign_count / maxCount) * 100}%` }} />
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <SectionCard title="Intel by Category">
+          {feedTypeDonut.length > 0 ? (
+            <DonutChart
+              data={feedTypeDonut}
+              centerValue={totalItems}
+              centerLabel="Total"
+              height={180}
+              innerRadius={50}
+              outerRadius={72}
+            />
+          ) : (
+            <EmptyState />
+          )}
+        </SectionCard>
       </div>
 
-      {/* ═══════════════════════════════════════════════════════
-          EXECUTIVE SUMMARIES: Threat Actors, Campaigns, Exploits, Advisories
-          ═══════════════════════════════════════════════════════ */}
+      {/* Ingestion Trend (last 30 days) */}
+      {insights?.ingestion_trend && insights.ingestion_trend.length > 0 && (
+        <SectionCard
+          title="Intel Ingestion Trend (30 Days)"
+          icon={<Activity className="h-4 w-4" />}
+          iconAccent="text-emerald-400"
+          meta={
+            insights.exploit_summary && (
+              <div className="flex gap-3">
+                <span>
+                  <Zap className="h-3 w-3 inline text-red-400 mr-0.5" />
+                  {insights.exploit_summary.exploit_pct}% exploitable
+                </span>
+                <span>
+                  <AlertTriangle className="h-3 w-3 inline text-orange-400 mr-0.5" />
+                  {insights.exploit_summary.kev_pct}% KEV
+                </span>
+                {insights.exploit_summary.avg_epss > 0 && (
+                  <span>
+                    Avg EPSS:{" "}
+                    <span className="font-mono text-primary">
+                      {insights.exploit_summary.avg_epss.toFixed(3)}
+                    </span>
+                  </span>
+                )}
+              </div>
+            )
+          }
+        >
+          <TrendLineChart
+            data={insights.ingestion_trend.map((d) => ({
+              date: new Date(d.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+              items: d.count,
+            }))}
+            series={[{ key: "items", label: "Intel Items", color: SEVERITY_HEX.low }]}
+            xKey="date"
+            height={200}
+            showLegend={false}
+          />
+        </SectionCard>
+      )}
+
+      {/* Executive Summaries: Threat Actors, Campaigns, Exploits, Advisories */}
       {insights?.executive_summaries && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {([
-            { key: "threat_actor", label: "Threat Actors", icon: <Skull className="h-4 w-4" />, accent: "text-red-400", accentBg: "bg-red-500/10", borderColor: "border-red-500/30" },
-            { key: "campaign", label: "Campaigns", icon: <Swords className="h-4 w-4" />, accent: "text-violet-400", accentBg: "bg-violet-500/10", borderColor: "border-violet-500/30" },
-            { key: "exploit", label: "Exploits", icon: <Flame className="h-4 w-4" />, accent: "text-pink-400", accentBg: "bg-pink-500/10", borderColor: "border-pink-500/30" },
-            { key: "advisory", label: "Advisories", icon: <ShieldAlert className="h-4 w-4" />, accent: "text-blue-400", accentBg: "bg-blue-500/10", borderColor: "border-blue-500/30" },
-          ] as const).map(({ key, label, icon, accent, accentBg, borderColor }) => {
+          {(
+            [
+              {
+                key: "threat_actor",
+                label: "Threat Actors",
+                icon: <Skull className="h-4 w-4" />,
+                accent: "text-red-400",
+                accentBg: "bg-red-500/10",
+                borderColor: "border-l-2 border-red-500/30",
+              },
+              {
+                key: "campaign",
+                label: "Campaigns",
+                icon: <Swords className="h-4 w-4" />,
+                accent: "text-violet-400",
+                accentBg: "bg-violet-500/10",
+                borderColor: "border-l-2 border-violet-500/30",
+              },
+              {
+                key: "exploit",
+                label: "Exploits",
+                icon: <Flame className="h-4 w-4" />,
+                accent: "text-pink-400",
+                accentBg: "bg-pink-500/10",
+                borderColor: "border-l-2 border-pink-500/30",
+              },
+              {
+                key: "advisory",
+                label: "Advisories",
+                icon: <ShieldAlert className="h-4 w-4" />,
+                accent: "text-blue-400",
+                accentBg: "bg-blue-500/10",
+                borderColor: "border-l-2 border-blue-500/30",
+              },
+            ] as const
+          ).map(({ key, label, icon, accent, accentBg, borderColor }) => {
             const s = insights.executive_summaries?.[key];
             if (!s || s.total === 0) return null;
             return (
-              <Card key={key} className={cn("border-l-2", borderColor)}>
-                <CardHeader className="pb-2 pt-4 px-5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={cn("flex items-center justify-center h-7 w-7 rounded-md", accent, accentBg)}>
-                        {icon}
-                      </span>
-                      <div>
-                        <CardTitle className="text-sm font-semibold">{label}</CardTitle>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">
-                          {s.total} total · {s.recent_7d} new this week · Avg risk {s.avg_risk}
-                        </p>
-                      </div>
-                    </div>
-                    <Link
-                      href={`/threats?feed_type=${key}`}
-                      className={cn("text-xs hover:underline flex items-center gap-1", accent)}
-                    >
-                      View all <ExternalLink className="h-3 w-3" />
-                    </Link>
-                  </div>
-                </CardHeader>
-                <CardContent className="px-5 pb-4 space-y-3">
-                  {/* Severity mini-bar */}
-                  <div className="flex items-center gap-1.5">
-                    {[
-                      { label: "Critical", count: s.critical, color: "bg-red-500" },
-                      { label: "High", count: s.high, color: "bg-orange-500" },
-                      { label: "Medium", count: s.medium, color: "bg-yellow-500" },
-                      { label: "Low", count: s.low, color: "bg-green-500" },
-                    ].map((sev) =>
-                      sev.count > 0 ? (
-                        <span key={sev.label} className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium text-white", sev.color)}>
-                          {sev.count} {sev.label}
-                        </span>
-                      ) : null
+              <SectionCard
+                key={key}
+                title={label}
+                icon={icon}
+                iconAccent={accent}
+                iconBg={accentBg}
+                accentBorder={borderColor}
+                meta={`${s.total} total · ${s.recent_7d} new this week · Avg risk ${s.avg_risk}`}
+                action={
+                  <Link
+                    href={`/threats?feed_type=${key}`}
+                    className={cn(
+                      "text-xs hover:underline flex items-center gap-1",
+                      accent,
                     )}
-                  </div>
-                  {/* Top items list */}
-                  <div className="space-y-1.5">
-                    {s.top_items.map((item) => (
-                      <Link
-                        key={item.id}
-                        href={`/intel/${item.id}`}
-                        className="flex items-center gap-2.5 p-2 rounded-lg border bg-card hover:bg-accent/50 transition-colors group"
+                  >
+                    View all <ArrowRight className="h-3 w-3" />
+                  </Link>
+                }
+                contentClassName="px-5 pb-4 space-y-3"
+              >
+                {/* Severity mini-bar */}
+                <div className="flex items-center gap-1.5">
+                  {[
+                    { label: "Critical", count: s.critical, color: "bg-red-500" },
+                    { label: "High", count: s.high, color: "bg-orange-500" },
+                    { label: "Medium", count: s.medium, color: "bg-yellow-500" },
+                    { label: "Low", count: s.low, color: "bg-green-500" },
+                  ].map((sev) =>
+                    sev.count > 0 ? (
+                      <span
+                        key={sev.label}
+                        className={cn(
+                          "text-[10px] px-1.5 py-0.5 rounded font-medium text-white",
+                          sev.color,
+                        )}
                       >
-                        <span className={cn(
+                        {sev.count} {sev.label}
+                      </span>
+                    ) : null,
+                  )}
+                </div>
+                {/* Top items list */}
+                <div className="space-y-1.5">
+                  {s.top_items.map((item) => (
+                    <Link
+                      key={item.id}
+                      href={`/intel/${item.id}`}
+                      className="flex items-center gap-2.5 p-2 rounded-lg border bg-card hover:bg-accent/50 transition-colors group"
+                    >
+                      <span
+                        className={cn(
                           "flex items-center justify-center h-7 w-7 rounded text-[11px] font-bold shrink-0",
-                          RISK_BG(item.risk_score)
-                        )}>
-                          {item.risk_score}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium truncate group-hover:text-primary transition-colors">
-                            {item.title}
-                          </p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <Badge variant={item.severity as any} className="text-[9px] px-1 py-0">
-                              {item.severity.toUpperCase()}
-                            </Badge>
-                            <span className="text-[10px] text-muted-foreground">{item.source}</span>
-                            {item.cve_ids.length > 0 && (
-                              <span className="text-[10px] font-mono text-primary">{item.cve_ids[0]}</span>
-                            )}
-                            {item.date && (
-                              <span className="text-[10px] text-muted-foreground">
-                                {new Date(item.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                              </span>
-                            )}
-                          </div>
+                          riskBucketClasses(item.risk_score),
+                        )}
+                      >
+                        {item.risk_score}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate group-hover:text-primary transition-colors">
+                          {item.title}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Badge variant={item.severity as any} className="text-[9px] px-1 py-0">
+                            {item.severity.toUpperCase()}
+                          </Badge>
+                          <span className="text-[10px] text-muted-foreground">{item.source}</span>
+                          {item.cve_ids.length > 0 && (
+                            <span className="text-[10px] font-mono text-primary">{item.cve_ids[0]}</span>
+                          )}
+                          {item.date && (
+                            <span className="text-[10px] text-muted-foreground">
+                              {new Date(item.date).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </span>
+                          )}
                         </div>
-                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-primary shrink-0" />
-                      </Link>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+                      </div>
+                      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-primary shrink-0" />
+                    </Link>
+                  ))}
+                </div>
+              </SectionCard>
             );
           })}
         </div>
       )}
 
+      {/* THREAT LANDSCAPE INSIGHTS */}
 
-
-      {/* ═══════════════════════════════════════════════════════
-          THREAT LANDSCAPE INSIGHTS
-          ═══════════════════════════════════════════════════════ */}
-
-      {/* ── Most Impacted Products ──────────────────────── */}
-      <Card>
-        <CardHeader className="pb-2 pt-4 px-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Package className="h-4 w-4 text-blue-400" />
-              <CardTitle className="text-sm font-semibold">Most Impacted Products</CardTitle>
-            </div>
-            <div className="flex gap-1">
-              {(["7d", "30d", "90d", "1y"] as const).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setProductPeriod(p)}
-                  className={cn(
-                    "px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors",
-                    productPeriod === p
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted/50 text-muted-foreground hover:bg-muted"
-                  )}
-                >
-                  {p === "1y" ? "1 Year" : p === "90d" ? "3 Months" : p === "30d" ? "30 Days" : "7 Days"}
-                </button>
-              ))}
-            </div>
+      {/* Most Impacted Products */}
+      <SectionCard
+        title="Most Impacted Products"
+        icon={<Package className="h-4 w-4" />}
+        iconAccent="text-blue-400"
+        action={
+          <div className="flex gap-1">
+            {(["7d", "30d", "90d", "1y"] as const).map((p) => (
+              <button
+                key={p}
+                onClick={() => setProductPeriod(p)}
+                className={cn(
+                  "px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors",
+                  productPeriod === p
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted/50 text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {p === "1y" ? "1 Year" : p === "90d" ? "3 Months" : p === "30d" ? "30 Days" : "7 Days"}
+              </button>
+            ))}
           </div>
-        </CardHeader>
-        <CardContent className="px-5 pb-4">
-          {currentProducts.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2">
-              {currentProducts.map((prod, i) => (
-                <button
-                  key={prod.name}
-                  onClick={() => openDetail("product", prod.name)}
-                  className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors group text-left"
-                >
-                  <span className="flex items-center justify-center h-7 w-7 rounded-md bg-blue-500/10 text-blue-400 text-xs font-bold shrink-0">
-                    {i + 1}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium truncate group-hover:text-primary transition-colors">{prod.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] text-muted-foreground">{prod.count} hits</span>
-                      <span className={cn("text-[10px] font-mono px-1 rounded", RISK_BG(prod.avg_risk))}>
-                        {prod.avg_risk}
+        }
+      >
+        {currentProducts.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2">
+            {currentProducts.map((prod, i) => (
+              <button
+                key={prod.name}
+                onClick={() => openDetail("product", prod.name)}
+                className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors group text-left"
+              >
+                <span className="flex items-center justify-center h-7 w-7 rounded-md bg-blue-500/10 text-blue-400 text-xs font-bold shrink-0">
+                  {i + 1}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate group-hover:text-primary transition-colors">
+                    {prod.name}
+                  </p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] text-muted-foreground">{prod.count} hits</span>
+                    <span className={cn("text-[10px] font-mono px-1 rounded", riskBucketClasses(prod.avg_risk))}>
+                      {prod.avg_risk}
+                    </span>
+                    {prod.exploit && (
+                      <span className="text-[10px] text-red-400">
+                        <Bug className="h-2.5 w-2.5 inline" />
                       </span>
-                      {prod.exploit && (
-                        <span className="text-[10px] text-red-400">
-                          <Bug className="h-2.5 w-2.5 inline" />
-                        </span>
-                      )}
-                    </div>
+                    )}
                   </div>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <EmptyState text="No affected product data for this period" />
-          )}
-        </CardContent>
-      </Card>
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <EmptyState text="No affected product data for this period" />
+        )}
+      </SectionCard>
 
-      {/* ── Threat Actors & Ransomware (side by side) ──── */}
+      {/* Threat Actors & Ransomware (side by side) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Most Active Threat Actors */}
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Skull className="h-4 w-4 text-red-400" />
-                <CardTitle className="text-sm font-semibold">Most Active Threat Actors</CardTitle>
-              </div>
-              <button
-                onClick={() => openViewAll("threat_actor", "All Threat Actors")}
-                className="text-xs text-primary hover:underline flex items-center gap-1"
-              >
-                View all <Eye className="h-3 w-3" />
-              </button>
-            </div>
-          </CardHeader>
-          <CardContent className="px-5 pb-4">
-            {insights?.threat_actors && insights.threat_actors.length > 0 ? (
-              <div className="space-y-2">
-                {insights.threat_actors.map((ta) => (
-                  <InsightRow
-                    key={ta.name}
-                    name={ta.name}
-                    count={ta.count}
-                    avgRisk={ta.avg_risk}
-                    icon={<Skull className="h-3.5 w-3.5" />}
-                    accentClass="text-red-400 bg-red-500/10"
-                    badges={[
-                      ...ta.cves.slice(0, 3).map((c) => ({ label: c, color: "text-primary bg-primary/10" })),
-                      ...ta.industries.slice(0, 2).map((ind) => ({ label: ind, color: "text-blue-400 bg-blue-500/10" })),
-                      ...ta.regions.slice(0, 3).map((r) => ({ label: r, color: "text-emerald-400 bg-emerald-500/10" })),
-                    ]}
-                    onClick={() => openDetail("threat_actor", ta.name)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <EmptyState text="No threat actor intelligence detected" />
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Most Active Ransomware */}
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Lock className="h-4 w-4 text-orange-400" />
-                <CardTitle className="text-sm font-semibold">Most Active Ransomware</CardTitle>
-              </div>
-              <button
-                onClick={() => openViewAll("ransomware", "All Ransomware")}
-                className="text-xs text-primary hover:underline flex items-center gap-1"
-              >
-                View all <Eye className="h-3 w-3" />
-              </button>
-            </div>
-          </CardHeader>
-          <CardContent className="px-5 pb-4">
-            {insights?.ransomware && insights.ransomware.length > 0 ? (
-              <div className="space-y-2">
-                {insights.ransomware.map((rw) => (
-                  <InsightRow
-                    key={rw.name}
-                    name={rw.name}
-                    count={rw.count}
-                    avgRisk={rw.avg_risk}
-                    icon={<Lock className="h-3.5 w-3.5" />}
-                    accentClass="text-orange-400 bg-orange-500/10"
-                    badges={[
-                      ...(rw.exploit ? [{ label: "Exploit Available", color: "text-red-400 bg-red-500/10" }] : []),
-                      ...rw.industries.slice(0, 3).map((ind) => ({ label: ind, color: "text-blue-400 bg-blue-500/10" })),
-                      ...rw.regions.slice(0, 3).map((r) => ({ label: r, color: "text-emerald-400 bg-emerald-500/10" })),
-                    ]}
-                    onClick={() => openDetail("ransomware", rw.name)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <EmptyState text="No ransomware intelligence detected" />
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ── Malware / Infostealer / Rootkit ──────────────── */}
-      <Card>
-        <CardHeader className="pb-2 pt-4 px-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Bug className="h-4 w-4 text-purple-400" />
-              <CardTitle className="text-sm font-semibold">Malware, Infostealers &amp; Botnets</CardTitle>
-            </div>
+        <SectionCard
+          title="Most Active Threat Actors"
+          icon={<Skull className="h-4 w-4" />}
+          iconAccent="text-red-400"
+          action={
             <button
-              onClick={() => openViewAll("malware", "All Malware, Infostealers & Botnets")}
+              onClick={() => openViewAll("threat_actor", "All Threat Actors")}
               className="text-xs text-primary hover:underline flex items-center gap-1"
             >
               View all <Eye className="h-3 w-3" />
             </button>
-          </div>
-        </CardHeader>
-        <CardContent className="px-5 pb-4">
-          {insights?.malware_families && insights.malware_families.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-              {insights.malware_families.map((mw) => (
-                <button
-                  key={mw.name}
-                  onClick={() => openDetail("malware", mw.name)}
-                  className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors group text-left"
-                >
-                  <span className={cn(
-                    "flex items-center justify-center h-8 w-8 rounded-md text-xs font-bold shrink-0",
-                    RISK_BG(mw.avg_risk)
-                  )}>
-                    {Math.round(mw.avg_risk)}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs font-semibold capitalize group-hover:text-primary transition-colors">
-                        {mw.name.replace(/_/g, " ")}
-                      </p>
-                      <span className="text-[10px] text-muted-foreground">{mw.count} intel</span>
-                    </div>
-                    {mw.regions.length > 0 && (
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <Globe className="h-2.5 w-2.5 text-muted-foreground" />
-                        <span className="text-[10px] text-muted-foreground">
-                          {mw.regions.slice(0, 4).join(", ")}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-primary shrink-0" />
-                </button>
+          }
+        >
+          {insights?.threat_actors && insights.threat_actors.length > 0 ? (
+            <div className="space-y-2">
+              {insights.threat_actors.map((ta) => (
+                <InsightRow
+                  key={ta.name}
+                  name={ta.name}
+                  count={ta.count}
+                  avgRisk={ta.avg_risk}
+                  icon={<Skull className="h-3.5 w-3.5" />}
+                  accentClass="text-red-400 bg-red-500/10"
+                  badges={[
+                    ...ta.cves.slice(0, 3).map((c) => ({ label: c, color: "text-primary bg-primary/10" })),
+                    ...ta.industries.slice(0, 2).map((ind) => ({
+                      label: ind,
+                      color: "text-blue-400 bg-blue-500/10",
+                    })),
+                    ...ta.regions.slice(0, 3).map((r) => ({
+                      label: r,
+                      color: "text-emerald-400 bg-emerald-500/10",
+                    })),
+                  ]}
+                  onClick={() => openDetail("threat_actor", ta.name)}
+                />
               ))}
             </div>
           ) : (
-            <EmptyState text="No malware intelligence detected" />
+            <EmptyState text="No threat actor intelligence detected" />
           )}
-        </CardContent>
-      </Card>
+        </SectionCard>
 
-      {/* Middle Row: Sources & CVEs & Feed Status */}
+        <SectionCard
+          title="Most Active Ransomware"
+          icon={<Lock className="h-4 w-4" />}
+          iconAccent="text-orange-400"
+          action={
+            <button
+              onClick={() => openViewAll("ransomware", "All Ransomware")}
+              className="text-xs text-primary hover:underline flex items-center gap-1"
+            >
+              View all <Eye className="h-3 w-3" />
+            </button>
+          }
+        >
+          {insights?.ransomware && insights.ransomware.length > 0 ? (
+            <div className="space-y-2">
+              {insights.ransomware.map((rw) => (
+                <InsightRow
+                  key={rw.name}
+                  name={rw.name}
+                  count={rw.count}
+                  avgRisk={rw.avg_risk}
+                  icon={<Lock className="h-3.5 w-3.5" />}
+                  accentClass="text-orange-400 bg-orange-500/10"
+                  badges={[
+                    ...(rw.exploit
+                      ? [{ label: "Exploit Available", color: "text-red-400 bg-red-500/10" }]
+                      : []),
+                    ...rw.industries.slice(0, 3).map((ind) => ({
+                      label: ind,
+                      color: "text-blue-400 bg-blue-500/10",
+                    })),
+                    ...rw.regions.slice(0, 3).map((r) => ({
+                      label: r,
+                      color: "text-emerald-400 bg-emerald-500/10",
+                    })),
+                  ]}
+                  onClick={() => openDetail("ransomware", rw.name)}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState text="No ransomware intelligence detected" />
+          )}
+        </SectionCard>
+      </div>
+
+      {/* Malware / Infostealer / Rootkit */}
+      <SectionCard
+        title="Malware, Infostealers & Botnets"
+        icon={<Bug className="h-4 w-4" />}
+        iconAccent="text-purple-400"
+        action={
+          <button
+            onClick={() => openViewAll("malware", "All Malware, Infostealers & Botnets")}
+            className="text-xs text-primary hover:underline flex items-center gap-1"
+          >
+            View all <Eye className="h-3 w-3" />
+          </button>
+        }
+      >
+        {insights?.malware_families && insights.malware_families.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+            {insights.malware_families.map((mw) => (
+              <button
+                key={mw.name}
+                onClick={() => openDetail("malware", mw.name)}
+                className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors group text-left"
+              >
+                <span
+                  className={cn(
+                    "flex items-center justify-center h-8 w-8 rounded-md text-xs font-bold shrink-0",
+                    riskBucketClasses(mw.avg_risk),
+                  )}
+                >
+                  {Math.round(mw.avg_risk)}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-semibold capitalize group-hover:text-primary transition-colors">
+                      {mw.name.replace(/_/g, " ")}
+                    </p>
+                    <span className="text-[10px] text-muted-foreground">{mw.count} intel</span>
+                  </div>
+                  {mw.regions.length > 0 && (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Globe className="h-2.5 w-2.5 text-muted-foreground" />
+                      <span className="text-[10px] text-muted-foreground">
+                        {mw.regions.slice(0, 4).join(", ")}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/30 group-hover:text-primary shrink-0" />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <EmptyState text="No malware intelligence detected" />
+        )}
+      </SectionCard>
+
+      {/* Sources & CVEs & Feed Status */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Top Sources */}
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-5">
-            <CardTitle className="text-sm font-semibold">Top Sources</CardTitle>
-          </CardHeader>
-          <CardContent className="px-5 pb-4">
-            {topSources.length > 0 ? (
-              <RankedDataList items={topSources} showIndex maxItems={6} />
-            ) : (
-              <EmptyState text="No source data" />
-            )}
-          </CardContent>
-        </Card>
+        <SectionCard title="Top Sources">
+          {topSources.length > 0 ? (
+            <RankedDataList items={topSources} showIndex maxItems={6} />
+          ) : (
+            <EmptyState text="No source data" />
+          )}
+        </SectionCard>
 
-        {/* Top CVEs */}
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-5">
-            <CardTitle className="text-sm font-semibold">Top CVEs Referenced</CardTitle>
-          </CardHeader>
-          <CardContent className="px-5 pb-4">
-            {topCVEs.length > 0 ? (
-              <div className="space-y-2">
-                {topCVEs.slice(0, 8).map((cve, idx) => {
-                  const maxCount = topCVEs[0]?.count ?? 1;
-                  return (
-                    <button
-                      key={cve.cve_id}
-                      onClick={() => openDetail("cve", cve.cve_id)}
-                      className="w-full group text-left"
-                    >
-                      <div className="flex items-center justify-between text-xs mb-0.5">
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <span className="text-[10px] font-medium text-muted-foreground/50 w-4 text-right">
-                            {idx + 1}
-                          </span>
-                          <span className="h-2 w-2 rounded-full shrink-0 bg-red-500" />
-                          <span className="text-muted-foreground truncate group-hover:text-primary transition-colors font-mono">
-                            {cve.cve_id}
-                          </span>
-                          {cve.is_kev && (
-                            <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/15 text-red-400 font-semibold leading-none">KEV</span>
-                          )}
-                          {cve.has_exploit && (
-                            <span className="text-[9px] px-1 py-0.5 rounded bg-orange-500/15 text-orange-400 font-semibold leading-none">Exploit</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 ml-2 shrink-0">
-                          <span className={cn("text-[10px] font-mono px-1 rounded", RISK_BG(cve.max_risk))}>{cve.max_risk}</span>
-                          <span className="font-semibold tabular-nums">{cve.count}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 ml-8 mb-0.5">
-                        {cve.products.length > 0 && (
-                          <span className="text-[10px] text-blue-400 truncate">
-                            {cve.products.slice(0, 2).join(", ")}
+        <SectionCard title="Top CVEs Referenced">
+          {topCVEs.length > 0 ? (
+            <div className="space-y-2">
+              {topCVEs.slice(0, 8).map((cve, idx) => {
+                const maxCount = topCVEs[0]?.count ?? 1;
+                return (
+                  <button
+                    key={cve.cve_id}
+                    onClick={() => openDetail("cve", cve.cve_id)}
+                    className="w-full group text-left"
+                  >
+                    <div className="flex items-center justify-between text-xs mb-0.5">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className="text-[10px] font-medium text-muted-foreground/50 w-4 text-right">
+                          {idx + 1}
+                        </span>
+                        <span className="h-2 w-2 rounded-full shrink-0 bg-red-500" />
+                        <span className="text-muted-foreground truncate group-hover:text-primary transition-colors font-mono">
+                          {cve.cve_id}
+                        </span>
+                        {cve.is_kev && (
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-red-500/15 text-red-400 font-semibold leading-none">
+                            KEV
                           </span>
                         )}
-                        {cve.first_seen && (
-                          <span className="text-[10px] text-muted-foreground shrink-0">
-                            {new Date(cve.first_seen).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {cve.has_exploit && (
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-orange-500/15 text-orange-400 font-semibold leading-none">
+                            Exploit
                           </span>
                         )}
                       </div>
-                      <div className="h-1 rounded-full bg-muted/50 overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all duration-500 bg-red-500"
-                          style={{ width: `${(cve.count / maxCount) * 100}%` }}
-                        />
+                      <div className="flex items-center gap-2 ml-2 shrink-0">
+                        <span
+                          className={cn(
+                            "text-[10px] font-mono px-1 rounded",
+                            riskBucketClasses(cve.max_risk),
+                          )}
+                        >
+                          {cve.max_risk}
+                        </span>
+                        <span className="font-semibold tabular-nums">{cve.count}</span>
                       </div>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <EmptyState text="No CVE data" />
-            )}
-          </CardContent>
-        </Card>
+                    </div>
+                    <div className="flex items-center gap-2 ml-8 mb-0.5">
+                      {cve.products.length > 0 && (
+                        <span className="text-[10px] text-blue-400 truncate">
+                          {cve.products.slice(0, 2).join(", ")}
+                        </span>
+                      )}
+                      {cve.first_seen && (
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          {new Date(cve.first_seen).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </span>
+                      )}
+                    </div>
+                    <div className="h-1 rounded-full bg-muted/50 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500 bg-red-500"
+                        style={{ width: `${(cve.count / maxCount) * 100}%` }}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState text="No CVE data" />
+          )}
+        </SectionCard>
 
-        {/* Feed Status */}
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-5">
-            <CardTitle className="text-sm font-semibold">Feed Connectors</CardTitle>
-          </CardHeader>
-          <CardContent className="px-5 pb-4">
-            {dashboard?.feed_status && dashboard.feed_status.length > 0 ? (
-              <FeedStatusPanel feeds={dashboard.feed_status} />
-            ) : (
-              <EmptyState text="No feeds configured" />
-            )}
-          </CardContent>
-        </Card>
+        <SectionCard title="Feed Connectors">
+          {dashboard?.feed_status && dashboard.feed_status.length > 0 ? (
+            <FeedStatusPanel feeds={dashboard.feed_status} />
+          ) : (
+            <EmptyState text="No feeds configured" />
+          )}
+        </SectionCard>
       </div>
 
       {/* Top Risks Table */}
-      <Card>
-        <CardHeader className="pb-2 pt-4 px-5">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold">Highest Risk Items</CardTitle>
-            <Link href="/threats?severity=critical" className="text-xs text-primary hover:underline flex items-center gap-1">
-              View all <ExternalLink className="h-3 w-3" />
-            </Link>
-          </div>
-        </CardHeader>
-        <CardContent className="px-5 pb-4">
-          {topRiskItems.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-border/50">
-                    <th className="text-left py-2 px-2 font-semibold text-muted-foreground uppercase tracking-wider">Risk</th>
-                    <th className="text-left py-2 px-2 font-semibold text-muted-foreground uppercase tracking-wider">Severity</th>
-                    <th className="text-left py-2 px-2 font-semibold text-muted-foreground uppercase tracking-wider">Title</th>
-                    <th className="text-left py-2 px-2 font-semibold text-muted-foreground uppercase tracking-wider">Source</th>
-                    <th className="text-left py-2 px-2 font-semibold text-muted-foreground uppercase tracking-wider">Type</th>
-                    <th className="text-left py-2 px-2 font-semibold text-muted-foreground uppercase tracking-wider">CVEs</th>
-                    <th className="text-left py-2 px-2 font-semibold text-muted-foreground uppercase tracking-wider">KEV</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topRiskItems.map((item) => (
-                    <tr
-                      key={item.id}
-                      className="border-b border-border/30 hover:bg-accent/30 transition-colors cursor-pointer"
-                      onClick={() => window.location.href = `/intel/${item.id}`}
-                    >
-                      <td className="py-2.5 px-2">
-                        <span
-                          className={cn("inline-flex items-center justify-center h-7 w-10 rounded-md text-xs font-bold", RISK_BG(item.risk_score))}
-                        >
-                          {item.risk_score}
+      <SectionCard
+        title="Highest Risk Items"
+        action={
+          <Link
+            href="/threats?severity=critical"
+            className="text-xs text-primary hover:underline flex items-center gap-1"
+          >
+            View all <ArrowRight className="h-3 w-3" />
+          </Link>
+        }
+      >
+        {topRiskItems.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border/50">
+                  <th className="text-left py-2 px-2 font-semibold text-muted-foreground uppercase tracking-wider">
+                    Risk
+                  </th>
+                  <th className="text-left py-2 px-2 font-semibold text-muted-foreground uppercase tracking-wider">
+                    Severity
+                  </th>
+                  <th className="text-left py-2 px-2 font-semibold text-muted-foreground uppercase tracking-wider">
+                    Title
+                  </th>
+                  <th className="text-left py-2 px-2 font-semibold text-muted-foreground uppercase tracking-wider">
+                    Source
+                  </th>
+                  <th className="text-left py-2 px-2 font-semibold text-muted-foreground uppercase tracking-wider">
+                    Type
+                  </th>
+                  <th className="text-left py-2 px-2 font-semibold text-muted-foreground uppercase tracking-wider">
+                    CVEs
+                  </th>
+                  <th className="text-left py-2 px-2 font-semibold text-muted-foreground uppercase tracking-wider">
+                    KEV
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {topRiskItems.map((item) => (
+                  <tr
+                    key={item.id}
+                    className="border-b border-border/30 hover:bg-accent/30 transition-colors cursor-pointer"
+                    onClick={() => router.push(`/intel/${item.id}`)}
+                  >
+                    <td className="py-2.5 px-2">
+                      <span
+                        className={cn(
+                          "inline-flex items-center justify-center h-7 w-10 rounded-md text-xs font-bold tabular-nums",
+                          riskBucketClasses(item.risk_score),
+                        )}
+                      >
+                        {item.risk_score}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-2">
+                      <Badge variant={item.severity as any} className="text-[10px] px-1.5 py-0">
+                        {item.severity.toUpperCase()}
+                      </Badge>
+                    </td>
+                    <td className="py-2.5 px-2 max-w-xs">
+                      <span className="font-medium text-foreground line-clamp-1">{item.title}</span>
+                    </td>
+                    <td className="py-2.5 px-2 text-muted-foreground">{item.source_name}</td>
+                    <td className="py-2.5 px-2">
+                      <span className="text-muted-foreground capitalize">
+                        {item.feed_type.replace(/_/g, " ")}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-2">
+                      {item.cve_ids?.length > 0 ? (
+                        <span className="font-mono text-primary">{item.cve_ids[0]}</span>
+                      ) : (
+                        <span className="text-muted-foreground/40">—</span>
+                      )}
+                      {(item.cve_ids?.length ?? 0) > 1 && (
+                        <span className="text-muted-foreground ml-1">+{item.cve_ids.length - 1}</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-2">
+                      {item.is_kev ? (
+                        <span className="text-red-500 font-semibold flex items-center gap-1">
+                          <Zap className="h-3 w-3" /> Yes
                         </span>
-                      </td>
-                      <td className="py-2.5 px-2">
-                        <Badge variant={item.severity as any} className="text-[10px] px-1.5 py-0">
-                          {item.severity.toUpperCase()}
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 px-2 max-w-xs">
-                        <span className="font-medium text-foreground line-clamp-1">{item.title}</span>
-                      </td>
-                      <td className="py-2.5 px-2 text-muted-foreground">{item.source_name}</td>
-                      <td className="py-2.5 px-2">
-                        <span className="text-muted-foreground capitalize">{item.feed_type.replace(/_/g, " ")}</span>
-                      </td>
-                      <td className="py-2.5 px-2">
-                        {item.cve_ids?.length > 0 ? (
-                          <span className="font-mono text-primary">{item.cve_ids[0]}</span>
-                        ) : (
-                          <span className="text-muted-foreground/40">—</span>
-                        )}
-                        {(item.cve_ids?.length ?? 0) > 1 && (
-                          <span className="text-muted-foreground ml-1">+{item.cve_ids.length - 1}</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-2">
-                        {item.is_kev ? (
-                          <span className="text-red-500 font-semibold flex items-center gap-1">
-                            <Zap className="h-3 w-3" /> Yes
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground/40">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <Shield className="h-10 w-10 mb-3 opacity-20" />
-              <p className="text-sm">No threat intel data yet.</p>
-              <p className="text-xs mt-1">Feed ingestion will populate this automatically.</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                      ) : (
+                        <span className="text-muted-foreground/40">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+            <Shield className="h-10 w-10 mb-3 opacity-20" />
+            <p className="text-sm">No threat intel data yet.</p>
+            <p className="text-xs mt-1">Feed ingestion will populate this automatically.</p>
+          </div>
+        )}
+      </SectionCard>
 
-      {/* ═══ Modals ═══ */}
+      {/* Modals */}
       <InsightDetailModal
-        open={detailOpen}
-        onClose={() => setDetailOpen(false)}
-        type={detailType}
-        name={detailName}
+        open={modal?.kind === "detail"}
+        onClose={closeModal}
+        type={modal?.kind === "detail" ? modal.type : ""}
+        name={modal?.kind === "detail" ? modal.name : ""}
       />
       <ViewAllModal
-        open={viewAllOpen}
-        onClose={() => setViewAllOpen(false)}
-        type={viewAllType}
-        title={viewAllTitle}
+        open={modal?.kind === "viewAll"}
+        onClose={closeModal}
+        type={modal?.kind === "viewAll" ? modal.type : ""}
+        title={modal?.kind === "viewAll" ? modal.title : ""}
         onSelect={(name) => {
-          // Map view-all type to detail type
-          openDetail(viewAllType, name);
+          if (modal?.kind === "viewAll") {
+            setModal({ kind: "detail", type: modal.type, name });
+          }
         }}
       />
     </div>
@@ -1074,53 +906,6 @@ function EmptyState({ text = "No data yet" }: { text?: string }) {
   );
 }
 
-/* ═══ Ranked Bar List — reusable for Geo / Industries / Techniques ═══ */
-function RankedBarList({
-  items,
-  colorClass,
-  showRisk = true,
-  capitalize: cap = false,
-  emptyText = "No data",
-  formatName,
-}: {
-  items: Array<{ name: string; count: number; avg_risk?: number }> | undefined;
-  colorClass: string;
-  showRisk?: boolean;
-  capitalize?: boolean;
-  emptyText?: string;
-  formatName?: (name: string) => string;
-}) {
-  if (!items || items.length === 0) return <EmptyState text={emptyText} />;
-  const maxCount = items[0]?.count ?? 1;
-  return (
-    <div className="space-y-1.5">
-      {items.slice(0, 10).map((item, idx) => (
-        <div key={item.name} className="group">
-          <div className="flex items-center justify-between text-xs mb-0.5">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="text-[10px] font-medium text-muted-foreground/50 w-4 text-right">{idx + 1}</span>
-              <span className={cn("h-2 w-2 rounded-full shrink-0", colorClass)} />
-              <span className={cn("text-muted-foreground truncate font-medium", cap && "capitalize")}>
-                {formatName ? formatName(item.name) : item.name}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 ml-2">
-              {showRisk && item.avg_risk !== undefined && (
-                <span className={cn("text-[10px] font-mono px-1 rounded", RISK_BG(item.avg_risk))}>{item.avg_risk}</span>
-              )}
-              <span className="font-semibold tabular-nums">{item.count}</span>
-            </div>
-          </div>
-          <div className="h-1 rounded-full bg-muted/50 overflow-hidden">
-            <div className={cn("h-full rounded-full transition-all duration-500", colorClass)} style={{ width: `${(item.count / maxCount) * 100}%` }} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ═══ Insight Row Component ═══ */
 function InsightRow({
   name,
   count,
@@ -1143,7 +928,12 @@ function InsightRow({
       onClick={onClick}
       className="w-full flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors group text-left"
     >
-      <span className={cn("flex items-center justify-center h-9 w-9 rounded-md shrink-0", accentClass)}>
+      <span
+        className={cn(
+          "flex items-center justify-center h-9 w-9 rounded-md shrink-0",
+          accentClass,
+        )}
+      >
         {icon}
       </span>
       <div className="flex-1 min-w-0">
@@ -1152,7 +942,7 @@ function InsightRow({
             {name.replace(/_/g, " ")}
           </span>
           <span className="text-[10px] text-muted-foreground">{count} intel items</span>
-          <span className={cn("text-[10px] font-mono px-1.5 py-0.5 rounded", RISK_BG(avgRisk))}>
+          <span className={cn("text-[10px] font-mono px-1.5 py-0.5 rounded", riskBucketClasses(avgRisk))}>
             Risk {avgRisk}
           </span>
         </div>
@@ -1161,7 +951,10 @@ function InsightRow({
             {badges.map((b, i) => (
               <span
                 key={`${b.label}-${i}`}
-                className={cn("inline-flex items-center text-[10px] px-1.5 py-0.5 rounded font-medium", b.color)}
+                className={cn(
+                  "inline-flex items-center text-[10px] px-1.5 py-0.5 rounded font-medium",
+                  b.color,
+                )}
               >
                 {b.label}
               </span>
