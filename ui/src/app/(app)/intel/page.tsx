@@ -8,9 +8,9 @@ import { Skeleton } from "@/components/Skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { getExportUrl, getIntelBatchEnrichment } from "@/lib/api";
+import { getExportUrl, getIntelBatchEnrichment, getIntelStats } from "@/lib/api";
 import { HowItWorks } from "@/components/HowItWorks";
-import type { IntelBatchEnrichment } from "@/types";
+import type { IntelBatchEnrichment, IntelStatsResponse } from "@/types";
 import {
   List,
   Download,
@@ -58,12 +58,17 @@ export default function IntelFeedPage() {
   const [localFilters, setLocalFilters] = useState<Record<string, string>>(intelFilters);
   const [searchInput, setSearchInput] = useState(intelFilters.query || "");
   const [batchEnrichment, setBatchEnrichment] = useState<IntelBatchEnrichment | null>(null);
+  const [intelStats, setIntelStats] = useState<IntelStatsResponse | null>(null);
 
   useEffect(() => {
     fetchIntel(1);
     const interval = setInterval(() => fetchIntel(), 30000);
     return () => clearInterval(interval);
   }, [fetchIntel]);
+
+  useEffect(() => {
+    getIntelStats().then(setIntelStats).catch(() => {});
+  }, []);
 
   // Fetch cross-enrichment for visible items
   useEffect(() => {
@@ -148,23 +153,143 @@ export default function IntelFeedPage() {
               Export
             </a>
           </Button>
-          <Button
-            variant={showFilters ? "default" : "outline"}
-            size="sm"
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            <SlidersHorizontal className="h-4 w-4 mr-1" />
-            Filters
-            {activeFilterCount > 0 && (
-              <Badge variant="secondary" className="ml-1 text-[9px] px-1 py-0 h-4">
-                {activeFilterCount}
-              </Badge>
-            )}
-          </Button>
         </div>
       </div>
 
       <HowItWorks page="intel" />
+
+      {/* Quick Filter Pill Bar */}
+      {(() => {
+        const isAllActive = !intelFilters.severity && intelFilters.is_kev !== "true" && intelFilters.exploit_available !== "true";
+        const isCriticalActive = intelFilters.severity === "critical";
+        const isKevActive = intelFilters.is_kev === "true";
+        const isExploitActive = intelFilters.exploit_available === "true";
+
+        const totalCount = intelData?.total ?? 0;
+        const criticalCount = intelStats?.critical ?? null;
+        const kevCount = intelStats?.kev_count ?? null;
+        const exploitCount = intelStats?.exploit_count ?? null;
+
+        const pillBase = "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors cursor-pointer bg-transparent";
+        const pillInactive = "border-transparent text-muted-foreground hover:text-foreground hover:bg-white/[0.04]";
+        const pillActive = "border-border bg-white/[0.06] text-foreground";
+
+        const handleAll = () => {
+          const next = { ...intelFilters };
+          delete next.severity;
+          delete next.is_kev;
+          delete next.exploit_available;
+          setLocalFilters(next);
+          setIntelFilters(next);
+          fetchIntel(1, next);
+        };
+
+        const handleCritical = () => {
+          const next = { ...intelFilters };
+          if (isCriticalActive) delete next.severity;
+          else next.severity = "critical";
+          setLocalFilters(next);
+          setIntelFilters(next);
+          fetchIntel(1, next);
+        };
+
+        const handleKev = () => {
+          const next = { ...intelFilters };
+          if (isKevActive) delete next.is_kev;
+          else next.is_kev = "true";
+          setLocalFilters(next);
+          setIntelFilters(next);
+          fetchIntel(1, next);
+        };
+
+        const handleExploit = () => {
+          const next = { ...intelFilters };
+          if (isExploitActive) delete next.exploit_available;
+          else next.exploit_available = "true";
+          setLocalFilters(next);
+          setIntelFilters(next);
+          fetchIntel(1, next);
+        };
+
+        return (
+          <div className="flex items-center gap-2 flex-wrap rounded-lg border border-border/40 bg-card px-3 py-2">
+            {/* All intel */}
+            <button
+              className={`${pillBase} ${isAllActive ? pillActive : pillInactive}`}
+              onClick={handleAll}
+            >
+              All intel
+              <span className="font-mono text-[10px] text-muted-foreground/70 ml-0.5 tabular-nums">
+                {totalCount > 0 ? totalCount.toLocaleString() : "—"}
+              </span>
+            </button>
+
+            {/* Critical */}
+            <button
+              className={`${pillBase} ${isCriticalActive ? pillActive : pillInactive}`}
+              onClick={handleCritical}
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full shrink-0"
+                style={{ background: "#ef4444", boxShadow: "0 0 6px #ef4444" }}
+              />
+              Critical
+              <span className="font-mono text-[10px] text-muted-foreground/70 ml-0.5 tabular-nums">
+                {criticalCount !== null ? criticalCount.toLocaleString() : "—"}
+              </span>
+            </button>
+
+            {/* KEV */}
+            <button
+              className={`${pillBase} ${isKevActive ? pillActive : pillInactive}`}
+              onClick={handleKev}
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full shrink-0"
+                style={{ background: "#ef4444", boxShadow: "0 0 6px #ef4444" }}
+              />
+              KEV
+              <span className="font-mono text-[10px] text-muted-foreground/70 ml-0.5 tabular-nums">
+                {kevCount !== null ? kevCount.toLocaleString() : "—"}
+              </span>
+            </button>
+
+            {/* Exploit avail. */}
+            <button
+              className={`${pillBase} ${isExploitActive ? pillActive : pillInactive}`}
+              onClick={handleExploit}
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full shrink-0"
+                style={{ background: "#f97316", boxShadow: "0 0 6px #f97316" }}
+              />
+              Exploit avail.
+              <span className="font-mono text-[10px] text-muted-foreground/70 ml-0.5 tabular-nums">
+                {exploitCount !== null ? exploitCount.toLocaleString() : "—"}
+              </span>
+            </button>
+
+            {/* "Following" pill omitted — no following/watchlist concept exists in the store */}
+
+            <div className="flex-1" />
+
+            {/* Filters toggle (moved into unified bar) */}
+            <Button
+              variant={showFilters ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <SlidersHorizontal className="h-4 w-4 mr-1" />
+              Filters
+              {activeFilterCount > 0 && (
+                <Badge variant="secondary" className="ml-1 text-[9px] px-1 py-0 h-4">
+                  {activeFilterCount}
+                </Badge>
+              )}
+            </Button>
+          </div>
+        );
+      })()}
 
       {/* Filters */}
       {showFilters && (
