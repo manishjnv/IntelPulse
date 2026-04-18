@@ -77,7 +77,7 @@ function extractEvidence(edge: GraphEdge): Array<{ label: string; value: string 
   return out.slice(0, 3);
 }
 
-/* ── force-directed simulation ────────────────────────── */
+/* ── layout ──────────────────────────────────────────── */
 interface SimNode extends GraphNode {
   x: number;
   y: number;
@@ -86,6 +86,72 @@ interface SimNode extends GraphNode {
   isCenter?: boolean;
 }
 
+/**
+ * Orbital layout — the shape we render at depth=1. The queried entity sits
+ * at the geometric center; satellites are placed on concentric rings, one
+ * ring per type, in a fixed priority order (intel → ioc → cve → technique).
+ * Within a ring, nodes are spaced evenly; start-angles are staggered per
+ * ring so adjacent rings don't align into radial spokes. This beats the
+ * previous force-directed initial layout for 1-hop data: predictable,
+ * symmetric, no hairball even when one type has 40+ satellites.
+ */
+function orbitalLayout(
+  nodes: GraphNode[],
+  center: string,
+  width: number,
+  height: number,
+): SimNode[] {
+  const cx = width / 2;
+  const cy = height / 2;
+  const centerNode = nodes.find((n) => n.id === center);
+  const satellites = nodes.filter((n) => n.id !== center);
+
+  const ringOrder = ["intel", "ioc", "cve", "technique"];
+  const byType: Record<string, GraphNode[]> = {};
+  satellites.forEach((n) => { (byType[n.type] ??= []).push(n); });
+  const types = ringOrder.filter((t) => byType[t]?.length);
+  // Any extra type we didn't anticipate (e.g. future "actor") lands on
+  // the outermost ring in insertion order.
+  Object.keys(byType).forEach((t) => { if (!types.includes(t)) types.push(t); });
+
+  const minDim = Math.min(width, height);
+  const firstRing = minDim * 0.24;
+  const ringGap = minDim * 0.15;
+
+  const out: SimNode[] = [];
+  if (centerNode) {
+    out.push({ ...centerNode, x: cx, y: cy, vx: 0, vy: 0, isCenter: true });
+  }
+
+  types.forEach((type, ti) => {
+    const group = byType[type];
+    const count = group.length;
+    const r = firstRing + ti * ringGap;
+    // Stagger start-angle so the first node of ring N+1 doesn't land on
+    // the same bearing as the first node of ring N — kills the
+    // "radial-spoke" look when all rings share start angle 0.
+    const startAngle = ti * 0.45;
+    for (let i = 0; i < count; i++) {
+      const angle = startAngle + (i / count) * 2 * Math.PI;
+      out.push({
+        ...group[i],
+        x: cx + r * Math.cos(angle),
+        y: cy + r * Math.sin(angle),
+        vx: 0,
+        vy: 0,
+        isCenter: false,
+      });
+    }
+  });
+
+  return out;
+}
+
+/**
+ * Force-directed fallback — kept for data with no resolvable center (or
+ * a future multi-hop mode). Depth=1 data from the backend always has a
+ * center node so the orbital path is used in practice.
+ */
 function initialLayout(
   nodes: GraphNode[],
   center: string,
@@ -121,6 +187,41 @@ function initialLayout(
       isCenter: false,
     };
   });
+}
+
+/**
+ * Edge geometry — quadratic bezier from source to target, bowed
+ * consistently to one side so parallel edges don't overprint. Returns
+ * the SVG path, the control point, and the point on the curve at t=0.5
+ * (used for hover-tooltip anchoring).
+ */
+function edgeGeometry(sx: number, sy: number, tx: number, ty: number) {
+  const dx = tx - sx;
+  const dy = ty - sy;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  const bow = Math.min(32, len * 0.13);
+  // Perpendicular unit vector (90° CCW rotation).
+  const px = -dy / len;
+  const py = dx / len;
+  const mx = (sx + tx) / 2;
+  const my = (sy + ty) / 2;
+  const cx = mx + px * bow;
+  const cy = my + py * bow;
+  // Q at t=0.5: 0.25*P0 + 0.5*P1 + 0.25*P2.
+  const curveMidX = 0.25 * sx + 0.5 * cx + 0.25 * tx;
+  const curveMidY = 0.25 * sy + 0.5 * cy + 0.25 * ty;
+  return { cx, cy, curveMidX, curveMidY, path: `M${sx},${sy} Q${cx},${cy} ${tx},${ty}` };
+}
+
+/** Evaluate a quadratic bezier at parameter t ∈ [0,1]. Used for animated edge particles. */
+function bezierAt(
+  sx: number, sy: number, cx: number, cy: number, tx: number, ty: number, t: number,
+) {
+  const u = 1 - t;
+  return {
+    x: u * u * sx + 2 * u * t * cx + t * t * tx,
+    y: u * u * sy + 2 * u * t * cy + t * t * ty,
+  };
 }
 
 function simulate(nodes: SimNode[], edges: GraphEdge[], iterations = 120) {
@@ -232,9 +333,16 @@ export function GraphExplorer({
     if (!data.nodes.length) { setNodes([]); return; }
     const w = isFullscreen ? (typeof window !== "undefined" ? window.innerWidth : 1200) : width;
     const h = isFullscreen ? (typeof window !== "undefined" ? window.innerHeight - 60 : 800) : height;
-    const sim = initialLayout(data.nodes, data.center, w, h);
-    simulate(sim, data.edges);
-    setNodes(sim);
+    const hasCenter = data.nodes.some((n) => n.id === data.center);
+    if (hasCenter) {
+      // 1-hop data — orbital layout is final, no force simulation needed.
+      setNodes(orbitalLayout(data.nodes, data.center, w, h));
+    } else {
+      // Fallback for data without an identifiable center.
+      const sim = initialLayout(data.nodes, data.center, w, h);
+      simulate(sim, data.edges);
+      setNodes(sim);
+    }
     setTransform({ x: 0, y: 0, k: 1 });
   }, [data, width, height, isFullscreen]);
 
@@ -951,19 +1059,23 @@ export function GraphExplorer({
                 filterMatch.neighbours.has(edge.target));
             const dimmed = (activeNode && !isActive) || !filterKept;
 
-            // Animated particle
+            // Curved-edge geometry. Bow direction is consistent so parallel
+            // edges (e.g. two intel items sharing a hub) don't overprint.
+            const geom = edgeGeometry(s.x, s.y, t.x, t.y);
+
+            // Animated particle — walks the bezier, not a straight line.
             const particleT = ((animTick * 3 + parseInt(edge.id.slice(-4), 16)) % 200) / 200;
-            const px = s.x + (t.x - s.x) * particleT;
-            const py = s.y + (t.y - s.y) * particleT;
+            const pp = bezierAt(s.x, s.y, geom.cx, geom.cy, t.x, t.y, particleT);
 
             const isPath = pathEdgeSet.has(edge.id);
 
             return (
               <g key={edge.id}>
-                {/* Path highlight — golden glow under the normal edge line */}
+                {/* Path highlight — golden glow under the normal edge */}
                 {isPath && (
-                  <line
-                    x1={s.x} y1={s.y} x2={t.x} y2={t.y}
+                  <path
+                    d={geom.path}
+                    fill="none"
                     stroke="#fbbf24"
                     strokeWidth={6}
                     strokeOpacity={0.35}
@@ -972,8 +1084,9 @@ export function GraphExplorer({
                   />
                 )}
                 {(isActive || isSelected) && (
-                  <line
-                    x1={s.x} y1={s.y} x2={t.x} y2={t.y}
+                  <path
+                    d={geom.path}
+                    fill="none"
                     stroke={color}
                     strokeWidth={4}
                     strokeOpacity={0.25}
@@ -981,19 +1094,21 @@ export function GraphExplorer({
                     className="pointer-events-none"
                   />
                 )}
-                <line
-                  x1={s.x} y1={s.y} x2={t.x} y2={t.y}
+                <path
+                  d={geom.path}
+                  fill="none"
                   stroke={color}
                   strokeWidth={isActive ? 2 : 1}
                   strokeOpacity={dimmed ? 0.05 : isActive ? 0.8 : 0.2}
                   strokeDasharray={edge.type.includes("co") ? "4 4" : "none"}
+                  strokeLinecap="round"
                   onMouseEnter={() => setHoveredEdge(edge.id)}
                   onMouseLeave={() => setHoveredEdge(null)}
                   className="cursor-pointer"
                 />
                 {isActive && (
                   <circle
-                    cx={px} cy={py} r={2.5}
+                    cx={pp.x} cy={pp.y} r={2.5}
                     fill={color}
                     opacity={0.9}
                     filter="url(#glow-blue)"
@@ -1001,8 +1116,8 @@ export function GraphExplorer({
                   />
                 )}
                 {isActive && hoveredEdge === edge.id && (() => {
-                  const mx = (s.x + t.x) / 2;
-                  const my = (s.y + t.y) / 2;
+                  const mx = geom.curveMidX;
+                  const my = geom.curveMidY;
                   const evidence = extractEvidence(edge);
                   const lineCount = evidence.length;
                   const cardW = 220;
