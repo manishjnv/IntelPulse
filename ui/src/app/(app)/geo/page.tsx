@@ -24,7 +24,7 @@ import {
   Hash,
   Download,
 } from "lucide-react";
-import * as XLSX from "xlsx";
+import { exportToExcel } from "@/lib/excel-export";
 import { getDashboardInsights, getIOCStats, getIOCs, getIntelItems, type IOCStatsResponse, type IOCListResponse } from "@/lib/api";
 import type { DashboardInsights, IntelListResponse } from "@/types";
 import Link from "next/link";
@@ -671,16 +671,9 @@ export default function GeoViewPage() {
                         "Published": item.published_at || "",
                         "KEV": item.is_kev ? "Yes" : "No",
                       }));
-                      const wb = XLSX.utils.book_new();
-                      const ws = XLSX.utils.json_to_sheet(rows);
-                      const colWidths = Object.keys(rows[0]).map((key) => {
-                        const maxLen = Math.max(key.length, ...rows.map((r) => String(r[key as keyof typeof r] ?? "").length));
-                        return { wch: Math.min(maxLen + 2, 60) };
-                      });
-                      ws["!cols"] = colWidths;
-                      XLSX.utils.book_append_sheet(wb, ws, "Intel");
                       const safeName = (selectedCountry || "Region").replace(/[^a-zA-Z0-9_ -]/g, "").slice(0, 31);
-                      XLSX.writeFile(wb, `IntelPulse_${safeName}_Threats_${new Date().toISOString().slice(0, 10)}.xlsx`);
+                      const filename = `IntelPulse_${safeName}_Threats_${new Date().toISOString().slice(0, 10)}.xlsx`;
+                      void exportToExcel(rows, "Intel", filename);
                     }}
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
                     title="Download as Excel"
@@ -832,16 +825,8 @@ function DrillDownPanel({
 
     if (rows.length === 0) return;
 
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(rows);
-    // Auto-size columns
-    const colWidths = Object.keys(rows[0]).map((key) => {
-      const maxLen = Math.max(key.length, ...rows.map((r) => String(r[key] ?? "").length));
-      return { wch: Math.min(maxLen + 2, 60) };
-    });
-    ws["!cols"] = colWidths;
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
-    XLSX.writeFile(wb, `IntelPulse_${safeLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    const filename = `IntelPulse_${safeLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    void exportToExcel(rows as Record<string, string | number | boolean | null | undefined>[], sheetName, filename);
   };
 
   return (
