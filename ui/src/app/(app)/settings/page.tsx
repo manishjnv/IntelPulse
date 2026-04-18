@@ -189,11 +189,11 @@ export default function SettingsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <SettingsIcon className="h-5 w-5 text-primary" />
+          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2 text-obsidian-text">
+            <SettingsIcon className="h-5 w-5 text-ember" />
             Settings
           </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="text-xs text-obsidian-textDim mt-0.5">
             Configure platform preferences and integrations
           </p>
         </div>
@@ -225,21 +225,21 @@ export default function SettingsPage() {
       <HowItWorks page="settings" />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {/* Sidebar nav */}
+        {/* Sidebar nav — Obsidian palette: ember accent on active, textDim on idle */}
         <div className="space-y-1">
           {visibleSections.map((s) => (
             <button
               key={s.id}
               onClick={() => setActiveSection(s.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-xs transition-colors text-left ${activeSection === s.id
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-xs transition-colors text-left border-l-2 ${activeSection === s.id
+                ? "bg-ember/10 text-ember border-ember"
+                : "text-obsidian-textDim border-transparent hover:bg-obsidian-panel2 hover:text-obsidian-text"
                 }`}
             >
               {s.icon}
               <div>
                 <p className="font-medium">{s.title}</p>
-                <p className="text-[10px] opacity-70 mt-0.5">{s.description}</p>
+                <p className="text-[10px] text-obsidian-textFaint mt-0.5">{s.description}</p>
               </div>
             </button>
           ))}
