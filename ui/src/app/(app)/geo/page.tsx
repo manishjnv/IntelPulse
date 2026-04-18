@@ -159,30 +159,6 @@ export default function GeoViewPage() {
     ? Math.round((iocStats.enrichment_coverage.enriched / Math.max(iocStats.enrichment_coverage.total_ips, 1)) * 100)
     : 0;
 
-  /* ── KPI header derivations ──────────────────────────────────────────── */
-
-  // Countries with IOC data (hotspot filter: top 18 with known centroids)
-  const kpiActiveRegions = iocStats?.country_distribution?.length ?? 0;
-
-  // Critical hotspots = countries where intensity >= 0.7
-  const kpiCriticalHotspots = useMemo(() => {
-    const dist = iocStats?.country_distribution ?? [];
-    if (dist.length === 0) return 0;
-    const maxCount = Math.max(1, ...dist.map((c) => c.count));
-    return dist.filter((c) => c.count / maxCount >= 0.7).length;
-  }, [iocStats]);
-
-  // Events (24h) — prefer dashboard.items_last_24h; fall back to IOC sum
-  const kpiEvents24h = dashboard?.items_last_24h ?? totalIOCsWithGeo;
-  const kpiEvents24hLabel = dashboard?.items_last_24h != null ? "Intel events (24h)" : "IOC events (24h)";
-
-  // Top region — largest country by IOC count
-  const kpiTopRegion = useMemo(() => {
-    const dist = iocStats?.country_distribution ?? [];
-    if (dist.length === 0) return null;
-    return dist.reduce((best, c) => (c.count > best.count ? c : best), dist[0]);
-  }, [iocStats]);
-
   /* ── Below-map panel data ────────────────────────────────────────────── */
 
   // Top-regions ranked list (same source as heatmap: top 18)
@@ -319,35 +295,6 @@ export default function GeoViewPage() {
         <StatMini icon={<MapPin className="h-3.5 w-3.5 text-cyan-400" />} label="IOCs with Geo" value={totalIOCsWithGeo} bgClass="bg-cyan-500/[0.04] border-cyan-500/10" iconBg="bg-cyan-500/10" onClick={() => handleStatClick("countries")} />
         <StatMini icon={<AlertTriangle className="h-3.5 w-3.5 text-red-400" />} label="Threat Regions" value={totalThreatRegions} bgClass="bg-red-500/[0.04] border-red-500/10" iconBg="bg-red-500/10" onClick={() => handleStatClick("intel")} />
         <StatMini icon={<Building2 className="h-3.5 w-3.5 text-orange-400" />} label="Industries" value={industries.length} bgClass="bg-orange-500/[0.04] border-orange-500/10" iconBg="bg-orange-500/10" onClick={() => handleStatClick("industries")} />
-      </div>
-
-      {/* ── KPI Header ─────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <GeoKpiCard
-          label="Active regions"
-          value={kpiActiveRegions}
-          sub="Tracked hotspots"
-          color="#60a5fa"
-        />
-        <GeoKpiCard
-          label="Critical hotspots"
-          value={kpiCriticalHotspots}
-          sub="Intensity ≥ 70 %"
-          color="#ef4444"
-        />
-        <GeoKpiCard
-          label={kpiEvents24hLabel}
-          value={kpiEvents24h}
-          sub="Last 24 hours"
-          color="#f97316"
-        />
-        <GeoKpiCard
-          label="Top region"
-          value={kpiTopRegion?.name ?? "—"}
-          sub={kpiTopRegion ? `${kpiTopRegion.count.toLocaleString()} IOCs · ${kpiTopRegion.code}` : "No data"}
-          color="#a855f7"
-          mono={false}
-        />
       </div>
 
       {/* ── Geo Heatmap Widget ─────────────────────────── */}
@@ -921,33 +868,6 @@ const SEV_COLORS_GEO: Record<string, string> = {
 };
 
 /* ── Helper Components ─────────────────────────────────── */
-
-function GeoKpiCard({
-  label,
-  value,
-  sub,
-  color,
-  mono = true,
-}: {
-  label: string;
-  value: string | number;
-  sub: string;
-  color: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="rounded-lg border border-border/40 bg-card p-3.5 flex flex-col gap-0.5">
-      <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">{label}</span>
-      <span
-        className={`text-2xl font-semibold leading-none mt-1 ${mono ? "font-mono tabular-nums" : ""}`}
-        style={{ color }}
-      >
-        {typeof value === "number" ? value.toLocaleString() : value}
-      </span>
-      <span className="text-[11px] text-muted-foreground mt-1 truncate">{sub}</span>
-    </div>
-  );
-}
 
 function StatMini({ icon, label, value, bgClass, iconBg, onClick }: { icon: React.ReactNode; label: string; value: number; bgClass: string; iconBg: string; onClick?: () => void }) {
   return (
