@@ -3,12 +3,19 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useAppStore } from "@/store";
 import { Badge } from "@/components/ui/badge";
-import { Loading } from "@/components/Loading";
 import { StatCard } from "@/components/StatCard";
 import { ThreatLevelBar } from "@/components/ThreatLevelBar";
 import { FeedStatusPanel } from "@/components/FeedStatusPanel";
 import { RankedDataList } from "@/components/RankedDataList";
 import { SectionCard } from "@/components/SectionCard";
+import {
+  Skeleton,
+  SkeletonStatCard,
+  SkeletonRankedList,
+  SkeletonDonut,
+  SkeletonTableRow,
+  SkeletonCardGrid,
+} from "@/components/Skeleton";
 import { InsightDetailModal, ViewAllModal } from "@/components/InsightDetailModal";
 import { DonutChart, TrendLineChart } from "@/components/charts";
 import { HowItWorks } from "@/components/HowItWorks";
@@ -182,8 +189,6 @@ export default function DashboardPage() {
       .reduce((acc, d) => acc + d.count, 0);
   }, [dashboard]);
 
-  if (dashboardLoading && !dashboard) return <Loading text="Loading dashboard..." />;
-
   const totalItems = dashboard?.total_items ?? 0;
   const currentProducts = insights?.trending_products?.[productPeriod] ?? [];
   const updatedLabel = dashboardUpdatedAt
@@ -261,6 +266,10 @@ export default function DashboardPage() {
 
       {/* KPI Stats Row — each stat is clickable */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        {!dashboard ? (
+          Array.from({ length: 6 }).map((_, i) => <SkeletonStatCard key={i} />)
+        ) : (
+          <>
         <StatCard
           title="Total Intel"
           value={totalItems}
@@ -313,19 +322,29 @@ export default function DashboardPage() {
           variant={unreadCount > 0 ? "warning" : "success"}
           href="/notifications"
         />
+          </>
+        )}
       </div>
 
       {/* Threat Level Bar */}
-      {threatLevels.length > 0 && (
+      {!dashboard ? (
         <SectionCard title="Threat Level Distribution">
-          <ThreatLevelBar levels={threatLevels} />
+          <Skeleton className="h-10 rounded-lg" />
         </SectionCard>
+      ) : (
+        threatLevels.length > 0 && (
+          <SectionCard title="Threat Level Distribution">
+            <ThreatLevelBar levels={threatLevels} />
+          </SectionCard>
+        )
       )}
 
       {/* Main Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <SectionCard title="Severity Breakdown">
-          {sevDonut.length > 0 ? (
+          {!dashboard ? (
+            <SkeletonDonut />
+          ) : sevDonut.length > 0 ? (
             <DonutChart
               data={sevDonut}
               centerValue={totalItems}
@@ -340,7 +359,9 @@ export default function DashboardPage() {
         </SectionCard>
 
         <SectionCard title="Intel by Category">
-          {feedTypeDonut.length > 0 ? (
+          {!dashboard ? (
+            <SkeletonDonut />
+          ) : feedTypeDonut.length > 0 ? (
             <DonutChart
               data={feedTypeDonut}
               centerValue={totalItems}
@@ -356,7 +377,15 @@ export default function DashboardPage() {
       </div>
 
       {/* Ingestion Trend (last 30 days) */}
-      {insights?.ingestion_trend && insights.ingestion_trend.length > 0 && (
+      {!insights ? (
+        <SectionCard
+          title="Intel Ingestion Trend (30 Days)"
+          icon={<Activity className="h-4 w-4" />}
+          iconAccent="text-emerald-400"
+        >
+          <Skeleton className="h-[200px] w-full" />
+        </SectionCard>
+      ) : insights.ingestion_trend && insights.ingestion_trend.length > 0 && (
         <SectionCard
           title="Intel Ingestion Trend (30 Days)"
           icon={<Activity className="h-4 w-4" />}
@@ -398,7 +427,15 @@ export default function DashboardPage() {
       )}
 
       {/* Executive Summaries: Threat Actors, Campaigns, Exploits, Advisories */}
-      {insights?.executive_summaries && (
+      {!insights ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <SectionCard key={i} title="" icon={<span />}>
+              <SkeletonRankedList rows={4} />
+            </SectionCard>
+          ))}
+        </div>
+      ) : insights.executive_summaries && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {(
             [
@@ -555,7 +592,13 @@ export default function DashboardPage() {
           </div>
         }
       >
-        {currentProducts.length > 0 ? (
+        {!insights ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-[52px] rounded-lg" />
+            ))}
+          </div>
+        ) : currentProducts.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2">
             {currentProducts.map((prod, i) => (
               <button
@@ -605,7 +648,9 @@ export default function DashboardPage() {
             </button>
           }
         >
-          {insights?.threat_actors && insights.threat_actors.length > 0 ? (
+          {!insights ? (
+            <SkeletonRankedList rows={4} />
+          ) : insights.threat_actors && insights.threat_actors.length > 0 ? (
             <div className="space-y-2">
               {insights.threat_actors.map((ta) => (
                 <InsightRow
@@ -648,7 +693,9 @@ export default function DashboardPage() {
             </button>
           }
         >
-          {insights?.ransomware && insights.ransomware.length > 0 ? (
+          {!insights ? (
+            <SkeletonRankedList rows={4} />
+          ) : insights.ransomware && insights.ransomware.length > 0 ? (
             <div className="space-y-2">
               {insights.ransomware.map((rw) => (
                 <InsightRow
@@ -695,7 +742,9 @@ export default function DashboardPage() {
           </button>
         }
       >
-        {insights?.malware_families && insights.malware_families.length > 0 ? (
+        {!insights ? (
+          <SkeletonCardGrid count={6} height={64} />
+        ) : insights.malware_families && insights.malware_families.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {insights.malware_families.map((mw) => (
               <button
@@ -739,7 +788,9 @@ export default function DashboardPage() {
       {/* Sources & CVEs & Feed Status */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <SectionCard title="Top Sources">
-          {topSources.length > 0 ? (
+          {!dashboard ? (
+            <SkeletonRankedList rows={6} />
+          ) : topSources.length > 0 ? (
             <RankedDataList items={topSources} showIndex maxItems={6} />
           ) : (
             <EmptyState text="No source data" />
@@ -747,7 +798,9 @@ export default function DashboardPage() {
         </SectionCard>
 
         <SectionCard title="Top CVEs Referenced">
-          {topCVEs.length > 0 ? (
+          {!insights ? (
+            <SkeletonRankedList rows={6} />
+          ) : topCVEs.length > 0 ? (
             <div className="space-y-2">
               {topCVEs.slice(0, 8).map((cve, idx) => {
                 const maxCount = topCVEs[0]?.count ?? 1;
@@ -821,7 +874,9 @@ export default function DashboardPage() {
         </SectionCard>
 
         <SectionCard title="Feed Connectors">
-          {dashboard?.feed_status && dashboard.feed_status.length > 0 ? (
+          {!dashboard ? (
+            <SkeletonRankedList rows={5} />
+          ) : dashboard.feed_status && dashboard.feed_status.length > 0 ? (
             <FeedStatusPanel feeds={dashboard.feed_status} />
           ) : (
             <EmptyState text="No feeds configured" />
@@ -841,7 +896,29 @@ export default function DashboardPage() {
           </Link>
         }
       >
-        {topRiskItems.length > 0 ? (
+        {!dashboard ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border/50">
+                  {["Risk", "Severity", "Title", "Source", "Type", "CVEs", "KEV"].map((h) => (
+                    <th
+                      key={h}
+                      className="text-left py-2 px-2 font-semibold text-muted-foreground uppercase tracking-wider"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonTableRow key={i} cols={7} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : topRiskItems.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
