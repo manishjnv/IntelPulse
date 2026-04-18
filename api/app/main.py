@@ -2,19 +2,52 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.core.config import get_settings
-from app.core.logging import setup_logging
+from app.core.logging import get_logger, setup_logging
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.routes import health, intel, search, dashboard, admin, auth, techniques, graph, notifications, reports, iocs, news, cases, enrichment, ai_settings, demo, rum
 from app.routes import settings as settings_route
 
 settings = get_settings()
+_startup_log = get_logger("startup")
+
+
+# Queries that anonymous visitors hit on the top of the funnel. Priming Redis
+# for these turns the first-user-after-deploy experience from ~1s (DB) to
+# ~300ms (Redis) without changing any client behaviour. Kept to the default
+# query shape (no filters, page=1) — priming every filter combo would thrash.
+_WARMUP_URLS = (
+    "http://localhost:8000/api/v1/intel?page_size=20",
+    "http://localhost:8000/api/v1/news?page_size=20",
+    "http://localhost:8000/api/v1/iocs?page_size=20",
+    "http://localhost:8000/api/v1/dashboard",
+    "http://localhost:8000/api/v1/dashboard/insights",
+)
+
+
+async def _warm_default_queries() -> None:
+    """Fire-and-forget self-fetch to prime Redis for default list queries."""
+    # Give uvicorn a moment to finish binding the port after lifespan start.
+    await asyncio.sleep(2)
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            results = await asyncio.gather(
+                *(client.get(u) for u in _WARMUP_URLS),
+                return_exceptions=True,
+            )
+        ok = sum(1 for r in results if getattr(r, "status_code", 0) == 200)
+        _startup_log.info("cache_warmup_done", ok=ok, total=len(_WARMUP_URLS))
+    except Exception as e:
+        # Warmup is best-effort; a failure here must not break the app.
+        _startup_log.warning("cache_warmup_failed", error=str(e))
 
 
 @asynccontextmanager
@@ -26,6 +59,11 @@ async def lifespan(app: FastAPI):
         ensure_index()
     except Exception:
         pass  # Non-fatal on startup
+
+    # Warm Redis for top-funnel default queries so the first user after a
+    # deploy doesn't eat the ~1s cold DB hit. Scheduled as a background task
+    # so it doesn't block the server from accepting traffic.
+    asyncio.create_task(_warm_default_queries())
 
     yield
 
