@@ -1,5 +1,7 @@
 # IntelPulse — project overlay for Claude Code
 
+> **Canonical committed copy.** A sibling local-only file at `../CLAUDE.md` (one dir up, outside this repo) exists because Claude Code in this workspace auto-loads from `e:\code\IntelPulse\` cwd (where `.claude/settings.local.json` allowlist and `~/.claude/projects/e--code-IntelPulse/` memory resolve). The sibling's paths carry a `ti-platform/` prefix; paths here are repo-relative. **If you edit one, sync the other — the only semantic diff is path prefixes.**
+
 Loads on top of the global `~/.claude/CLAUDE.md` orchestration playbook. When this file conflicts with global, **this file wins**. Paths below are relative to this repo root.
 
 ## Where things live
