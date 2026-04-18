@@ -68,6 +68,12 @@ interface SettingSection {
 
 const SECTIONS: SettingSection[] = [
   {
+    id: "ai",
+    title: "AI Configuration",
+    icon: <Brain className="h-4 w-4" />,
+    description: "Amazon Bedrock multi-agent AI — providers, models, and threat analysis pipeline",
+  },
+  {
     id: "general",
     title: "General",
     icon: <SettingsIcon className="h-4 w-4" />,
@@ -110,12 +116,6 @@ const SECTIONS: SettingSection[] = [
     description: "Org profile for personalized threat scoring",
   },
   {
-    id: "ai",
-    title: "AI Configuration",
-    icon: <Brain className="h-4 w-4" />,
-    description: "Amazon Bedrock multi-agent AI — providers, models, and threat analysis pipeline",
-  },
-  {
     id: "users",
     title: "Users & Activity",
     icon: <Users className="h-4 w-4" />,
@@ -128,7 +128,9 @@ export default function SettingsPage() {
   const searchParams = useSearchParams();
   const user = useAppStore((s) => s.user);
   const isAdmin = user?.role === "admin";
-  const [activeSection, setActiveSection] = useState(searchParams.get("tab") || "general");
+  const [activeSection, setActiveSection] = useState(
+    searchParams.get("tab") || searchParams.get("section") || "ai",
+  );
   const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
