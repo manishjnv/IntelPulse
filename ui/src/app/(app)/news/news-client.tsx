@@ -100,6 +100,17 @@ const ThreatCampaignsTable = dynamic(() => import("./ThreatCampaignsTable"), {
   loading: () => <Skeleton className="h-96 w-full rounded-lg" />,
 });
 
+// Preload subtopic-tab chunks on hover/focus so the first click doesn't
+// pay the ~200-500ms chunk-download penalty on slow connections.
+const preloadSubtopic = (id: string) => {
+  if (id === "vulnerable-products") {
+    void import("./VulnerableProductsTable");
+    void import("./VendorStatsWidget");
+  } else if (id === "threat-campaigns") {
+    void import("./ThreatCampaignsTable");
+  }
+};
+
 // ── Category config ──────────────────────────────────────
 const CATEGORY_META: Record<
   NewsCategory,
@@ -1479,6 +1490,8 @@ export default function NewsClient({
               <button
                 key={tab.id}
                 onClick={() => setActiveSubtopic(tab.id)}
+                onMouseEnter={() => preloadSubtopic(tab.id)}
+                onFocus={() => preloadSubtopic(tab.id)}
                 className={cn(
                   "relative flex items-center justify-center gap-2 flex-1 px-4 py-2 rounded-md text-xs font-semibold transition-all duration-200",
                   isActive
