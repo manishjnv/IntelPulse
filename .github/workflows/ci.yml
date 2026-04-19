@@ -134,3 +134,31 @@ jobs:
             IMAGE_TAG="${GITHUB_SHA}" bash scripts/deploy-ecr.sh
         env:
           GITHUB_SHA: ${{ github.sha }}
+
+      # CF caches the HTML shell of `/` and `/dashboard` with an effectively
+      # indefinite TTL (s-maxage=31536000). Each deploy rotates shared-chunk
+      # hashes, so stale HTML ends up referencing chunks that 404 → blank
+      # page. Purge the HTML shells once the SSH deploy reports healthy.
+      # Non-fatal on failure: the deploy itself is done, users can hit CF
+      # purge manually if this step misfires.
+      - name: Purge Cloudflare HTML cache
+        if: success()
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+        run: |
+          if [ -z "$CF_API_TOKEN" ] || [ -z "$CF_ZONE_ID" ]; then
+            echo "::warning::CF_API_TOKEN or CF_ZONE_ID secret missing — skipping purge. Stale HTML may serve 404'd chunks until the CF Cache Rule TTL expires."
+            exit 0
+          fi
+          resp=$(curl -sS -X POST \
+            "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{"files":["https://intelpulse.tech/","https://intelpulse.tech/dashboard"]}')
+          echo "$resp"
+          if echo "$resp" | grep -q '"success":true'; then
+            echo "CF purge OK for / + /dashboard"
+          else
+            echo "::warning::CF purge API returned non-success. Manual purge may be required."
+          fi
