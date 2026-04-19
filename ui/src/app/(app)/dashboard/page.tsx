@@ -48,7 +48,6 @@ import {
   Bell,
   FileText,
   Package,
-  Skull,
   Bug,
   Lock,
   Globe,
@@ -256,6 +255,23 @@ export default function DashboardPage() {
 
   const totalItems = dashboard?.total_items ?? 0;
   const currentProducts = insights?.trending_products?.[productPeriod] ?? [];
+  // CPE 2.3 URIs ("cpe:2.3:a:foxit:pdf_editor:*:...") are long and
+  // unreadable once truncated in a 5-col grid. Parse out vendor +
+  // product and pretty-print; leave non-CPE labels (npm/foo, plain
+  // names) untouched. Full original stays in the `title` tooltip.
+  const formatProductName = (raw: string): string => {
+    if (!raw) return raw;
+    if (raw.startsWith("cpe:2.3:")) {
+      const parts = raw.split(":");
+      const vendor = parts[3];
+      const product = parts[4];
+      if (vendor && product && vendor !== "*" && product !== "*") {
+        const pretty = (s: string) => s.replace(/_/g, " ");
+        return `${pretty(vendor)} / ${pretty(product)}`;
+      }
+    }
+    return raw;
+  };
   const updatedLabel = dashboardUpdatedAt
     ? formatDate(new Date(dashboardUpdatedAt).toISOString(), { relative: true })
     : null;
@@ -571,7 +587,7 @@ export default function DashboardPage() {
         </SectionCard>
       )}
 
-      {/* Executive Summaries: Threat Actors, Campaigns, Exploits, Advisories */}
+      {/* Executive Summaries: Campaigns, Exploits, Advisories */}
       {!insights ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {Array.from({ length: 2 }).map((_, i) => (
@@ -582,16 +598,10 @@ export default function DashboardPage() {
         </div>
       ) : insights.executive_summaries && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* `threat_actor` intentionally omitted — ActorCards above already
+              renders the same data with dedupe + junk-name filtering. */}
           {(
             [
-              {
-                key: "threat_actor",
-                label: "Threat Actors",
-                icon: <Skull className="h-4 w-4" />,
-                accent: "text-red-400",
-                accentBg: "bg-red-500/10",
-                borderColor: "border-l-2 border-red-500/30",
-              },
               {
                 key: "campaign",
                 label: "Campaigns",
@@ -749,6 +759,7 @@ export default function DashboardPage() {
               <button
                 key={prod.name}
                 onClick={() => openDetail("product", prod.name)}
+                title={prod.name}
                 className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:bg-accent/50 transition-colors group text-left"
               >
                 <span className="flex items-center justify-center h-7 w-7 rounded-md bg-blue-500/10 text-blue-400 text-xs font-bold shrink-0">
@@ -756,7 +767,7 @@ export default function DashboardPage() {
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium truncate group-hover:text-primary transition-colors">
-                    {prod.name}
+                    {formatProductName(prod.name)}
                   </p>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-[10px] text-muted-foreground">{prod.count} hits</span>
