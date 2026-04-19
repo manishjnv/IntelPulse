@@ -93,6 +93,10 @@ function intensityToSeverity(intensity: number): Severity {
 const MAP_W = 960;
 const MAP_H = 480;
 
+/* Pan/zoom limits */
+const MAX_ZOOM_FACTOR = 8;
+const MIN_VIEW_W = MAP_W / MAX_ZOOM_FACTOR;
+
 function proj(lat: number, lng: number): { x: number; y: number } {
   return {
     x: ((lng + 180) / 360) * MAP_W,
@@ -213,12 +217,6 @@ export function deriveFlows(
   return out;
 }
 
-interface TooltipState {
-  hotspot: Hotspot;
-  anchorX: number; // fractional position (0-1) inside container
-  anchorY: number;
-}
-
 /** Minimal shape we need from DashboardInsights.threat_actors — avoids a
  *  cross-module type dependency. */
 export interface ThreatActorMini {
@@ -287,9 +285,25 @@ export function GeoHeatmapWidget({
 }: GeoHeatmapWidgetProps) {
   const [internalStats, setInternalStats] = useState<IOCStatsResponse | null>(null);
   const [loading, setLoading] = useState(statsProp === undefined);
-  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+  const [tooltip, setTooltip] = useState<Hotspot | null>(null);
   const [tick, setTick] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  /* Pan/zoom state. View is a sub-rectangle of the base MAP_W × MAP_H space;
+     we feed it to the main SVG's viewBox. Starfield backdrop stays at the full
+     base viewBox so it reads as a stable background. */
+  const [view, setView] = useState<{ x: number; y: number; w: number; h: number }>({
+    x: 0, y: 0, w: MAP_W, h: MAP_H,
+  });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef<{
+    startClientX: number; startClientY: number;
+    startViewX: number; startViewY: number;
+    viewW: number; viewH: number;
+    rectW: number; rectH: number;
+    moved: boolean;
+  } | null>(null);
+  const recentlyDraggedRef = useRef(false);
 
   /* Fetch only if caller did not supply stats */
   useEffect(() => {
@@ -387,19 +401,144 @@ export function GeoHeatmapWidget({
     });
   }, [hotspots]);
 
-  /* Hover handlers — position tooltip relative to the container (not viewport),
-     so it tracks the hotspot even during scroll. */
+  /* Hover handlers. Tooltip stores just the hovered hotspot; the on-screen
+     position is derived from the current view at render time so pan/zoom
+     moves the tooltip with the hotspot automatically. Skip hover updates
+     while the user is dragging. */
   const handleHotspotEnter = useCallback((h: Hotspot) => {
-    setTooltip({
-      hotspot: h,
-      anchorX: h.x / MAP_W,
-      anchorY: h.y / MAP_H,
-    });
+    if (dragRef.current) return;
+    setTooltip(h);
   }, []);
 
   const handleHotspotLeave = useCallback(() => {
     setTooltip(null);
   }, []);
+
+  /* ── Pan/zoom helpers ─────────────────────────────────────────────────── */
+
+  const clampView = useCallback(
+    (v: { x: number; y: number; w: number; h: number }) => {
+      const w = Math.min(MAP_W, Math.max(MIN_VIEW_W, v.w));
+      const h = w * (MAP_H / MAP_W);
+      const x = Math.min(Math.max(v.x, 0), MAP_W - w);
+      const y = Math.min(Math.max(v.y, 0), MAP_H - h);
+      return { x, y, w, h };
+    },
+    [],
+  );
+
+  /** Zoom by `factor` keeping the fractional container point (cxFrac, cyFrac)
+   *  fixed on screen. factor > 1 zooms in, < 1 zooms out. */
+  const zoomAt = useCallback(
+    (cxFrac: number, cyFrac: number, factor: number) => {
+      setView((v) => {
+        const newW = v.w / factor;
+        const newH = v.h / factor;
+        const svgX = v.x + cxFrac * v.w;
+        const svgY = v.y + cyFrac * v.h;
+        return clampView({
+          x: svgX - cxFrac * newW,
+          y: svgY - cyFrac * newH,
+          w: newW,
+          h: newH,
+        });
+      });
+    },
+    [clampView],
+  );
+
+  const resetView = useCallback(() => {
+    setView({ x: 0, y: 0, w: MAP_W, h: MAP_H });
+  }, []);
+
+  /* Wheel → zoom at cursor. Attached as a non-passive listener so we can
+     preventDefault and stop the page from scrolling while the cursor is over
+     the map. */
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const cxFrac = (e.clientX - rect.left) / rect.width;
+      const cyFrac = (e.clientY - rect.top) / rect.height;
+      const factor = Math.exp(-e.deltaY * 0.0015);
+      zoomAt(cxFrac, cyFrac, factor);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [zoomAt]);
+
+  /* Pointer drag → pan. Snapshots view + rect at pointerdown so the math
+     stays stable for the duration of one drag (ignore zoom changes mid-drag).
+     `moved` gates the recentlyDragged flag we use to suppress the synthetic
+     click on hotspots after a drag. */
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      dragRef.current = {
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        startViewX: view.x,
+        startViewY: view.y,
+        viewW: view.w,
+        viewH: view.h,
+        rectW: rect.width,
+        rectH: rect.height,
+        moved: false,
+      };
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* Safari can throw on pen/touch — safe to ignore */
+      }
+      setIsDragging(true);
+      setTooltip(null);
+    },
+    [view],
+  );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const dx = e.clientX - d.startClientX;
+      const dy = e.clientY - d.startClientY;
+      if (!d.moved && dx * dx + dy * dy > 9) d.moved = true;
+      const svgDx = -dx * (d.viewW / d.rectW);
+      const svgDy = -dy * (d.viewH / d.rectH);
+      setView(
+        clampView({
+          x: d.startViewX + svgDx,
+          y: d.startViewY + svgDy,
+          w: d.viewW,
+          h: d.viewH,
+        }),
+      );
+    },
+    [clampView],
+  );
+
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const d = dragRef.current;
+      if (d?.moved) {
+        recentlyDraggedRef.current = true;
+        window.setTimeout(() => {
+          recentlyDraggedRef.current = false;
+        }, 150);
+      }
+      dragRef.current = null;
+      setIsDragging(false);
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        /* noop */
+      }
+    },
+    [],
+  );
 
   const t = tick * 0.03; // tick is ~30/s, t-units are radians-ish
 
@@ -415,14 +554,20 @@ export function GeoHeatmapWidget({
   const mapContent = (
     <div
       ref={containerRef}
-      className="relative overflow-hidden rounded-md"
+      className="relative overflow-hidden rounded-md select-none"
       style={{
         ...(useAspect
           ? { aspectRatio: `${MAP_W} / ${MAP_H}` }
           : { height: effectiveHeight }),
         background:
           "radial-gradient(ellipse at center, #0c1420 0%, #050810 70%, #030509 100%)",
+        cursor: isDragging ? "grabbing" : "grab",
+        touchAction: "none",
       }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
     >
       {/* Starfield — painted beneath everything */}
       <svg
@@ -448,12 +593,14 @@ export function GeoHeatmapWidget({
         })}
       </svg>
 
-      {/* Main map — graticule, continents, flows, halos, markers */}
+      {/* Main map — graticule, continents, flows, halos, markers.
+          viewBox is driven by pan/zoom state so the map is zoomable/pannable;
+          the starfield above stays at the base viewBox as a fixed backdrop. */}
       <svg
         className="absolute inset-0"
         width="100%"
         height="100%"
-        viewBox={`0 0 ${MAP_W} ${MAP_H}`}
+        viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
         preserveAspectRatio="xMidYMid slice"
       >
         <defs>
@@ -593,14 +740,17 @@ export function GeoHeatmapWidget({
 
         {/* Hotspot markers */}
         {hotspots.map((h) => {
-          const isHovered = tooltip?.hotspot.code === h.code;
+          const isHovered = tooltip?.code === h.code;
           const baseR = 3 + Math.sqrt(h.count) * 0.9;
           return (
             <g
               key={`dot-${h.code}`}
               onMouseEnter={() => handleHotspotEnter(h)}
               onMouseLeave={handleHotspotLeave}
-              onClick={() => onCountryClick?.(h.code, h.name)}
+              onClick={() => {
+                if (recentlyDraggedRef.current) return;
+                onCountryClick?.(h.code, h.name);
+              }}
               style={{ cursor: onCountryClick ? "pointer" : "default" }}
             >
               <circle
@@ -661,12 +811,18 @@ export function GeoHeatmapWidget({
         </div>
       )}
 
-      {/* Hover tooltip — anchored to the container so it tracks the hotspot */}
-      {tooltip && (() => {
-        const rightSide = tooltip.anchorX > 0.5;
-        const leftPct = tooltip.anchorX * 100;
-        const topPct = tooltip.anchorY * 100;
-        const col = tooltip.hotspot.color;
+      {/* Hover tooltip — anchor derived from current view so pan/zoom moves the
+          tooltip together with its hotspot. Hide tooltip when the hotspot is
+          outside the visible viewBox (e.g. user zoomed into a different
+          region). */}
+      {tooltip && !isDragging && (() => {
+        const anchorX = (tooltip.x - view.x) / view.w;
+        const anchorY = (tooltip.y - view.y) / view.h;
+        if (anchorX < 0 || anchorX > 1 || anchorY < 0 || anchorY > 1) return null;
+        const rightSide = anchorX > 0.5;
+        const leftPct = anchorX * 100;
+        const topPct = anchorY * 100;
+        const col = tooltip.color;
         return (
           <div
             className="absolute pointer-events-none z-20"
@@ -691,10 +847,10 @@ export function GeoHeatmapWidget({
               className="font-mono text-[9px] font-semibold uppercase"
               style={{ color: col, letterSpacing: 1 }}
             >
-              {tooltip.hotspot.severity}
+              {tooltip.severity}
             </div>
             <div className="text-sm font-semibold mt-0.5 text-foreground">
-              {tooltip.hotspot.name}
+              {tooltip.name}
             </div>
             <div
               className="flex items-baseline gap-3 mt-2 pt-2"
@@ -708,7 +864,7 @@ export function GeoHeatmapWidget({
                   className="font-mono text-lg font-semibold"
                   style={{ color: col }}
                 >
-                  {tooltip.hotspot.count.toLocaleString()}
+                  {tooltip.count.toLocaleString()}
                 </div>
               </div>
               <div className="flex-1">
@@ -716,12 +872,12 @@ export function GeoHeatmapWidget({
                   Code
                 </div>
                 <div className="text-xs text-foreground/90 mt-1">
-                  {tooltip.hotspot.code}
+                  {tooltip.code}
                 </div>
               </div>
             </div>
             {(() => {
-              const actors = actorsByRegion.get(tooltip.hotspot.name.toLowerCase());
+              const actors = actorsByRegion.get(tooltip.name.toLowerCase());
               if (!actors || actors.length === 0) return null;
               return (
                 <div
@@ -740,6 +896,36 @@ export function GeoHeatmapWidget({
           </div>
         );
       })()}
+
+      {/* Zoom controls (top-left). stopPropagation on pointerdown so clicking
+          a button doesn't start a pan drag on the container. */}
+      <div
+        className="absolute top-3 left-3 z-10 flex flex-col gap-1"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        {[
+          { label: "+", title: "Zoom in", onClick: () => zoomAt(0.5, 0.5, 1.4) },
+          { label: "−", title: "Zoom out", onClick: () => zoomAt(0.5, 0.5, 1 / 1.4) },
+          { label: "⌂", title: "Reset view", onClick: resetView },
+        ].map((b) => (
+          <button
+            key={b.label}
+            type="button"
+            onClick={b.onClick}
+            title={b.title}
+            aria-label={b.title}
+            className="h-7 w-7 flex items-center justify-center font-mono text-xs text-foreground/85 rounded-md border transition-colors hover:text-foreground hover:bg-white/5"
+            style={{
+              background: "rgba(10,13,18,0.7)",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+              borderColor: "rgba(148,163,184,0.18)",
+            }}
+          >
+            {b.label}
+          </button>
+        ))}
+      </div>
 
       {/* LIVE · 24H chip (top-right) */}
       <div
