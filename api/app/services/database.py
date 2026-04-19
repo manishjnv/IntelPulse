@@ -372,12 +372,15 @@ async def get_dashboard_insights(db: AsyncSession) -> dict:
         for r in ta_rows
     ]
 
-    # ── Ransomware (tags containing ransomware-related terms) ─
+    # Named families only. Bare "ransomware" is a category label, not a family.
+    # Word-boundary wrapper keeps e.g. "archive" from matching "hive".
     ransomware_tags = (
-        "ransomware|lockbit|blackcat|alphv|clop|royal|"
+        "(^|[^a-z])("
+        "lockbit|blackcat|alphv|clop|royal|"
         "play|medusa|rhysida|akira|bianlian|blackbasta|"
         "conti|ryuk|revil|hive|ragnar|cuba|babuk|"
         "maze|darkside|blackmatter|avoslocker|vice_society"
+        ")([^a-z]|$)"
     )
     rw_q = text(
         "SELECT t AS tag, count(DISTINCT intel_items.id) AS cnt, "
@@ -913,10 +916,12 @@ async def get_all_insights_by_type(
             "state.sponsor|nation.state"
         ),
         "ransomware": (
-            "ransomware|lockbit|blackcat|alphv|clop|royal|"
+            "(^|[^a-z])("
+            "lockbit|blackcat|alphv|clop|royal|"
             "play|medusa|rhysida|akira|bianlian|blackbasta|"
             "conti|ryuk|revil|hive|ragnar|cuba|babuk|"
             "maze|darkside|blackmatter|avoslocker|vice_society"
+            ")([^a-z]|$)"
         ),
         "malware": (
             "malware|infostealer|stealer|rootkit|backdoor|"
