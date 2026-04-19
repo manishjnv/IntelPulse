@@ -372,30 +372,28 @@ async def get_dashboard_insights(db: AsyncSession) -> dict:
         for r in ta_rows
     ]
 
-    # Named families only. Bare "ransomware" is a category label, not a family.
-    # Boundary wrapper excludes a-z AND 0-9 so "archive" doesn't match "hive"
-    # and "hive0065" (IBM X-Force actor cluster) doesn't match "hive".
-    ransomware_tags = (
-        "(^|[^a-z0-9])("
-        "lockbit|blackcat|alphv|clop|royal|"
-        "play|medusa|rhysida|akira|bianlian|blackbasta|"
-        "conti|ryuk|revil|hive|ragnar|cuba|babuk|"
-        "maze|darkside|blackmatter|avoslocker|vice_society"
-        ")([^a-z0-9]|$)"
-    )
+    # Sourced from news_items.malware_families — per-article AI extractions
+    # like "HybridPetya (ransomware)". intel_items.tags only carries the generic
+    # "ransomware" category label, not family names, so aggregating tags there
+    # produced "ransomware"/"archive" noise instead of LockBit/Qilin/etc.
     rw_q = text(
-        "SELECT t AS tag, count(DISTINCT intel_items.id) AS cnt, "
-        "avg(risk_score) AS avg_risk, "
-        "bool_or(exploit_available) AS any_exploit, "
-        "array_agg(DISTINCT unnest_ind) FILTER (WHERE unnest_ind IS NOT NULL) AS industries, "
-        "array_agg(DISTINCT unnest_geo) FILTER (WHERE unnest_geo IS NOT NULL) AS regions "
-        "FROM intel_items, unnest(tags) AS t "
-        "LEFT JOIN LATERAL unnest(industries) AS unnest_ind ON true "
-        "LEFT JOIN LATERAL unnest(geo) AS unnest_geo ON true "
-        "WHERE lower(t) ~ :pattern "
-        "GROUP BY t ORDER BY cnt DESC LIMIT 10"
+        "SELECT trim(split_part(m, '(', 1)) AS name, "
+        "count(DISTINCT n.id) AS cnt, "
+        "avg(n.relevance_score) AS avg_risk, "
+        "bool_or(coalesce(n.exploitation_info->>'exploit_maturity','none') "
+        "        IN ('poc','weaponized','in_the_wild')) AS any_exploit, "
+        "array_agg(DISTINCT us) FILTER (WHERE us IS NOT NULL) AS industries, "
+        "array_agg(DISTINCT ur) FILTER (WHERE ur IS NOT NULL) AS regions "
+        "FROM news_items n, unnest(n.malware_families) AS m "
+        "LEFT JOIN LATERAL unnest(n.targeted_sectors) AS us ON true "
+        "LEFT JOIN LATERAL unnest(n.targeted_regions) AS ur ON true "
+        "WHERE n.ai_enriched = true "
+        "AND m ~* '\\(.*ransom' "
+        "GROUP BY trim(split_part(m, '(', 1)) "
+        "HAVING trim(split_part(m, '(', 1)) <> '' "
+        "ORDER BY cnt DESC, avg_risk DESC NULLS LAST LIMIT 10"
     )
-    rw_rows = (await db.execute(rw_q, {"pattern": ransomware_tags})).all()
+    rw_rows = (await db.execute(rw_q)).all()
     ransomware = [
         {
             "name": r[0],
@@ -916,14 +914,8 @@ async def get_all_insights_by_type(
             "phantomcore|stonefly|uac-0050|espionage|cyber.espionage|"
             "state.sponsor|nation.state"
         ),
-        "ransomware": (
-            "(^|[^a-z0-9])("
-            "lockbit|blackcat|alphv|clop|royal|"
-            "play|medusa|rhysida|akira|bianlian|blackbasta|"
-            "conti|ryuk|revil|hive|ragnar|cuba|babuk|"
-            "maze|darkside|blackmatter|avoslocker|vice_society"
-            ")([^a-z0-9]|$)"
-        ),
+        # "ransomware" is handled out-of-band below — it sources from
+        # news_items.malware_families rather than intel_items.tags.
         "malware": (
             "malware|infostealer|stealer|rootkit|backdoor|"
             "trojan|keylogger|worm|botnet|rat|spyware|"
@@ -940,6 +932,37 @@ async def get_all_insights_by_type(
             "invisibleferret|ldr4|dcrat|moonrise|webshell"
         ),
     }
+
+    if insight_type == "ransomware":
+        q = text(
+            "SELECT trim(split_part(m, '(', 1)) AS name, "
+            "count(DISTINCT n.id) AS cnt, "
+            "avg(n.relevance_score) AS avg_risk, "
+            "array_agg(DISTINCT uc) FILTER (WHERE uc IS NOT NULL) AS cves, "
+            "array_agg(DISTINCT us) FILTER (WHERE us IS NOT NULL) AS industries, "
+            "array_agg(DISTINCT ur) FILTER (WHERE ur IS NOT NULL) AS regions "
+            "FROM news_items n, unnest(n.malware_families) AS m "
+            "LEFT JOIN LATERAL unnest(n.cves) AS uc ON true "
+            "LEFT JOIN LATERAL unnest(n.targeted_sectors) AS us ON true "
+            "LEFT JOIN LATERAL unnest(n.targeted_regions) AS ur ON true "
+            "WHERE n.ai_enriched = true "
+            "AND m ~* '\\(.*ransom' "
+            "GROUP BY trim(split_part(m, '(', 1)) "
+            "HAVING trim(split_part(m, '(', 1)) <> '' "
+            "ORDER BY cnt DESC, avg_risk DESC NULLS LAST LIMIT :lim"
+        )
+        rows = (await db.execute(q, {"lim": limit})).all()
+        return [
+            {
+                "name": r[0],
+                "count": r[1],
+                "avg_risk": round(float(r[2] or 0), 1),
+                "cves": (r[3] or [])[:10],
+                "industries": (r[4] or [])[:8],
+                "regions": (r[5] or [])[:8],
+            }
+            for r in rows
+        ]
 
     pattern = type_patterns.get(insight_type)
     if not pattern:
