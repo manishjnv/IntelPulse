@@ -2,22 +2,24 @@
 
 import React from "react";
 import Link from "next/link";
-import { Flame, ChevronRight } from "lucide-react";
+import { Flame, ChevronRight, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SEVERITY_HEX } from "@/lib/severity";
+import type { ThreatActorInsight } from "@/types";
 
 /**
- * Top-4 threat-actor intensity cards in a 2x2 grid. Uses live
- * `insights.threat_actors` data (DashboardInsights) — no placeholder.
- *
- * Adapted from docs/IntelPulse Redesign.html ActorCards. Additive,
- * renders as a SectionCard on the dashboard.
+ * Top threat-actor intensity cards. Uses live `insights.threat_actors`
+ * (DashboardInsights) — no placeholder. Dedupes case-variant names
+ * ("Cobalt Strike" + "cobalt strike") into a single merged entry and
+ * drops generic placeholders ("threat_actor", pure lowercase tag-ish
+ * single tokens) before ranking by intel volume × risk.
  */
-import type { ThreatActorInsight } from "@/types";
 
 interface ActorCardsProps {
   actors: ThreatActorInsight[];
 }
+
+const MAX_CARDS = 8;
 
 function riskColor(risk: number): string {
   if (risk >= 80) return SEVERITY_HEX.critical;
@@ -30,14 +32,92 @@ function formatName(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/** Normalize a name for dedupe: lowercase + collapse whitespace/underscores. */
+function normalizeKey(name: string): string {
+  return name.toLowerCase().replace(/[_\s-]+/g, " ").trim();
+}
+
+/** Drop placeholder / tag-ish names that leak from the enrichment pipeline
+ *  ("threat_actor", "unknown", pure-lowercase single tokens, sub-3-char). */
+function isJunkName(name: string): boolean {
+  if (!name) return true;
+  const trimmed = name.trim();
+  if (trimmed.length < 3) return true;
+  const lower = trimmed.toLowerCase();
+  if (lower === "threat_actor" || lower === "threat actor") return true;
+  if (lower === "unknown" || lower === "n/a" || lower === "none") return true;
+  // pure-lowercase single-token that looks like a tag, not a proper name
+  if (/^[a-z][a-z0-9_]*$/.test(trimmed)) return true;
+  return false;
+}
+
+/** Pick the nicer display spelling when merging case variants — prefer the
+ *  one with more uppercase letters (more likely to be the canonical form). */
+function pickPrettier(a: string, b: string): string {
+  const upperCount = (s: string) => (s.match(/[A-Z]/g) || []).length;
+  return upperCount(a) >= upperCount(b) ? a : b;
+}
+
+function mergeActors(actors: ThreatActorInsight[]): ThreatActorInsight[] {
+  const byKey = new Map<string, ThreatActorInsight>();
+  for (const a of actors) {
+    if (isJunkName(a.name)) continue;
+    const key = normalizeKey(a.name);
+    const prev = byKey.get(key);
+    if (!prev) {
+      byKey.set(key, {
+        name: a.name,
+        count: a.count,
+        avg_risk: a.avg_risk,
+        cves: [...(a.cves ?? [])],
+        industries: [...(a.industries ?? [])],
+        regions: [...(a.regions ?? [])],
+      });
+      continue;
+    }
+    // Weighted risk merge — keeps the combined avg_risk honest.
+    const totalCount = prev.count + a.count;
+    const merged: ThreatActorInsight = {
+      name: pickPrettier(prev.name, a.name),
+      count: totalCount,
+      avg_risk:
+        totalCount > 0
+          ? (prev.avg_risk * prev.count + a.avg_risk * a.count) / totalCount
+          : 0,
+      cves: Array.from(new Set([...(prev.cves ?? []), ...(a.cves ?? [])])),
+      industries: Array.from(
+        new Set([...(prev.industries ?? []), ...(a.industries ?? [])]),
+      ),
+      regions: Array.from(
+        new Set([...(prev.regions ?? []), ...(a.regions ?? [])]),
+      ),
+    };
+    byKey.set(key, merged);
+  }
+  return Array.from(byKey.values());
+}
+
 export function ActorCards({ actors }: ActorCardsProps) {
-  const top = [...actors]
-    .sort((a, b) => (b.count * (b.avg_risk || 0)) - (a.count * (a.avg_risk || 0)))
-    .slice(0, 4);
+  const cleaned = React.useMemo(() => mergeActors(actors), [actors]);
+  const top = React.useMemo(
+    () =>
+      [...cleaned]
+        .sort(
+          (a, b) =>
+            b.count * (b.avg_risk || 0) - a.count * (a.avg_risk || 0),
+        )
+        .slice(0, MAX_CARDS),
+    [cleaned],
+  );
 
   if (top.length === 0) {
     return null;
   }
+
+  // Row-below predicate for the md 2-col grid border logic. A card gets a
+  // bottom border iff another row sits below it.
+  const totalRows = Math.ceil(top.length / 2);
+  const lastRowStart = (totalRows - 1) * 2;
 
   return (
     <section className="rounded-lg border border-border/50 bg-card">
@@ -47,7 +127,7 @@ export function ActorCards({ actors }: ActorCardsProps) {
             Most active actors
           </p>
           <p className="text-xs font-medium text-foreground mt-0.5">
-            Ranked by intel volume × risk
+            Ranked by intel volume × risk · {top.length} shown
           </p>
         </div>
         <Link
@@ -64,22 +144,31 @@ export function ActorCards({ actors }: ActorCardsProps) {
           const pct = Math.min(100, Math.max(4, a.avg_risk));
           const industries = (a.industries ?? []).slice(0, 3);
           const regions = (a.regions ?? []).slice(0, 3);
+          const cveCount = a.cves?.length ?? 0;
+          const industryCount = a.industries?.length ?? 0;
+          const topCve = a.cves?.[0];
+          const needsRowBorder = i < lastRowStart;
           return (
-            <div
+            <Link
               key={a.name + i}
+              href={`/search?q=${encodeURIComponent(a.name)}`}
               className={cn(
-                "p-4 transition-colors hover:bg-accent/20",
-                i < 2 && "md:border-b md:border-border/30"
+                "p-4 transition-colors hover:bg-accent/20 block group",
+                needsRowBorder && "md:border-b md:border-border/30",
               )}
+              title={`Search intel mentioning ${a.name}`}
             >
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-foreground truncate">
+                  <div className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
                     {formatName(a.name)}
                   </div>
                   {regions.length > 0 && (
                     <div className="text-[10px] font-mono text-muted-foreground/70 mt-0.5 truncate">
                       {regions.join(" · ")}
+                      {a.regions && a.regions.length > regions.length && (
+                        <span className="opacity-60"> +{a.regions.length - regions.length}</span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -102,26 +191,68 @@ export function ActorCards({ actors }: ActorCardsProps) {
                   style={{ width: `${pct}%`, backgroundColor: color }}
                 />
               </div>
-              {/* industries */}
-              <div className="flex flex-wrap gap-1 mb-2">
-                {industries.map((ind) => (
-                  <span
-                    key={ind}
-                    className="text-[9px] font-mono font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded bg-muted/30 text-muted-foreground"
-                  >
-                    {ind}
+              {/* industry chips + optional top-CVE chip */}
+              {(industries.length > 0 || topCve) && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {industries.map((ind) => (
+                    <span
+                      key={ind}
+                      className="text-[9px] font-mono font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded bg-muted/30 text-muted-foreground"
+                    >
+                      {ind}
+                    </span>
+                  ))}
+                  {topCve && (
+                    <span
+                      className="text-[9px] font-mono font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded flex items-center gap-1"
+                      style={{
+                        background: `${color}1f`,
+                        color,
+                        border: `1px solid ${color}33`,
+                      }}
+                      title={`Top CVE linked to this actor`}
+                    >
+                      <ShieldAlert className="h-2.5 w-2.5" />
+                      {topCve}
+                    </span>
+                  )}
+                </div>
+              )}
+              {/* stat strip: intel count · CVE count · industries count */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Flame className="h-3 w-3" style={{ color }} />
+                  <span className="tabular-nums font-semibold text-foreground">
+                    {a.count.toLocaleString()}
                   </span>
-                ))}
-              </div>
-              {/* count line */}
-              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Flame className="h-3 w-3" style={{ color }} />
-                <span className="tabular-nums font-semibold text-foreground">
-                  {a.count.toLocaleString()}
+                  <span>intel</span>
                 </span>
-                <span>intel items mentioning this actor</span>
+                {cveCount > 0 && (
+                  <>
+                    <span className="opacity-40">·</span>
+                    <span className="flex items-center gap-1">
+                      <span className="tabular-nums font-semibold text-foreground">
+                        {cveCount}
+                      </span>
+                      <span>CVE{cveCount === 1 ? "" : "s"}</span>
+                    </span>
+                  </>
+                )}
+                {industryCount > 0 && (
+                  <>
+                    <span className="opacity-40">·</span>
+                    <span className="flex items-center gap-1">
+                      <span className="tabular-nums font-semibold text-foreground">
+                        {industryCount}
+                      </span>
+                      <span>
+                        {industryCount === 1 ? "industry" : "industries"}
+                      </span>
+                    </span>
+                  </>
+                )}
               </div>
-            </div>
+            </Link>
           );
         })}
       </div>
