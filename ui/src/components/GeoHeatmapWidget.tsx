@@ -404,6 +404,11 @@ export function GeoHeatmapWidget({
   const t = tick * 0.03; // tick is ~30/s, t-units are radians-ish
 
   const isEmpty = !loading && hotspots.length === 0;
+  const totalShownIOCs = useMemo(
+    () => hotspots.reduce((sum, h) => sum + h.count, 0),
+    [hotspots],
+  );
+  const totalRegions = stats?.country_distribution?.length ?? 0;
   const effectiveHeight = height ?? (compact ? 300 : undefined);
   const useAspect = effectiveHeight === undefined;
 
@@ -755,6 +760,33 @@ export function GeoHeatmapWidget({
         />
         LIVE · 24H
       </div>
+
+      {/* Scale context (bottom-right) — tells the user what they're looking at:
+          how many IOCs across how many regions drive the hotspots. Rendered in
+          both compact and full mode; suppressed while loading or empty so it
+          doesn't show zeros. */}
+      {!loading && !isEmpty && hotspots.length > 0 && (
+        <div
+          className="absolute bottom-3 right-3 flex items-center gap-2 font-mono text-[10px] text-muted-foreground rounded-md px-2.5 py-1.5 border"
+          style={{
+            background: "rgba(10,13,18,0.7)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            borderColor: "rgba(148,163,184,0.18)",
+          }}
+        >
+          <span className="text-foreground/90">
+            {totalShownIOCs.toLocaleString()}
+          </span>
+          <span>IOCs</span>
+          <span className="opacity-40">·</span>
+          <span className="text-foreground/90">
+            {hotspots.length}
+            {totalRegions > hotspots.length ? ` / ${totalRegions}` : ""}
+          </span>
+          <span>regions</span>
+        </div>
+      )}
 
       {/* Severity legend (bottom-left). Hidden in compact mode to save space. */}
       {!compact && (
