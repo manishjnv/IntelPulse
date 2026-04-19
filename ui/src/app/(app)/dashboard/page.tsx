@@ -778,100 +778,57 @@ export default function DashboardPage() {
         )}
       </SectionCard>
 
-      {/* Threat Actors & Ransomware (side by side) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <SectionCard
-          title="Most Active Threat Actors"
-          icon={<Skull className="h-4 w-4" />}
-          iconAccent="text-red-400"
-          action={
-            <button
-              onClick={() => openViewAll("threat_actor", "All Threat Actors")}
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-              View all <Eye className="h-3 w-3" />
-            </button>
-          }
-        >
-          {!insights ? (
-            <SkeletonRankedList rows={4} />
-          ) : insights.threat_actors && insights.threat_actors.length > 0 ? (
-            <div className="space-y-2">
-              {insights.threat_actors.map((ta) => (
-                <InsightRow
-                  key={ta.name}
-                  name={ta.name}
-                  count={ta.count}
-                  avgRisk={ta.avg_risk}
-                  icon={<Skull className="h-3.5 w-3.5" />}
-                  accentClass="text-red-400 bg-red-500/10"
-                  badges={[
-                    ...ta.cves.slice(0, 3).map((c) => ({ label: c, color: "text-primary bg-primary/10" })),
-                    ...ta.industries.slice(0, 2).map((ind) => ({
-                      label: ind,
-                      color: "text-blue-400 bg-blue-500/10",
-                    })),
-                    ...ta.regions.slice(0, 3).map((r) => ({
-                      label: r,
-                      color: "text-emerald-400 bg-emerald-500/10",
-                    })),
-                  ]}
-                  onClick={() => openDetail("threat_actor", ta.name)}
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyState text="No threat actor intelligence detected" />
-          )}
-        </SectionCard>
-
-        <SectionCard
-          title="Most Active Ransomware"
-          icon={<Lock className="h-4 w-4" />}
-          iconAccent="text-orange-400"
-          action={
-            <button
-              onClick={() => openViewAll("ransomware", "All Ransomware")}
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-              View all <Eye className="h-3 w-3" />
-            </button>
-          }
-        >
-          {!insights ? (
-            <SkeletonRankedList rows={4} />
-          ) : insights.ransomware && insights.ransomware.length > 0 ? (
-            <div className="space-y-2">
-              {insights.ransomware.map((rw) => (
-                <InsightRow
-                  key={rw.name}
-                  name={rw.name}
-                  count={rw.count}
-                  avgRisk={rw.avg_risk}
-                  icon={<Lock className="h-3.5 w-3.5" />}
-                  accentClass="text-orange-400 bg-orange-500/10"
-                  badges={[
-                    ...(rw.exploit
-                      ? [{ label: "Exploit Available", color: "text-red-400 bg-red-500/10" }]
-                      : []),
-                    ...rw.industries.slice(0, 3).map((ind) => ({
-                      label: ind,
-                      color: "text-blue-400 bg-blue-500/10",
-                    })),
-                    ...rw.regions.slice(0, 3).map((r) => ({
-                      label: r,
-                      color: "text-emerald-400 bg-emerald-500/10",
-                    })),
-                  ]}
-                  onClick={() => openDetail("ransomware", rw.name)}
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyState text="No ransomware intelligence detected" />
-          )}
-        </SectionCard>
-      </div>
+      {/* Ransomware. Threat-actor list was removed here — consolidated into
+          the ActorCards grid near the top of the page (which dedupes case
+          variants, drops tag-placeholder names, and surfaces CVE + industry
+          counts). Keeping two actor widgets showed the same data twice with
+          different fidelity. */}
+      <SectionCard
+        title="Most Active Ransomware"
+        icon={<Lock className="h-4 w-4" />}
+        iconAccent="text-orange-400"
+        action={
+          <button
+            onClick={() => openViewAll("ransomware", "All Ransomware")}
+            className="text-xs text-primary hover:underline flex items-center gap-1"
+          >
+            View all <Eye className="h-3 w-3" />
+          </button>
+        }
+      >
+        {!insights ? (
+          <SkeletonRankedList rows={4} />
+        ) : insights.ransomware && insights.ransomware.length > 0 ? (
+          <div className="space-y-2">
+            {insights.ransomware.map((rw) => (
+              <InsightRow
+                key={rw.name}
+                name={rw.name}
+                count={rw.count}
+                avgRisk={rw.avg_risk}
+                icon={<Lock className="h-3.5 w-3.5" />}
+                accentClass="text-orange-400 bg-orange-500/10"
+                badges={[
+                  ...(rw.exploit
+                    ? [{ label: "Exploit Available", color: "text-red-400 bg-red-500/10" }]
+                    : []),
+                  ...rw.industries.slice(0, 3).map((ind) => ({
+                    label: ind,
+                    color: "text-blue-400 bg-blue-500/10",
+                  })),
+                  ...rw.regions.slice(0, 3).map((r) => ({
+                    label: r,
+                    color: "text-emerald-400 bg-emerald-500/10",
+                  })),
+                ]}
+                onClick={() => openDetail("ransomware", rw.name)}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState text="No ransomware intelligence detected" />
+        )}
+      </SectionCard>
 
       {/* Malware / Infostealer / Rootkit */}
       <SectionCard
