@@ -227,6 +227,24 @@ async def update_ai_settings(
         if field in ("default_max_tokens", "requests_per_minute", "batch_delay_ms", "primary_timeout") and not isinstance(value, int):
             continue
 
+        # SSRF guard on primary_api_url — reject URLs that target internal
+        # addresses. In demo mode every caller is admin, so the PUT endpoint
+        # is the attacker's write-path to the AI provider URL that later gets
+        # fetched by _call_with_fallback. Defense-in-depth: the runtime in
+        # ai.py also pins the resolved IP, but rejecting here makes the
+        # rejection observable via 400 instead of a silent skip at call time.
+        if field == "primary_api_url" and isinstance(value, str) and value.strip():
+            try:
+                resolve_safe_outbound_url(value)
+            except UnsafeURLError as exc:
+                logger.warning(
+                    "ai_settings_primary_url_rejected", reason=str(exc)
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail="primary_api_url rejected: URL targets a disallowed host",
+                )
+
         # Special handling for fallback_providers
         if field == "fallback_providers":
             if not isinstance(value, list):
@@ -242,9 +260,26 @@ async def update_ai_settings(
                 if not new_key or "****" in new_key:
                     # Always fall back to existing real key; never store masked values
                     new_key = existing.get(p["name"], {}).get("key", "")
+                # SSRF guard on fallback provider URL. Validate non-empty URLs
+                # regardless of `enabled` — a disabled entry can be flipped on
+                # later without re-hitting this handler.
+                provider_url = p.get("url", "")
+                if isinstance(provider_url, str) and provider_url.strip():
+                    try:
+                        resolve_safe_outbound_url(provider_url)
+                    except UnsafeURLError as exc:
+                        logger.warning(
+                            "ai_settings_fallback_url_rejected",
+                            provider=p.get("name", "?"),
+                            reason=str(exc),
+                        )
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"fallback_providers[{p.get('name', '?')}].url rejected: URL targets a disallowed host",
+                        )
                 merged.append({
                     "name": p.get("name", ""),
-                    "url": p.get("url", ""),
+                    "url": provider_url,
                     "key": new_key,
                     "model": p.get("model", ""),
                     "timeout": int(p.get("timeout", 30)),

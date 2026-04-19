@@ -34,6 +34,8 @@ from app.normalizers.text import strip_json_fences as _strip_json_fences
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.redis import cache_key, get_cached, set_cached, redis_client
+from app.core.safe_httpx import build_pinned_async_client
+from app.core.url_validation import UnsafeURLError, resolve_safe_outbound_url
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -432,8 +434,22 @@ async def _call_with_fallback(
         return None
 
     for i, provider in enumerate(chain):
+        # SSRF guard: re-resolve the provider URL every call and pin the
+        # connection to the validated IP. Skip the provider (don't abort the
+        # chain) on unsafe URL so one misconfigured fallback can't kill AI.
         try:
-            async with httpx.AsyncClient(timeout=provider.timeout) as client:
+            resolved = resolve_safe_outbound_url(provider.url)
+        except UnsafeURLError as exc:
+            logger.warning(
+                f"{caller}_ssrf_skipped",
+                provider=provider.name,
+                reason=str(exc),
+            )
+            continue
+        try:
+            async with build_pinned_async_client(
+                resolved, timeout=provider.timeout
+            ) as client:
                 headers = {
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {provider.key}",
@@ -821,7 +837,22 @@ async def check_ai_health() -> dict:
     chain = await _get_chain_async()
     for provider in chain:
         try:
-            async with httpx.AsyncClient(timeout=8) as client:
+            resolved = resolve_safe_outbound_url(provider.url)
+        except UnsafeURLError as exc:
+            logger.warning(
+                "ai_health_ssrf_skipped", provider=provider.name, reason=str(exc)
+            )
+            usage = await _get_provider_usage(provider.name)
+            results.append({
+                "name": provider.name,
+                "model": provider.model,
+                "healthy": False,
+                "today_requests": usage,
+                "reason": "unsafe_url",
+            })
+            continue
+        try:
+            async with build_pinned_async_client(resolved, timeout=8) as client:
                 headers = {
                     "Authorization": f"Bearer {provider.key}",
                     "User-Agent": "IntelPulse/1.0",

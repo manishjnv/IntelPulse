@@ -24,6 +24,7 @@ Mechanism:
 
 from __future__ import annotations
 
+import ipaddress
 from typing import Any
 
 import httpx
@@ -31,27 +32,43 @@ import httpx
 from app.core.url_validation import ResolvedURL
 
 
+def _host_header(host: str, port: int, default_port: int) -> str:
+    """Build a Host header, bracketing IPv6 literals."""
+    try:
+        is_v6 = isinstance(
+            ipaddress.ip_address(host), ipaddress.IPv6Address
+        )
+    except ValueError:
+        is_v6 = False
+    bracketed = f"[{host}]" if is_v6 else host
+    return bracketed if port == default_port else f"{bracketed}:{port}"
+
+
 def _rewritten(request: httpx.Request, pinned: ResolvedURL) -> httpx.Request:
     """Return a new Request whose URL host is the pinned IP, preserving the
-    original Host header and TLS SNI hostname."""
+    original Host header and TLS SNI hostname.
+
+    Fails closed on host mismatch — e.g. a redirect the caller let through,
+    or cross-host reuse of the pinned client. Callers already pass
+    `follow_redirects=False`, so a mismatch here is a bug or abuse; refusing
+    with `httpx.RequestError` is safer than letting the underlying transport
+    re-resolve via the OS resolver (the very TOCTOU window this module
+    closes).
+    """
     url = request.url
-    # Only rewrite when the request actually targets the validated host. Any
-    # redirect or follow-up request against a different host bypasses the
-    # rewrite — and since callers pass follow_redirects=False, the response
-    # surfaces back to caller code which must re-validate before re-issuing.
-    if url.host != pinned.host:
-        return request
+    request_host = (url.host or "").lower().rstrip(".")
+    if request_host != pinned.host:
+        raise httpx.RequestError(
+            f"pinned client host mismatch: {request_host!r} != {pinned.host!r}",
+            request=request,
+        )
 
     # httpx.URL auto-brackets IPv6 hosts in the netloc representation when
     # given a bare IPv6 string, so passing the raw IP is correct here.
     new_url = url.copy_with(host=pinned.pinned_ip, port=pinned.port)
     new_headers = httpx.Headers(request.headers)
-    # Host header includes the port only if it differs from the scheme default.
     default_port = 443 if pinned.scheme == "https" else 80
-    if pinned.port == default_port:
-        new_headers["Host"] = pinned.host
-    else:
-        new_headers["Host"] = f"{pinned.host}:{pinned.port}"
+    new_headers["Host"] = _host_header(pinned.host, pinned.port, default_port)
 
     new_extensions: dict[str, Any] = dict(request.extensions or {})
     new_extensions["sni_hostname"] = pinned.host

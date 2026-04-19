@@ -11,6 +11,7 @@ import asyncio
 from unittest.mock import patch
 
 import httpx
+import pytest
 
 from app.core.safe_httpx import (
     PinnedAsyncHTTPTransport,
@@ -66,16 +67,58 @@ def test_rewritten_default_port_omitted_from_host_header():
     assert out.headers["Host"] == "example.com"
 
 
-def test_rewritten_skips_when_request_host_mismatches():
-    # E.g. the caller followed a redirect to a different host. We refuse to
-    # rewrite — the request flows through unmodified, so the inner transport
-    # would re-resolve using the OS resolver. Real safety here comes from
-    # build_pinned_*_client setting follow_redirects=False.
+def test_rewritten_raises_on_host_mismatch():
+    # E.g. the caller let a redirect through, or reused the pinned client for
+    # a different URL. We refuse to rewrite AND refuse to send — letting the
+    # unmodified request flow to the inner transport would re-open the OS
+    # resolver and defeat the whole pinned-IP guarantee. follow_redirects=False
+    # on the client side prevents this in normal use; the raise here catches
+    # bugs and abuse.
     pinned = _resolved("example.com", "93.184.216.34")
     req = httpx.Request("GET", "https://other.example.org/path")
+    with pytest.raises(httpx.RequestError, match="host mismatch"):
+        _rewritten(req, pinned)
+
+
+def test_rewritten_host_match_is_case_and_trailing_dot_insensitive():
+    # Hostnames in URLs are case-insensitive and trailing-dot tolerant; the
+    # mismatch check must normalize before comparing or legitimate traffic
+    # tripping case/dot variance would be blocked.
+    pinned = _resolved("example.com", "93.184.216.34")
+    for variant in ("Example.COM", "example.com.", "EXAMPLE.com."):
+        req = httpx.Request("GET", f"https://{variant}/test")
+        out = _rewritten(req, pinned)
+        assert out.url.host == "93.184.216.34"
+        assert out.headers["Host"] == "example.com"
+
+
+def test_rewritten_ipv6_literal_host_header_is_bracketed():
+    # When pinned.host is itself an IPv6 literal (caller passed a literal-IP
+    # URL), the Host header must bracket the address so downstream parsers do
+    # not confuse the colons for a port separator.
+    pinned = ResolvedURL(
+        url="https://[2606:4700::1111]/test",
+        scheme="https",
+        host="2606:4700::1111",
+        port=443,
+        pinned_ip="2606:4700::1111",
+    )
+    req = httpx.Request("GET", "https://[2606:4700::1111]/test")
     out = _rewritten(req, pinned)
-    assert out is req
-    assert out.url.host == "other.example.org"
+    assert out.headers["Host"] == "[2606:4700::1111]"
+
+
+def test_rewritten_ipv6_literal_host_header_with_nondefault_port():
+    pinned = ResolvedURL(
+        url="https://[2606:4700::1111]:8443/test",
+        scheme="https",
+        host="2606:4700::1111",
+        port=8443,
+        pinned_ip="2606:4700::1111",
+    )
+    req = httpx.Request("GET", "https://[2606:4700::1111]:8443/test")
+    out = _rewritten(req, pinned)
+    assert out.headers["Host"] == "[2606:4700::1111]:8443"
 
 
 def test_rewritten_ipv6_pinned():
