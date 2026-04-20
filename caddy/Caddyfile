@@ -1,11 +1,17 @@
 {
 	email admin@intelpulse.tech
 	servers {
-		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		# Trust CF edge IPs AND the Docker bridge range. Inbound HTTPS from
+		# the internet goes: client → EC2:443 → docker-bridge-gateway (172.x)
+		# → caddy:443. From Caddy's TCP peer view the connection is ALWAYS
+		# from 172.x, never directly from CF — so CF CIDRs alone produce
+		# client_ip = 172.18.0.1 and the XFF chain gets ignored. Adding the
+		# /12 range lets Caddy trust the bridge gateway as a proxy and parse
+		# CF's XFF correctly, resolving client_ip to the real viewer IP.
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32 172.16.0.0/12
 		# Only accept client-IP headers when the peer is in the trusted-proxies
-		# list above. Without this Caddy would honor X-Forwarded-For etc. from
-		# any peer (defense-in-depth against a host on the Docker network
-		# reaching Caddy directly with a spoofed XFF).
+		# list above. Defense-in-depth: even with the /12 above, this prevents
+		# any future direct-from-internet (non-Docker) peer from spoofing XFF.
 		trusted_proxies_strict
 	}
 }
