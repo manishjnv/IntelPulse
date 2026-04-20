@@ -1,3 +1,16 @@
+# ── Default log driver — json-file with rotation ─────────────────
+# Applied to every service via `logging: *default-logging`. Caps per-service
+# disk use at 5×50m = 250 MB so docker's default unbounded growth can't fill
+# the VPS root partition (hit this with postgres + opensearch running for
+# weeks). Note: this does NOT survive container RECREATE — `up -d` with a
+# changed image/config wipes the per-container log dir. For cross-deploy
+# retention ship logs to journald / CloudWatch (future work).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
 x-common-env: &common-env
   POSTGRES_HOST: postgres
   POSTGRES_PORT: "5432"
@@ -36,6 +49,7 @@ services:
   postgres:
     image: timescale/timescaledb:latest-pg16
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ti}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -54,6 +68,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    logging: *default-logging
     command: sh -c 'redis-server --requirepass "$${REDIS_PASSWORD}" --protected-mode yes --rename-command REPLICAOF "" --rename-command SLAVEOF "" --rename-command DEBUG "" --rename-command CONFIG ""'
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
@@ -70,6 +85,7 @@ services:
   opensearch:
     image: opensearchproject/opensearch:2.13.0
     restart: unless-stopped
+    logging: *default-logging
     environment:
       - discovery.type=single-node
       - DISABLE_SECURITY_PLUGIN=true
@@ -96,6 +112,16 @@ services:
       context: .
       dockerfile: docker/Dockerfile.api
     restart: unless-stopped
+    logging: *default-logging
+    # --proxy-headers + --forwarded-allow-ips makes uvicorn trust
+    # X-Forwarded-For / X-Real-IP from Caddy (172.x bridge) so
+    # request.client.host resolves to the real CF edge client IP. Without
+    # this every request appears to come from Caddy's docker IP, making the
+    # rate limiter one shared bucket for the whole internet and leaking no
+    # real client IP into structured audit / SSRF-block logs.
+    # /12 covers Docker's default bridge range (172.16-31); tighter than the
+    # wildcard '*' default so a stray sidecar on the host can't spoof XFF.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers", "--forwarded-allow-ips", "172.16.0.0/12"]
     environment:
       <<: *common-env
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
@@ -143,6 +169,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.ui
     restart: unless-stopped
+    logging: *default-logging
     environment:
       BACKEND_URL: http://api:8000
     expose:
@@ -156,6 +183,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.worker
     restart: unless-stopped
+    logging: *default-logging
     environment:
       <<: *common-env
       NVD_API_KEY: ${NVD_API_KEY:-}
@@ -190,6 +218,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.worker
     restart: unless-stopped
+    logging: *default-logging
     command: ["python", "-m", "worker.scheduler"]
     environment:
       <<: *common-env
@@ -210,6 +239,7 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "80:80"
       - "443:443"
